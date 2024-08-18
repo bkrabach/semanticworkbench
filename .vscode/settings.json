@@ -155,15 +155,21 @@
     }
   ],
   "cSpell.words": [
+    "arcname",
     "asgi",
+    "cachetools",
     "dotenv",
     "fastapi",
+    "hashkey",
     "httpx",
     "jsonlogger",
+    "keyvault",
     "levelname",
     "levelno",
     "pydantic",
     "pythonjsonlogger",
+    "sqlalchemy",
+    "sqlmodel",
     "tracebacks"
   ]
 }
