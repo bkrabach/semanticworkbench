@@ -153,5 +153,17 @@
       "bold": false,
       "italic": false
     }
+  ],
+  "cSpell.words": [
+    "asgi",
+    "dotenv",
+    "fastapi",
+    "httpx",
+    "jsonlogger",
+    "levelname",
+    "levelno",
+    "pydantic",
+    "pythonjsonlogger",
+    "tracebacks"
   ]
 }
