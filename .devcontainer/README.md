@@ -46,7 +46,7 @@ Follow the instructions in the [Custom app registration](../docs/CUSTOM_APP_REGI
 - Once `semantic-workbench-service` has launched, you will need to make it `public`
   - The app uses the service to fetch data and it must be accessible from the browser of the user logged into the app, which is why the service endpoint must be public. This also means it is accessible to anyone with the URL. To provide a minimal level of security, the app registration is required. Any calls to the service must include an access token from a user logged into the configured app registration.
   - In VS Code go to the `ports` tab (same pane as the `terminal` where the services are running)
-  - Right-click on the `semantic-workbench-service` (Port 3000) and select `Port Visibility` > `Public`
+  - Right-click on the `service:semantic-workbench-service` (Port 3000) and select `Port Visibility` > `Public`
 - In the VS Code `terminal` tab, find the `semantic-workbench-app` and click on the `Local` link to open the app
   - This will automatically open the app in a new browser tab, navigating to the correct Codespace host and setting the necessary header values to privately access the app
 - You can now interact with the app and service in the browser

@@ -47,5 +47,12 @@
     "**/.data": true,
     "**/__pycache__": true
   },
-  "cSpell.words": ["Codespaces", "devcontainer", "pyproject"]
+  "cSpell.words": [
+    "Codespaces",
+    "devcontainer",
+    "dyanmic",
+    "jsonschema",
+    "pydantic",
+    "pyproject"
+  ]
 }
