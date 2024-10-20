@@ -21,6 +21,8 @@
         "@azure/ms-rest-js": "^2.7.0",
         "@azure/msal-browser": "^3.6.0",
         "@azure/msal-react": "^2.0.8",
+        "@excalidraw/excalidraw": "^0.17.6",
+        "@excalidraw/mermaid-to-excalidraw": "^1.1.0",
         "@fluentui-copilot/react-attachments": "^0.10.1",
         "@fluentui-copilot/react-copilot": "^0.19.3",
         "@fluentui/keyboard-keys": ">=9.0.4 <10.0.0",

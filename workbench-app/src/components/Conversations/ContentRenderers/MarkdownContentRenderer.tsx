@@ -6,7 +6,7 @@ import Markdown from 'react-markdown';
 import rehypeRaw from 'rehype-raw';
 import remarkGfm from 'remark-gfm';
 import { CodeContentRenderer } from './CodeContentRenderer';
-import { MermaidContentRenderer } from './MermaidContentRenderer';
+import { ExcalidrawContentRenderer } from './ExcalidrawContentRenderer';
 import { MusicABCContentRenderer } from './MusicABCContentRenderer';
 
 const useClasses = makeStyles({
@@ -53,7 +53,8 @@ export const MarkdownContentRenderer: React.FC<MarkdownContentRendererProps> = (
                         const content = String(children).replace(/\n$/, '');
 
                         if (language === 'mermaid') {
-                            return <MermaidContentRenderer content={content} clickToZoom />;
+                            return <ExcalidrawContentRenderer content={content} clickToZoom />;
+                            // return <MermaidContentRenderer content={content} clickToZoom />;
                         }
 
                         if (language === 'abc') {
