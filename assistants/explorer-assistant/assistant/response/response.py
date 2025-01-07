@@ -275,11 +275,27 @@ async def respond_to_conversation(
         # Execute the tool
         try:
             tool_result = await mcp_session.call_tool(tool_name, arguments=arguments)
-            # Assuming the tool returns text content
+            # Assuming the tool returns text content or other structured data
             tool_output = tool_result.content[0] if tool_result.content else ""
         except Exception as e:
-            logger.exception(f"Error executing tool {tool_name}: {e}")
+            logger.exception(f"Error executing tool '{tool_name}': {e}")
             tool_output = f"An error occurred while executing the tool '{tool_name}': {e}"
+
+        # Add raw tool output to debug metadata
+        deepmerge.always_merger.merge(
+            metadata,
+            {
+                "debug": {
+                    method_metadata_key: {
+                        "tool_execution": {
+                            "tool_name": tool_name,
+                            "arguments": arguments,
+                            "raw_output": str(tool_output),
+                        }
+                    }
+                }
+            },
+        )
 
         # Provide the tool's output back to the model
         # Append the assistant's initial response indicating the tool was used
@@ -297,6 +313,21 @@ async def respond_to_conversation(
             )
         )
 
+        # Add model request details to debug metadata before the second model call
+        deepmerge.always_merger.merge(
+            metadata,
+            {
+                "debug": {
+                    method_metadata_key + "_after_tool": {
+                        "model_request": {
+                            "messages": [f"{msg.role}: {msg.content}" for msg in completion_messages],
+                            "model": request_config.model,
+                        }
+                    }
+                }
+            },
+        )
+
         # Call the language model again with the updated conversation
         response_result = await response_provider.get_response(
             messages=completion_messages,
@@ -306,13 +337,8 @@ async def respond_to_conversation(
         message_type = response_result.message_type
         completion_total_tokens += response_result.completion_total_tokens
 
-        # Update metadata
+        # Update metadata with the response from the second model call
         deepmerge.always_merger.merge(metadata, response_result.metadata)
-    else:
-        # No tool usage detected, proceed with the original content
-        pass  # No changes needed
-
-    deepmerge.always_merger.merge(metadata, response_result.metadata)
 
     # create the footer items for the response
     footer_items = []
@@ -372,6 +398,25 @@ async def respond_to_conversation(
         # override message type if content starts with /
         if content.startswith("/"):
             message_type = MessageType.command_response
+
+    # After the final response is prepared and before sending it
+    # Add token usage and response duration to metadata
+    deepmerge.always_merger.merge(
+        metadata,
+        {
+            "debug": {
+                method_metadata_key: {
+                    "token_usage": {
+                        "completion_total_tokens": completion_total_tokens,
+                        "max_tokens": request_config.max_tokens,
+                    },
+                    "timing": {
+                        "response_duration": response_duration,
+                    },
+                }
+            }
+        },
+    )
 
     # send the response to the conversation
     await context.send_messages(
