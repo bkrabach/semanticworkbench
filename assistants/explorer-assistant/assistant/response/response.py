@@ -5,6 +5,7 @@
 # This assistant helps you mine ideas from artifacts.
 #
 
+import json
 import logging
 import re
 import time
@@ -14,6 +15,7 @@ import deepmerge
 from assistant_extensions.ai_clients.model import CompletionMessage
 from assistant_extensions.artifacts import ArtifactsExtension
 from assistant_extensions.attachments import AttachmentsExtension
+from mcp import ClientSession
 from semantic_workbench_api_model.workbench_model import (
     ConversationMessage,
     ConversationParticipant,
@@ -37,12 +39,14 @@ logger = logging.getLogger(__name__)
 #
 
 
-# demonstrates how to respond to a conversation message using the OpenAI API.
 async def respond_to_conversation(
     artifacts_extension: ArtifactsExtension,
     attachments_extension: AttachmentsExtension,
     context: ConversationContext,
     config: AssistantConfigModel,
+    filesystem_session: ClientSession,
+    webresearch_session: ClientSession,
+    message: ConversationMessage,
     metadata: dict[str, Any] = {},
 ) -> None:
     """
@@ -56,6 +60,23 @@ async def respond_to_conversation(
     where they were mentioned and any relevant surrounding context such as how to interpret the attachment
     or why it was shared or what to do with it.
     """
+
+    # Retrieve tools from MCP servers
+    filesystem_tools_response = await filesystem_session.list_tools()
+    filesystem_tools = filesystem_tools_response.tools
+
+    webresearch_tools_response = await webresearch_session.list_tools()
+    webresearch_tools = webresearch_tools_response.tools
+
+    all_tools = filesystem_tools + webresearch_tools
+
+    # Prepare tool descriptions for the system prompt
+    tool_descriptions = []
+    for tool in all_tools:
+        tool_description = (
+            f"Tool Name: {tool.name}\nDescription: {tool.description}\nInput Parameters: {tool.inputSchema}\n"
+        )
+        tool_descriptions.append(tool_description)
 
     response_provider = (
         AnthropicResponseProvider(assistant_config=config, anthropic_client_config=config.ai_client_config)
@@ -82,7 +103,15 @@ async def respond_to_conversation(
     # establish a token to be used by the AI model to indicate no response
     silence_token = "{{SILENCE}}"
 
-    system_message_content = f'{config.instruction_prompt}\n\nYour name is "{context.assistant.name}".'
+    system_message_content = (
+        f'{config.instruction_prompt}\n\nYour name is "{context.assistant.name}".'
+        f'Your name is "{context.assistant.name}".\n'
+        "You have access to the following tools:\n"
+        f"{''.join(tool_descriptions)}\n"
+        "When you need to use a tool, output a JSON object in the following format:\n"
+        '{"action": "call_tool", "tool_name": "TOOL_NAME", "arguments": {"arg1": "value1", ...}}\n'
+        "After receiving the tool's output, incorporate it into your response."
+    )
     if len(participants_response.participants) > 2:
         system_message_content += (
             "\n\n"
@@ -173,6 +202,11 @@ async def respond_to_conversation(
     # add the history messages to the completion messages
     completion_messages.extend(history_messages)
 
+    # add the message to the completion messages
+    completion_messages.extend(
+        await _conversation_message_to_completion_messages(context, message, participants_response.participants)
+    )
+
     result = await _num_tokens_from_messages(
         context=context,
         response_provider=response_provider,
@@ -207,8 +241,76 @@ async def respond_to_conversation(
         metadata_key=method_metadata_key,
     )
     content = response_result.content
+
+    if content is None:
+        return
+
     message_type = response_result.message_type
     completion_total_tokens = response_result.completion_total_tokens
+
+    # Parse the model's response for tool usage
+    tool_action, remaining_content = parse_tool_response(content)
+
+    if tool_action:
+        tool_name = tool_action.get("tool_name")
+        arguments = tool_action.get("arguments", {})
+
+        # Determine which MCP session contains the tool
+        if tool_name in [tool.name for tool in filesystem_tools]:
+            mcp_session = filesystem_session
+        elif tool_name in [tool.name for tool in webresearch_tools]:
+            mcp_session = webresearch_session
+        else:
+            # Tool not found
+            assistant_response = f"I'm sorry, I don't have access to the tool '{tool_name}'."
+            await context.send_messages(
+                NewConversationMessage(
+                    content=assistant_response,
+                    message_type=MessageType.chat,
+                    metadata=metadata,
+                )
+            )
+            return
+
+        # Execute the tool
+        try:
+            tool_result = await mcp_session.call_tool(tool_name, arguments=arguments)
+            # Assuming the tool returns text content
+            tool_output = tool_result.content[0] if tool_result.content else ""
+        except Exception as e:
+            logger.exception(f"Error executing tool {tool_name}: {e}")
+            tool_output = f"An error occurred while executing the tool '{tool_name}': {e}"
+
+        # Provide the tool's output back to the model
+        # Append the assistant's initial response indicating the tool was used
+        completion_messages.append(
+            CompletionMessage(
+                role="assistant",
+                content=content.strip(),  # The initial assistant response
+            )
+        )
+        # Append the tool's output as a user message
+        completion_messages.append(
+            CompletionMessage(
+                role="user",
+                content=f"Tool '{tool_name}' output:\n{tool_output}",
+            )
+        )
+
+        # Call the language model again with the updated conversation
+        response_result = await response_provider.get_response(
+            messages=completion_messages,
+            metadata_key=method_metadata_key + "_after_tool",
+        )
+        content = response_result.content
+        message_type = response_result.message_type
+        completion_total_tokens += response_result.completion_total_tokens
+
+        # Update metadata
+        deepmerge.always_merger.merge(metadata, response_result.metadata)
+    else:
+        # No tool usage detected, proceed with the original content
+        pass  # No changes needed
 
     deepmerge.always_merger.merge(metadata, response_result.metadata)
 
@@ -316,6 +418,53 @@ async def respond_to_conversation(
 #
 
 # TODO: move to a common module, such as either the openai_client or attachment module for easy re-use in other assistants
+
+
+def parse_tool_response(content: str):
+    """Parse the model's response to check for tool usage."""
+    try:
+        # Find the first '{' character
+        start_index = content.find("{")
+        if start_index == -1:
+            return None, content  # No JSON object found
+
+        # Initialize variables
+        brace_count = 0
+        index = start_index
+
+        # Iterate through the content to find the matching closing brace
+        while index < len(content):
+            if content[index] == "{":
+                brace_count += 1
+            elif content[index] == "}":
+                brace_count -= 1
+
+                if brace_count == 0:
+                    # Found the complete JSON object
+                    end_index = index + 1
+                    json_str = content[start_index:end_index]
+                    try:
+                        action = json.loads(json_str)
+                        # Extract tool_name and arguments
+                        tool_name = action.get("tool_name") or action.get("action")
+                        arguments = action.get("arguments", {})
+                        if tool_name:
+                            # Return the action and the remaining content
+                            return {"tool_name": tool_name, "arguments": arguments}, content[end_index:].strip()
+                    except json.JSONDecodeError as e:
+                        logger.exception(f"JSON decode error: {e}")
+                        return None, content
+                    except Exception as e:
+                        logger.exception(f"Error parsing tool response: {e}")
+                        return None, content
+            index += 1
+
+        # If we reach here, the braces are unbalanced
+        logger.error("Unbalanced braces in tool response")
+    except Exception as e:
+        logger.exception(f"Error parsing tool response: {e}")
+
+    return None, content
 
 
 async def _num_tokens_from_messages(

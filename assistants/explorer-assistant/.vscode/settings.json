@@ -60,14 +60,18 @@
     "fastapi",
     "jsonschema",
     "Langchain",
+    "modelcontextprotocol",
     "moderations",
+    "mzxrai",
     "openai",
     "pdfplumber",
     "pydantic",
     "pyproject",
     "pyright",
+    "semanticworkbench",
     "tiktoken",
     "updown",
-    "virtualenvs"
+    "virtualenvs",
+    "webresearch"
   ]
 }

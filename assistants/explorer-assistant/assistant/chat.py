@@ -6,6 +6,7 @@
 #
 
 import logging
+from contextlib import AsyncExitStack, asynccontextmanager
 from typing import Any
 
 import deepmerge
@@ -14,6 +15,8 @@ from assistant_extensions.artifacts._model import ArtifactsConfigModel
 from assistant_extensions.attachments import AttachmentsExtension
 from assistant_extensions.workflows import WorkflowsConfigModel, WorkflowsExtension
 from content_safety.evaluators import CombinedContentSafetyEvaluator
+from mcp import ClientSession, StdioServerParameters
+from mcp.client.stdio import stdio_client
 from semantic_workbench_api_model.workbench_model import (
     ConversationEvent,
     ConversationMessage,
@@ -123,26 +126,45 @@ async def on_message_created(
       - @assistant.events.conversation.message.on_created
     """
 
-    # check if the assistant should respond to the message
+    # Check if the assistant should respond to the message
     if not await should_respond_to_message(context, message):
         return
 
-    # update the participant status to indicate the assistant is thinking
+    # Update the participant status to indicate the assistant is thinking
     async with context.set_status("thinking..."):
         config = await assistant_config.get(context.assistant)
         metadata: dict[str, Any] = {"debug": {"content_safety": event.data.get(content_safety.metadata_key, {})}}
 
         try:
-            # Prospector assistant response
-            await respond_to_conversation(
-                artifacts_extension=artifacts_extension,
-                attachments_extension=attachments_extension,
-                context=context,
-                config=config,
-                metadata=metadata,
-            )
+            # Use AsyncExitStack to manage multiple async context managers
+            async with AsyncExitStack() as stack:
+                # Connect to MCP servers
+                filesystem_session = await stack.enter_async_context(connect_to_filesystem_server())
+                webresearch_session = await stack.enter_async_context(connect_to_webresearch_server())
+
+                # Check if sessions are established
+                if not filesystem_session or not webresearch_session:
+                    await context.send_messages(
+                        NewConversationMessage(
+                            content="Unable to connect to one or more MCP servers. Please ensure the servers are running.",
+                            message_type=MessageType.notice,
+                        )
+                    )
+                    return
+
+                # Respond to the conversation, passing the MCP sessions
+                await respond_to_conversation(
+                    artifacts_extension=artifacts_extension,
+                    attachments_extension=attachments_extension,
+                    context=context,
+                    config=config,
+                    filesystem_session=filesystem_session,
+                    webresearch_session=webresearch_session,
+                    message=message,
+                    metadata=metadata,
+                )
         except Exception as e:
-            logger.exception(f"exception occurred responding to conversation: {e}")
+            logger.exception(f"Exception occurred responding to conversation: {e}")
             deepmerge.always_merger.merge(metadata, {"debug": {"error": str(e)}})
             await context.send_messages(
                 NewConversationMessage(
@@ -227,6 +249,54 @@ async def on_conversation_created(context: ConversationContext) -> None:
             metadata={"generated_content": False},
         )
     )
+
+
+# endregion
+
+# region MCP servers
+
+
+@asynccontextmanager
+async def connect_to_filesystem_server():
+    """Connect to the Filesystem MCP Server."""
+    filesystem_server_params = StdioServerParameters(
+        command="npx",
+        args=[
+            "-y",
+            "@modelcontextprotocol/server-filesystem",
+            "/workspaces/semanticworkbench",
+        ],
+        env=None,  # Set environment variables if needed
+    )
+    try:
+        # Use 'stdio_client' to connect to the server
+        async with stdio_client(filesystem_server_params) as (read_stream, write_stream):
+            async with ClientSession(read_stream, write_stream) as session:
+                await session.initialize()
+                # Yield the session for use
+                yield session
+    except Exception as e:
+        logger.exception(f"Error connecting to Filesystem MCP Server: {e}")
+        # Yield None to indicate failure
+        yield None
+
+
+@asynccontextmanager
+async def connect_to_webresearch_server():
+    """Connect to the Web Research MCP Server."""
+    webresearch_server_params = StdioServerParameters(
+        command="npx",
+        args=["-y", "@mzxrai/mcp-webresearch@latest"],
+        env=None,  # Set environment variables if needed
+    )
+    try:
+        async with stdio_client(webresearch_server_params) as (read_stream, write_stream):
+            async with ClientSession(read_stream, write_stream) as session:
+                await session.initialize()
+                yield session
+    except Exception as e:
+        logger.exception(f"Error connecting to Web Research MCP Server: {e}")
+        yield None
 
 
 # endregion
