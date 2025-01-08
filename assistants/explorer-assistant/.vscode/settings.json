@@ -21,6 +21,12 @@
   "python.analysis.autoFormatStrings": true,
   "python.analysis.autoImportCompletions": true,
   "python.analysis.diagnosticMode": "workspace",
+  "python.analysis.exclude": [
+    "**/.venv/**",
+    "**/.data/**",
+    "**/__pycache__/**",
+    "**/vendor/**"
+  ],
   "python.analysis.fixAll": ["source.unusedImports"],
   "python.analysis.inlayHints.functionReturnTypes": true,
   "python.analysis.typeCheckingMode": "standard",
@@ -39,7 +45,8 @@
   "search.exclude": {
     "**/.venv": true,
     "**/.data": true,
-    "**/__pycache__": true
+    "**/__pycache__": true,
+    "**/vendor": true
   },
   // For use with optional extension: "streetsidesoftware.code-spell-checker"
   "cSpell.ignorePaths": [
