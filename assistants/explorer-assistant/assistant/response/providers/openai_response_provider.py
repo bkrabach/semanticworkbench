@@ -21,8 +21,8 @@ from semantic_workbench_assistant.assistant_app import (
     ConversationContext,
 )
 
-from ..config import AssistantConfigModel
-from .model import NumberTokensResult, ResponseProvider, ResponseResult
+from ...config import AssistantConfigModel
+from .base_provider import NumberTokensResult, ResponseProvider, ResponseResult
 
 logger = logging.getLogger(__name__)
 

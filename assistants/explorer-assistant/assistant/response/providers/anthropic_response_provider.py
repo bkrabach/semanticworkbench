@@ -13,8 +13,8 @@ from semantic_workbench_api_model.workbench_model import (
     MessageType,
 )
 
-from ..config import AssistantConfigModel
-from .model import NumberTokensResult, ResponseProvider, ResponseResult
+from ...config import AssistantConfigModel
+from .base_provider import NumberTokensResult, ResponseProvider, ResponseResult
 
 logger = logging.getLogger(__name__)
 
