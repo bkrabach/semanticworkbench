@@ -259,14 +259,22 @@ async def on_conversation_created(context: ConversationContext) -> None:
 @asynccontextmanager
 async def connect_to_filesystem_server():
     """Connect to the Filesystem MCP Server."""
+    # filesystem_server_params = StdioServerParameters(
+    #     command="npx",
+    #     args=[
+    #         "-y",
+    #         "@modelcontextprotocol/server-filesystem",
+    #         "/workspaces/semanticworkbench",
+    #     ],
+    #     env=None,  # Set environment variables if needed
+    # )
     filesystem_server_params = StdioServerParameters(
-        command="npx",
+        command="node",
         args=[
-            "-y",
-            "@modelcontextprotocol/server-filesystem",
+            "assistant/vendor/mcp-servers/src/filesystem/dist/index.js",
             "/workspaces/semanticworkbench",
         ],
-        env=None,  # Set environment variables if needed
+        env=None,
     )
     try:
         # Use 'stdio_client' to connect to the server
