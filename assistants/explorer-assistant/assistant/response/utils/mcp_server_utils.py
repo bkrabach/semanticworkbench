@@ -1,6 +1,8 @@
+import json
 import logging
+import os
 from contextlib import asynccontextmanager
-from typing import List, Optional
+from typing import Any, AsyncIterator, List, Optional
 
 from mcp import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
@@ -11,7 +13,7 @@ logger = logging.getLogger(__name__)
 class MCPServer:
     """Represents an MCP server with its connection parameters."""
 
-    def __init__(self, name: str, command: str, args: List[str], env: Optional[dict] = None):
+    def __init__(self, name: str, command: str, args: List[str], env: Optional[dict] = None) -> None:
         self.name = name
         self.command = command
         self.args = args
@@ -19,7 +21,7 @@ class MCPServer:
 
 
 @asynccontextmanager
-async def connect_to_mcp_server(server_config):
+async def connect_to_mcp_server(server_config) -> AsyncIterator[Optional[ClientSession]]:
     """Connect to a single MCP server defined in the config."""
     server = MCPServer(
         name=server_config.get("name"),
@@ -37,3 +39,34 @@ async def connect_to_mcp_server(server_config):
     except Exception as e:
         logger.exception(f"Error connecting to {server.name}: {e}")
         yield None  # Yield None if connection fails
+
+
+def load_server_configs(config_file: str) -> list:
+    """
+    Load server configurations from a JSON file.
+    """
+    if os.path.exists(config_file):
+        with open(config_file, "r") as f:
+            server_configs = json.load(f)
+        logger.debug(f"Loaded server configurations from {config_file}")
+        return server_configs
+    else:
+        logger.error(f"Configuration file {config_file} not found.")
+        return []
+
+
+async def establish_mcp_sessions(config_file: str, stack) -> List[Any]:
+    """
+    Establish connections to MCP servers using the provided AsyncExitStack.
+    """
+
+    server_configs = load_server_configs(config_file)
+
+    sessions = []
+    for server_config in server_configs:
+        session = await stack.enter_async_context(connect_to_mcp_server(server_config))
+        if session:
+            sessions.append(session)
+        else:
+            logger.warning(f"Could not establish session with {server_config.get('name')}")
+    return sessions

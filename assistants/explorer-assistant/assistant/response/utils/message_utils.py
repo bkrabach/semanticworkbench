@@ -17,6 +17,54 @@ from .token_utils import num_tokens_from_messages
 logger = logging.getLogger(__name__)
 
 
+def build_system_message_content(
+    config,
+    context,
+    participants,
+    all_tools,
+    silence_token,
+) -> str:
+    """
+    Construct the system message content with tool descriptions and instructions.
+    """
+    tool_descriptions = [
+        f"Tool Name: {tool.name}\nDescription: {tool.description}\nInput Parameters: {tool.inputSchema}\n"
+        for tool in all_tools
+    ]
+
+    system_message_content = (
+        f'{config.instruction_prompt}\n\nYour name is "{context.assistant.name}".\n'
+        "You have access to the following tools:\n"
+        f"{''.join(tool_descriptions)}"
+        "\nWhen you need to use a tool, output a JSON object in the following format:\n"
+        '{"action": "call_tool", "tool_name": "TOOL_NAME", "arguments": {"arg1": "value1", ...}}\n'
+        "After receiving the tool's output, incorporate it into your response."
+    )
+
+    if len(participants) > 2:
+        participant_names = ", ".join([
+            f'"{participant.name}"' for participant in participants if participant.id != context.assistant.id
+        ])
+        system_message_content += (
+            "\n\n"
+            f"There are {len(participants)} participants in the conversation, "
+            f"including you as the assistant and the following users: {participant_names}."
+            "\n\nYou do not need to respond to every message. Do not respond if the last thing said was a closing "
+            f'statement such as "bye" or "goodbye", or just a general acknowledgement like "ok" or "thanks". Do not '
+            f'respond as another user in the conversation, only as "{context.assistant.name}". '
+            "Sometimes the other users need to talk amongst themselves and that is okay. If the conversation seems to "
+            "be directed at you or the general audience, go ahead and respond."
+            f'\n\nSay "{silence_token}" to skip your turn.'
+        )
+
+    if config.extensions_config.artifacts.enabled:
+        system_message_content += f"\n\n{config.extensions_config.artifacts.instruction_prompt}"
+
+    system_message_content += f"\n\n{config.guardrails_prompt}"
+
+    return system_message_content
+
+
 async def conversation_message_to_completion_messages(
     context: ConversationContext, message: ConversationMessage, participants: list[ConversationParticipant]
 ) -> list[CompletionMessage]:

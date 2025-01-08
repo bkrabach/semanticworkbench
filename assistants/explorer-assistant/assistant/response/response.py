@@ -21,20 +21,21 @@ from semantic_workbench_api_model.workbench_model import (
 )
 from semantic_workbench_assistant.assistant_app import ConversationContext
 
-from assistant.response.utils.tool_utils import handle_tool_action, retrieve_tools_from_sessions
+from assistant.response.utils.message_utils import build_system_message_content
+from assistant.response.utils.response_provider_utils import initialize_response_provider
 
 from ..config import AssistantConfigModel
-from ..mcp_servers import connect_to_mcp_server
-from .providers import AnthropicResponseProvider, OpenAIResponseProvider
 from .tool_handler import parse_tool_response
 from .utils import (
     conversation_message_to_completion_messages,
+    establish_mcp_sessions,
     get_history_messages,
     get_response_duration_message,
     get_token_usage_message,
+    handle_tool_action,
     inject_attachments_inline,
-    load_server_configs,
     num_tokens_from_messages,
+    retrieve_tools_from_sessions,
 )
 
 logger = logging.getLogger(__name__)
@@ -53,18 +54,8 @@ async def respond_to_conversation(
     Respond to a conversation message using dynamically loaded MCP servers.
     """
 
-    # Load server configurations
-    server_configs = load_server_configs(config_file)
-
     async with AsyncExitStack() as stack:
-        sessions = []
-        for server_config in server_configs:
-            session = await stack.enter_async_context(connect_to_mcp_server(server_config))
-            if session:
-                sessions.append(session)
-            else:
-                logger.warning(f"Could not establish session with {server_config.get('name')}")
-
+        sessions = await establish_mcp_sessions(config_file, stack)
         if not sessions:
             await context.send_messages(
                 NewConversationMessage(
@@ -79,18 +70,9 @@ async def respond_to_conversation(
         all_tools = await retrieve_tools_from_sessions(sessions)
 
         # Initialize the response provider based on configuration
-        if config.ai_client_config.ai_service_type == "anthropic":
-            response_provider = AnthropicResponseProvider(
-                assistant_config=config, anthropic_client_config=config.ai_client_config
-            )
-        else:
-            response_provider = OpenAIResponseProvider(
-                artifacts_extension=artifacts_extension,
-                conversation_context=context,
-                assistant_config=config,
-                openai_client_config=config.ai_client_config,
-            )
+        response_provider = initialize_response_provider(config, artifacts_extension, context)
 
+        # Get the request configuration for the AI client
         request_config = config.ai_client_config.request_config
 
         # Define the metadata key for any metadata created within this method
@@ -101,49 +83,13 @@ async def respond_to_conversation(
 
         # Get the list of conversation participants
         participants_response = await context.get_participants(include_inactive=True)
+        participants = participants_response.participants
 
         # Establish a token to be used by the AI model to indicate no response
         silence_token = "{{SILENCE}}"
 
-        # Prepare tool descriptions for the system prompt
-        tool_descriptions = [
-            f"Tool Name: {tool.name}\nDescription: {tool.description}\nInput Parameters: {tool.inputSchema}\n"
-            for tool in all_tools
-        ]
-
-        # Construct system message content
-        system_message_content = (
-            f'{config.instruction_prompt}\n\nYour name is "{context.assistant.name}".\n'
-            "You have access to the following tools:\n"
-            f"{''.join(tool_descriptions)}"
-            "\nWhen you need to use a tool, output a JSON object in the following format:\n"
-            '{"action": "call_tool", "tool_name": "TOOL_NAME", "arguments": {"arg1": "value1", ...}}\n'
-            "After receiving the tool's output, incorporate it into your response."
-        )
-
-        if len(participants_response.participants) > 2:
-            system_message_content += (
-                "\n\n"
-                f"There are {len(participants_response.participants)} participants in the conversation, "
-                "including you as the assistant and the following users: "
-                + ", ".join([
-                    f'"{participant.name}"'
-                    for participant in participants_response.participants
-                    if participant.id != context.assistant.id
-                ])
-                + "\n\nYou do not need to respond to every message. Do not respond if the last thing said was a closing "
-                "statement such as 'bye' or 'goodbye', or just a general acknowledgement like 'ok' or 'thanks'. Do not "
-                f'respond as another user in the conversation, only as "{context.assistant.name}". '
-                "Sometimes the other users need to talk amongst themselves and that is ok. If the conversation seems to "
-                f'be directed at you or the general audience, go ahead and respond.\n\nSay "{silence_token}" to skip '
-                "your turn."
-            )
-
-        # Add the artifact agent instruction prompt and guardrails
-        if config.extensions_config.artifacts.enabled:
-            system_message_content += f"\n\n{config.extensions_config.artifacts.instruction_prompt}"
-
-        system_message_content += f"\n\n{config.guardrails_prompt}"
+        # Build system message content
+        system_message_content = build_system_message_content(config, context, participants, all_tools, silence_token)
 
         # Initialize the completion messages with the system message
         completion_messages: List[CompletionMessage] = [
@@ -390,6 +336,3 @@ async def respond_to_conversation(
                         },
                     )
                 )
-
-
-# endregion
