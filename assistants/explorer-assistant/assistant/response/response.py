@@ -34,16 +34,6 @@ from .response_anthropic import AnthropicResponseProvider
 from .response_openai import OpenAIResponseProvider
 
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.DEBUG)  # Configure logging as needed
-
-# Assume you have implementations for the following helper functions:
-# - _num_tokens_from_messages
-# - _get_history_messages
-# - _conversation_message_to_completion_messages
-# - _inject_attachments_inline
-# - _get_token_usage_message
-# - _get_response_duration_message
-# - parse_tool_response
 
 
 async def respond_to_conversation(
@@ -82,6 +72,7 @@ async def respond_to_conversation(
                 NewConversationMessage(
                     content="Unable to connect to any MCP servers. Please ensure the servers are running.",
                     message_type=MessageType.notice,
+                    metadata=metadata,
                 )
             )
             return
@@ -102,6 +93,7 @@ async def respond_to_conversation(
                 NewConversationMessage(
                     content="No tools available from MCP servers.",
                     message_type=MessageType.notice,
+                    metadata=metadata,
                 )
             )
             return
@@ -262,6 +254,7 @@ async def respond_to_conversation(
                             "Please start a new conversation and let us know you ran into this."
                         ),
                         message_type=MessageType.chat,
+                        metadata=metadata,
                     )
                 )
                 return
@@ -280,6 +273,7 @@ async def respond_to_conversation(
                 NewConversationMessage(
                     content="An error occurred while generating your response.",
                     message_type=MessageType.notice,
+                    metadata=metadata,
                 )
             )
             return
@@ -288,11 +282,14 @@ async def respond_to_conversation(
         message_type = response_result.message_type
         completion_total_tokens = response_result.completion_total_tokens
 
+        deepmerge.always_merger.merge(metadata, response_result.metadata)
+
         if not content:
             await context.send_messages(
                 NewConversationMessage(
                     content="[no response from AI]",
                     message_type=MessageType.chat,
+                    metadata=metadata,
                 )
             )
             return
@@ -330,12 +327,36 @@ async def respond_to_conversation(
                 return
 
             # Execute the tool
+
+            # Update metadata with tool action details
+            deepmerge.always_merger.merge(
+                metadata,
+                {
+                    method_metadata_key: {
+                        "tool_action": {
+                            "tool_name": tool_name,
+                            "arguments": arguments,
+                        },
+                    },
+                },
+            )
+
             try:
                 tool_result = await target_session.call_tool(tool_name, arguments=arguments)
                 tool_output = tool_result.content[0] if tool_result.content else ""
             except Exception as e:
                 logger.exception(f"Error executing tool '{tool_name}': {e}")
                 tool_output = f"An error occurred while executing the tool '{tool_name}': {e}"
+
+            # Update metadata with tool result
+            deepmerge.always_merger.merge(
+                metadata,
+                {
+                    method_metadata_key: {
+                        "tool_result": tool_output,
+                    },
+                },
+            )
 
             # Add tool output to the conversation
             completion_messages.append(
@@ -360,15 +381,28 @@ async def respond_to_conversation(
                     NewConversationMessage(
                         content="An error occurred while generating the final response after tool execution.",
                         message_type=MessageType.notice,
+                        metadata=metadata,
                     )
                 )
                 return
 
-        # Add token usage and response duration to metadata
-        footer_items = [
-            _get_token_usage_message(request_config.max_tokens, completion_total_tokens),
-            _get_response_duration_message(time.time() - response_start_time),
-        ]
+            deepmerge.always_merger.merge(metadata, final_response.metadata)
+
+        # Create the footer items for the response
+        footer_items = []
+
+        # Add the token usage message to the footer items
+        if completion_total_tokens > 0:
+            footer_items.append(_get_token_usage_message(request_config.max_tokens, completion_total_tokens))
+
+        # Track the end time of the response generation and calculate duration
+        response_end_time = time.time()
+        response_duration = response_end_time - response_start_time
+
+        # Add the response duration to the footer items
+        footer_items.append(_get_response_duration_message(response_duration))
+
+        # Update the metadata with the footer items
         deepmerge.always_merger.merge(
             metadata,
             {
@@ -379,19 +413,22 @@ async def respond_to_conversation(
         if content:
             # Handle silence token
             if content.replace(" ", "") == silence_token:
+                # If debug output is enabled, notify that the assistant chose to remain silent
                 if config.enable_debug_output:
+                    # Add debug metadata to indicate the assistant chose to remain silent
                     deepmerge.always_merger.merge(
                         metadata,
                         {
                             "debug": {
                                 method_metadata_key: {
                                     "silence_token": True,
-                                }
+                                },
                             },
                             "attribution": "debug output",
                             "generated_content": False,
                         },
                     )
+                    # Send a notice message to the conversation
                     await context.send_messages(
                         NewConversationMessage(
                             message_type=MessageType.notice,
@@ -399,7 +436,7 @@ async def respond_to_conversation(
                             metadata=metadata,
                         )
                     )
-                return
+                return  # Exit the function if the assistant remains silent
 
             # Override message type if content starts with '/'
             if content.startswith("/"):
