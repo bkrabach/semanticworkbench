@@ -4,27 +4,29 @@
 #
 # This assistant helps you mine ideas from artifacts.
 #
+# response.py
 
 import json
 import logging
+import os
 import re
 import time
-from typing import Any, Awaitable, Callable, Sequence
+from contextlib import AsyncExitStack
+from typing import Any, Awaitable, Callable, List, Sequence
 
 import deepmerge
 from assistant_extensions.ai_clients.model import CompletionMessage
 from assistant_extensions.artifacts import ArtifactsExtension
 from assistant_extensions.attachments import AttachmentsExtension
-from mcp import ClientSession
 from semantic_workbench_api_model.workbench_model import (
     ConversationMessage,
     ConversationParticipant,
     MessageType,
     NewConversationMessage,
 )
-from semantic_workbench_assistant.assistant_app import (
-    ConversationContext,
-)
+from semantic_workbench_assistant.assistant_app import ConversationContext
+
+from assistant.mcp_servers import connect_to_mcp_server
 
 from ..config import AssistantConfigModel
 from .model import NumberTokensResult, ResponseProvider
@@ -32,11 +34,16 @@ from .response_anthropic import AnthropicResponseProvider
 from .response_openai import OpenAIResponseProvider
 
 logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.DEBUG)  # Configure logging as needed
 
-
-#
-# region Response
-#
+# Assume you have implementations for the following helper functions:
+# - _num_tokens_from_messages
+# - _get_history_messages
+# - _conversation_message_to_completion_messages
+# - _inject_attachments_inline
+# - _get_token_usage_message
+# - _get_response_duration_message
+# - parse_tool_response
 
 
 async def respond_to_conversation(
@@ -44,415 +51,392 @@ async def respond_to_conversation(
     attachments_extension: AttachmentsExtension,
     context: ConversationContext,
     config: AssistantConfigModel,
-    filesystem_session: ClientSession,
-    webresearch_session: ClientSession,
     message: ConversationMessage,
     metadata: dict[str, Any] = {},
+    config_file: str = "mcp_servers_config.json",  # Specify the config file path
 ) -> None:
     """
-    Respond to a conversation message.
-
-    This method uses the OpenAI API to generate a response to the message.
-
-    It includes any attachments as individual system messages before the chat history, along with references
-    to the attachments in the point in the conversation where they were mentioned. This allows the model to
-    consider the full contents of the attachments separate from the conversation, but with the context of
-    where they were mentioned and any relevant surrounding context such as how to interpret the attachment
-    or why it was shared or what to do with it.
+    Respond to a conversation message using dynamically loaded MCP servers.
     """
 
-    # Retrieve tools from MCP servers
-    filesystem_tools_response = await filesystem_session.list_tools()
-    filesystem_tools = filesystem_tools_response.tools
-
-    webresearch_tools_response = await webresearch_session.list_tools()
-    webresearch_tools = webresearch_tools_response.tools
-
-    all_tools = filesystem_tools + webresearch_tools
-
-    # Prepare tool descriptions for the system prompt
-    tool_descriptions = []
-    for tool in all_tools:
-        tool_description = (
-            f"Tool Name: {tool.name}\nDescription: {tool.description}\nInput Parameters: {tool.inputSchema}\n"
-        )
-        tool_descriptions.append(tool_description)
-
-    response_provider = (
-        AnthropicResponseProvider(assistant_config=config, anthropic_client_config=config.ai_client_config)
-        if config.ai_client_config.ai_service_type == "anthropic"
-        else OpenAIResponseProvider(
-            artifacts_extension=artifacts_extension,
-            conversation_context=context,
-            assistant_config=config,
-            openai_client_config=config.ai_client_config,
-        )
-    )
-
-    request_config = config.ai_client_config.request_config
-
-    # define the metadata key for any metadata created within this method
-    method_metadata_key = "respond_to_conversation"
-
-    # track the start time of the response generation
-    response_start_time = time.time()
-
-    # get the list of conversation participants
-    participants_response = await context.get_participants(include_inactive=True)
-
-    # establish a token to be used by the AI model to indicate no response
-    silence_token = "{{SILENCE}}"
-
-    system_message_content = (
-        f'{config.instruction_prompt}\n\nYour name is "{context.assistant.name}".'
-        f'Your name is "{context.assistant.name}".\n'
-        "You have access to the following tools:\n"
-        f"{''.join(tool_descriptions)}\n"
-        "When you need to use a tool, output a JSON object in the following format:\n"
-        '{"action": "call_tool", "tool_name": "TOOL_NAME", "arguments": {"arg1": "value1", ...}}\n'
-        "After receiving the tool's output, incorporate it into your response."
-    )
-    if len(participants_response.participants) > 2:
-        system_message_content += (
-            "\n\n"
-            f"There are {len(participants_response.participants)} participants in the conversation,"
-            " including you as the assistant and the following users:"
-            + ",".join([
-                f' "{participant.name}"'
-                for participant in participants_response.participants
-                if participant.id != context.assistant.id
-            ])
-            + "\n\nYou do not need to respond to every message. Do not respond if the last thing said was a closing"
-            " statement such as 'bye' or 'goodbye', or just a general acknowledgement like 'ok' or 'thanks'. Do not"
-            f' respond as another user in the conversation, only as "{context.assistant.name}".'
-            " Sometimes the other users need to talk amongst themselves and that is ok. If the conversation seems to"
-            f' be directed at you or the general audience, go ahead and respond.\n\nSay "{silence_token}" to skip'
-            " your turn."
-        )
-
-    # add the artifact agent instruction prompt to the system message content
-    if config.extensions_config.artifacts.enabled:
-        system_message_content += f"\n\n{config.extensions_config.artifacts.instruction_prompt}"
-
-    # add the guardrails prompt to the system message content
-    system_message_content += f"\n\n{config.guardrails_prompt}"
-
-    # initialize the completion messages with the system message
-    completion_messages: list[CompletionMessage] = [
-        CompletionMessage(
-            role="system",
-            content=system_message_content,
-        )
-    ]
-
-    token_count = 0
-
-    # calculate the token count for the messages so far
-    result = await _num_tokens_from_messages(
-        context=context,
-        response_provider=response_provider,
-        messages=completion_messages,
-        model=request_config.model,
-        metadata=metadata,
-        metadata_key="system_message",
-    )
-    if result is not None:
-        token_count += result.count
+    # Load server configurations
+    if os.path.exists(config_file):
+        with open(config_file, "r") as f:
+            server_configs = json.load(f)
+        logger.debug(f"Loaded server configurations from {config_file}")
     else:
-        return
+        logger.error(f"Configuration file {config_file} not found.")
+        server_configs = []
 
-    # generate the attachment messages from the attachment agent
-    attachment_messages = await attachments_extension.get_completion_messages_for_attachments(
-        context,
-        config=config.extensions_config.attachments,
-    )
-    result = await _num_tokens_from_messages(
-        context=context,
-        response_provider=response_provider,
-        messages=attachment_messages,
-        model=request_config.model,
-        metadata=metadata,
-        metadata_key="attachment_messages",
-    )
-    if result is not None:
-        token_count += result.count
-    else:
-        return
+    async with AsyncExitStack() as stack:
+        sessions = []
+        for server_config in server_configs:
+            session = await stack.enter_async_context(connect_to_mcp_server(server_config))
+            if session:
+                sessions.append(session)
+            else:
+                logger.warning(f"Could not establish session with {server_config.get('name')}")
 
-    # calculate the total available tokens for the response generation
-    available_tokens = request_config.max_tokens - request_config.response_tokens
-
-    history_messages = await _get_history_messages(
-        response_provider=response_provider,
-        context=context,
-        participants=participants_response.participants,
-        converter=_conversation_message_to_completion_messages,
-        model=request_config.model,
-        token_limit=available_tokens - token_count,
-    )
-
-    # add the attachment messages to the completion messages, either inline or as separate messages
-    if config.use_inline_attachments:
-        # inject the attachment messages inline into the history messages
-        history_messages = _inject_attachments_inline(history_messages, attachment_messages)
-    else:
-        # add the attachment messages to the completion messages before the history messages
-        completion_messages.extend(attachment_messages)
-
-    # add the history messages to the completion messages
-    completion_messages.extend(history_messages)
-
-    # add the message to the completion messages
-    completion_messages.extend(
-        await _conversation_message_to_completion_messages(context, message, participants_response.participants)
-    )
-
-    result = await _num_tokens_from_messages(
-        context=context,
-        response_provider=response_provider,
-        messages=completion_messages,
-        model=request_config.model,
-        metadata=metadata,
-        metadata_key=method_metadata_key,
-    )
-    if result is not None:
-        estimated_token_count = result.count
-        if estimated_token_count > request_config.max_tokens:
+        if not sessions:
             await context.send_messages(
                 NewConversationMessage(
-                    content=(
-                        f"You've exceeded the token limit of {request_config.max_tokens} in this conversation ({estimated_token_count})."
-                        " This assistant does not support recovery from this state."
-                        " Please start a new conversation and let us know you ran into this."
-                    ),
-                    message_type=MessageType.chat,
+                    content="Unable to connect to any MCP servers. Please ensure the servers are running.",
+                    message_type=MessageType.notice,
                 )
             )
             return
-    else:
-        return
 
-    # set default response message type
-    message_type = MessageType.chat
+        # Retrieve tools from the MCP sessions dynamically
+        all_tools = []
+        for session in sessions:
+            try:
+                tools_response = await session.list_tools()
+                tools = tools_response.tools
+                all_tools.extend(tools)
+                logger.debug(f"Retrieved tools from session: {[tool.name for tool in tools]}")
+            except Exception as e:
+                logger.exception(f"Error retrieving tools from session: {e}")
 
-    # generate a response from the AI model
-    response_result = await response_provider.get_response(
-        messages=completion_messages,
-        metadata_key=method_metadata_key,
-    )
-    content = response_result.content
+        if not all_tools:
+            await context.send_messages(
+                NewConversationMessage(
+                    content="No tools available from MCP servers.",
+                    message_type=MessageType.notice,
+                )
+            )
+            return
 
-    if content is None:
-        return
-
-    message_type = response_result.message_type
-    completion_total_tokens = response_result.completion_total_tokens
-
-    # Parse the model's response for tool usage
-    tool_action, remaining_content = parse_tool_response(content)
-
-    if tool_action:
-        tool_name = tool_action.get("tool_name")
-        arguments = tool_action.get("arguments", {})
-
-        # Determine which MCP session contains the tool
-        if tool_name in [tool.name for tool in filesystem_tools]:
-            mcp_session = filesystem_session
-        elif tool_name in [tool.name for tool in webresearch_tools]:
-            mcp_session = webresearch_session
+        # Initialize the response provider based on configuration
+        if config.ai_client_config.ai_service_type == "anthropic":
+            response_provider = AnthropicResponseProvider(
+                assistant_config=config, anthropic_client_config=config.ai_client_config
+            )
         else:
-            # Tool not found
-            assistant_response = f"I'm sorry, I don't have access to the tool '{tool_name}'."
-            await context.send_messages(
-                NewConversationMessage(
-                    content=assistant_response,
-                    message_type=MessageType.chat,
-                    metadata=metadata,
-                )
+            response_provider = OpenAIResponseProvider(
+                artifacts_extension=artifacts_extension,
+                conversation_context=context,
+                assistant_config=config,
+                openai_client_config=config.ai_client_config,
             )
+
+        request_config = config.ai_client_config.request_config
+
+        # Define the metadata key for any metadata created within this method
+        method_metadata_key = "respond_to_conversation"
+
+        # Track the start time of the response generation
+        response_start_time = time.time()
+
+        # Get the list of conversation participants
+        participants_response = await context.get_participants(include_inactive=True)
+
+        # Establish a token to be used by the AI model to indicate no response
+        silence_token = "{{SILENCE}}"
+
+        # Prepare tool descriptions for the system prompt
+        tool_descriptions = [
+            f"Tool Name: {tool.name}\nDescription: {tool.description}\nInput Parameters: {tool.inputSchema}\n"
+            for tool in all_tools
+        ]
+
+        # Construct system message content
+        system_message_content = (
+            f'{config.instruction_prompt}\n\nYour name is "{context.assistant.name}".\n'
+            "You have access to the following tools:\n"
+            f"{''.join(tool_descriptions)}"
+            "\nWhen you need to use a tool, output a JSON object in the following format:\n"
+            '{"action": "call_tool", "tool_name": "TOOL_NAME", "arguments": {"arg1": "value1", ...}}\n'
+            "After receiving the tool's output, incorporate it into your response."
+        )
+
+        if len(participants_response.participants) > 2:
+            system_message_content += (
+                "\n\n"
+                f"There are {len(participants_response.participants)} participants in the conversation, "
+                "including you as the assistant and the following users: "
+                + ", ".join([
+                    f'"{participant.name}"'
+                    for participant in participants_response.participants
+                    if participant.id != context.assistant.id
+                ])
+                + "\n\nYou do not need to respond to every message. Do not respond if the last thing said was a closing "
+                "statement such as 'bye' or 'goodbye', or just a general acknowledgement like 'ok' or 'thanks'. Do not "
+                f'respond as another user in the conversation, only as "{context.assistant.name}". '
+                "Sometimes the other users need to talk amongst themselves and that is ok. If the conversation seems to "
+                f'be directed at you or the general audience, go ahead and respond.\n\nSay "{silence_token}" to skip '
+                "your turn."
+            )
+
+        # Add the artifact agent instruction prompt and guardrails
+        if config.extensions_config.artifacts.enabled:
+            system_message_content += f"\n\n{config.extensions_config.artifacts.instruction_prompt}"
+
+        system_message_content += f"\n\n{config.guardrails_prompt}"
+
+        # Initialize the completion messages with the system message
+        completion_messages: List[CompletionMessage] = [
+            CompletionMessage(
+                role="system",
+                content=system_message_content,
+            )
+        ]
+
+        token_count = 0
+
+        # Calculate the token count for the messages so far
+        result = await _num_tokens_from_messages(
+            context=context,
+            response_provider=response_provider,
+            messages=completion_messages,
+            model=request_config.model,
+            metadata=metadata,
+            metadata_key="system_message",
+        )
+        if result is not None:
+            token_count += result.count
+        else:
             return
 
-        # Execute the tool
-        try:
-            tool_result = await mcp_session.call_tool(tool_name, arguments=arguments)
-            # Assuming the tool returns text content or other structured data
-            tool_output = tool_result.content[0] if tool_result.content else ""
-        except Exception as e:
-            logger.exception(f"Error executing tool '{tool_name}': {e}")
-            tool_output = f"An error occurred while executing the tool '{tool_name}': {e}"
+        # Generate the attachment messages
+        attachment_messages = await attachments_extension.get_completion_messages_for_attachments(
+            context,
+            config=config.extensions_config.attachments,
+        )
+        result = await _num_tokens_from_messages(
+            context=context,
+            response_provider=response_provider,
+            messages=attachment_messages,
+            model=request_config.model,
+            metadata=metadata,
+            metadata_key="attachment_messages",
+        )
+        if result is not None:
+            token_count += result.count
+        else:
+            return
 
-        # Add raw tool output to debug metadata
-        deepmerge.always_merger.merge(
-            metadata,
-            {
-                "debug": {
-                    method_metadata_key: {
-                        "tool_execution": {
-                            "tool_name": tool_name,
-                            "arguments": arguments,
-                            "raw_output": str(tool_output),
-                        }
-                    }
-                }
-            },
+        # Calculate available tokens
+        available_tokens = request_config.max_tokens - request_config.response_tokens
+
+        # Get history messages
+        history_messages = await _get_history_messages(
+            response_provider=response_provider,
+            context=context,
+            participants=participants_response.participants,
+            converter=_conversation_message_to_completion_messages,
+            model=request_config.model,
+            token_limit=available_tokens - token_count,
         )
 
-        # Provide the tool's output back to the model
-        # Append the assistant's initial response indicating the tool was used
-        completion_messages.append(
-            CompletionMessage(
-                role="assistant",
-                content=content.strip(),  # The initial assistant response
-            )
-        )
-        # Append the tool's output as a user message
-        completion_messages.append(
-            CompletionMessage(
-                role="user",
-                content=f"Tool '{tool_name}' output:\n{tool_output}",
-            )
+        # Inject or append attachment messages
+        if config.use_inline_attachments:
+            history_messages = _inject_attachments_inline(history_messages, attachment_messages)
+        else:
+            completion_messages.extend(attachment_messages)
+
+        # Add history messages
+        completion_messages.extend(history_messages)
+
+        # Add the incoming message
+        completion_messages.extend(
+            await _conversation_message_to_completion_messages(context, message, participants_response.participants)
         )
 
-        # Add model request details to debug metadata before the second model call
-        deepmerge.always_merger.merge(
-            metadata,
-            {
-                "debug": {
-                    method_metadata_key + "_after_tool": {
-                        "model_request": {
-                            "messages": [f"{msg.role}: {msg.content}" for msg in completion_messages],
-                            "model": request_config.model,
-                        }
-                    }
-                }
-            },
-        )
-
-        # Call the language model again with the updated conversation
-        response_result = await response_provider.get_response(
+        # Check token count
+        result = await _num_tokens_from_messages(
+            context=context,
+            response_provider=response_provider,
             messages=completion_messages,
-            metadata_key=method_metadata_key + "_after_tool",
+            model=request_config.model,
+            metadata=metadata,
+            metadata_key=method_metadata_key,
         )
-        content = response_result.content
-        message_type = response_result.message_type
-        completion_total_tokens += response_result.completion_total_tokens
-
-        # Update metadata with the response from the second model call
-        deepmerge.always_merger.merge(metadata, response_result.metadata)
-
-    # create the footer items for the response
-    footer_items = []
-
-    # add the token usage message to the footer items
-    if completion_total_tokens > 0:
-        footer_items.append(_get_token_usage_message(request_config.max_tokens, completion_total_tokens))
-
-    # track the end time of the response generation
-    response_end_time = time.time()
-    response_duration = response_end_time - response_start_time
-
-    # add the response duration to the footer items
-    footer_items.append(_get_response_duration_message(response_duration))
-
-    # update the metadata with the footer items
-    deepmerge.always_merger.merge(
-        metadata,
-        {
-            "footer_items": footer_items,
-        },
-    )
-
-    if content:
-        # strip out the username from the response
-        if content.startswith("["):
-            content = re.sub(r"\[.*\]:\s", "", content)
-
-        # model sometimes puts extra spaces in the response, so remove them
-        # when checking for the silence token
-        if content.replace(" ", "") == silence_token:
-            # if debug output is enabled, notify the conversation that the assistant chose to remain silent
-            if config.enable_debug_output:
-                # add debug metadata to indicate the assistant chose to remain silent
-                deepmerge.always_merger.merge(
-                    metadata,
-                    {
-                        "debug": {
-                            method_metadata_key: {
-                                "silence_token": True,
-                            },
-                        },
-                        "attribution": "debug output",
-                        "generated_content": False,
-                    },
-                )
-                # send a notice message to the conversation
+        if result is not None:
+            estimated_token_count = result.count
+            if estimated_token_count > request_config.max_tokens:
                 await context.send_messages(
                     NewConversationMessage(
-                        message_type=MessageType.notice,
-                        content="[assistant chose to remain silent]",
+                        content=(
+                            f"You've exceeded the token limit of {request_config.max_tokens} in this conversation "
+                            f"({estimated_token_count}). This assistant does not support recovery from this state. "
+                            "Please start a new conversation and let us know you ran into this."
+                        ),
+                        message_type=MessageType.chat,
+                    )
+                )
+                return
+        else:
+            return
+
+        # Generate AI response
+        try:
+            response_result = await response_provider.get_response(
+                messages=completion_messages,
+                metadata_key=method_metadata_key,
+            )
+        except Exception as e:
+            logger.exception(f"Error generating AI response: {e}")
+            await context.send_messages(
+                NewConversationMessage(
+                    content="An error occurred while generating your response.",
+                    message_type=MessageType.notice,
+                )
+            )
+            return
+
+        content = response_result.content
+        message_type = response_result.message_type
+        completion_total_tokens = response_result.completion_total_tokens
+
+        if not content:
+            await context.send_messages(
+                NewConversationMessage(
+                    content="[no response from AI]",
+                    message_type=MessageType.chat,
+                )
+            )
+            return
+
+        # Handle tool actions and generate final response
+        tool_action, remaining_content = parse_tool_response(content)
+
+        if tool_action:
+            tool_name = tool_action.get("tool_name")
+            arguments = tool_action.get("arguments", {})
+
+            if not tool_name:
+                assistant_response = "The tool action JSON object must contain a 'tool_name' key."
+                await context.send_messages(
+                    NewConversationMessage(
+                        content=assistant_response,
+                        message_type=MessageType.chat,
                         metadata=metadata,
                     )
                 )
-            return
+                return
 
-        # override message type if content starts with /
-        if content.startswith("/"):
-            message_type = MessageType.command_response
+            # Find the session that has the requested tool
+            target_session = next((s for s in sessions if tool_name in [tool.name for tool in all_tools]), None)
 
-    # After the final response is prepared and before sending it
-    # Add token usage and response duration to metadata
-    deepmerge.always_merger.merge(
-        metadata,
-        {
-            "debug": {
-                method_metadata_key: {
-                    "token_usage": {
-                        "completion_total_tokens": completion_total_tokens,
-                        "max_tokens": request_config.max_tokens,
-                    },
-                    "timing": {
-                        "response_duration": response_duration,
-                    },
-                }
-            }
-        },
-    )
+            if not target_session:
+                assistant_response = f"I'm sorry, I don't have access to the tool '{tool_name}'."
+                await context.send_messages(
+                    NewConversationMessage(
+                        content=assistant_response,
+                        message_type=MessageType.chat,
+                        metadata=metadata,
+                    )
+                )
+                return
 
-    # send the response to the conversation
-    await context.send_messages(
-        NewConversationMessage(
-            content=content or "[no response from openai]",
-            message_type=message_type,
-            metadata=metadata,
-        )
-    )
+            # Execute the tool
+            try:
+                tool_result = await target_session.call_tool(tool_name, arguments=arguments)
+                tool_output = tool_result.content[0] if tool_result.content else ""
+            except Exception as e:
+                logger.exception(f"Error executing tool '{tool_name}': {e}")
+                tool_output = f"An error occurred while executing the tool '{tool_name}': {e}"
 
-    # check the token usage and send a warning if it is high
-    if completion_total_tokens and config.high_token_usage_warning.enabled:
-        # calculate the token count for the warning threshold
-        token_count_for_warning = request_config.max_tokens * (config.high_token_usage_warning.threshold / 100)
-
-        # check if the completion total tokens exceed the warning threshold
-        if completion_total_tokens > token_count_for_warning:
-            content = f"{config.high_token_usage_warning.message}\n\nTotal tokens used: {completion_total_tokens}"
-
-            # send a notice message to the conversation that the token usage is high
-            await context.send_messages(
-                NewConversationMessage(
-                    content=content,
-                    message_type=MessageType.notice,
-                    metadata={
-                        "debug": {
-                            "high_token_usage_warning": {
-                                "completion_total_tokens": completion_total_tokens,
-                                "threshold": config.high_token_usage_warning.threshold,
-                                "token_count_for_warning": token_count_for_warning,
-                            }
-                        },
-                        "attribution": "system",
-                    },
+            # Add tool output to the conversation
+            completion_messages.append(
+                CompletionMessage(
+                    role="user",
+                    content=f"Tool '{tool_name}' output:\n{tool_output}",
                 )
             )
+
+            # Generate the final response incorporating the tool output
+            try:
+                final_response = await response_provider.get_response(
+                    messages=completion_messages,
+                    metadata_key=method_metadata_key + "_after_tool",
+                )
+                content = final_response.content
+                message_type = final_response.message_type
+                completion_total_tokens += final_response.completion_total_tokens
+            except Exception as e:
+                logger.exception(f"Error generating final AI response after tool execution: {e}")
+                await context.send_messages(
+                    NewConversationMessage(
+                        content="An error occurred while generating the final response after tool execution.",
+                        message_type=MessageType.notice,
+                    )
+                )
+                return
+
+        # Add token usage and response duration to metadata
+        footer_items = [
+            _get_token_usage_message(request_config.max_tokens, completion_total_tokens),
+            _get_response_duration_message(time.time() - response_start_time),
+        ]
+        deepmerge.always_merger.merge(
+            metadata,
+            {
+                "footer_items": footer_items,
+            },
+        )
+
+        if content:
+            # Handle silence token
+            if content.replace(" ", "") == silence_token:
+                if config.enable_debug_output:
+                    deepmerge.always_merger.merge(
+                        metadata,
+                        {
+                            "debug": {
+                                method_metadata_key: {
+                                    "silence_token": True,
+                                }
+                            },
+                            "attribution": "debug output",
+                            "generated_content": False,
+                        },
+                    )
+                    await context.send_messages(
+                        NewConversationMessage(
+                            message_type=MessageType.notice,
+                            content="[assistant chose to remain silent]",
+                            metadata=metadata,
+                        )
+                    )
+                return
+
+            # Override message type if content starts with '/'
+            if content.startswith("/"):
+                message_type = MessageType.command_response
+
+        # Send the final response to the conversation
+        await context.send_messages(
+            NewConversationMessage(
+                content=content or "[no response from AI]",
+                message_type=message_type,
+                metadata=metadata,
+            )
+        )
+
+        # Send token usage warning if applicable
+        if completion_total_tokens and config.high_token_usage_warning.enabled:
+            token_count_for_warning = request_config.max_tokens * (config.high_token_usage_warning.threshold / 100)
+            if completion_total_tokens > token_count_for_warning:
+                warning_content = (
+                    f"{config.high_token_usage_warning.message}\n\nTotal tokens used: {completion_total_tokens}"
+                )
+                await context.send_messages(
+                    NewConversationMessage(
+                        content=warning_content,
+                        message_type=MessageType.notice,
+                        metadata={
+                            "debug": {
+                                "high_token_usage_warning": {
+                                    "completion_total_tokens": completion_total_tokens,
+                                    "threshold": config.high_token_usage_warning.threshold,
+                                    "token_count_for_warning": token_count_for_warning,
+                                }
+                            },
+                            "attribution": "system",
+                        },
+                    )
+                )
 
 
 # endregion

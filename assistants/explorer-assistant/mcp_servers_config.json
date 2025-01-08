@@ -1,0 +1,17 @@
+[
+  {
+    "name": "Filesystem MCP Server",
+    "command": "node",
+    "args": [
+      "assistant/vendor/mcp-servers/src/filesystem/dist/index.js",
+      "/workspaces/semanticworkbench"
+    ],
+    "env": null
+  },
+  {
+    "name": "Web Research MCP Server",
+    "command": "npx",
+    "args": ["-y", "@mzxrai/mcp-webresearch@latest"],
+    "env": null
+  }
+]
