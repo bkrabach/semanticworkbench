@@ -21,6 +21,8 @@ from semantic_workbench_api_model.workbench_model import (
 )
 from semantic_workbench_assistant.assistant_app import ConversationContext
 
+from assistant.response.utils.tool_utils import handle_tool_action, retrieve_tools_from_sessions
+
 from ..config import AssistantConfigModel
 from ..mcp_servers import connect_to_mcp_server
 from .providers import AnthropicResponseProvider, OpenAIResponseProvider
@@ -73,26 +75,8 @@ async def respond_to_conversation(
             )
             return
 
-        # Retrieve tools from the MCP sessions dynamically
-        all_tools = []
-        for session in sessions:
-            try:
-                tools_response = await session.list_tools()
-                tools = tools_response.tools
-                all_tools.extend(tools)
-                logger.debug(f"Retrieved tools from session: {[tool.name for tool in tools]}")
-            except Exception as e:
-                logger.exception(f"Error retrieving tools from session: {e}")
-
-        if not all_tools:
-            await context.send_messages(
-                NewConversationMessage(
-                    content="No tools available from MCP servers.",
-                    message_type=MessageType.notice,
-                    metadata=metadata,
-                )
-            )
-            return
+        # Retrieve tools from the MCP sessions
+        all_tools = await retrieve_tools_from_sessions(sessions)
 
         # Initialize the response provider based on configuration
         if config.ai_client_config.ai_service_type == "anthropic":
@@ -290,99 +274,35 @@ async def respond_to_conversation(
             )
             return
 
-        # Handle tool actions and generate final response
+        # Handle tool actions
         tool_action, remaining_content = parse_tool_response(content)
-
         if tool_action:
-            tool_name = tool_action.get("tool_name")
-            arguments = tool_action.get("arguments", {})
-
-            if not tool_name:
-                assistant_response = "The tool action JSON object must contain a 'tool_name' key."
-                await context.send_messages(
-                    NewConversationMessage(
-                        content=assistant_response,
-                        message_type=MessageType.chat,
-                        metadata=metadata,
-                    )
-                )
-                return
-
-            # Find the session that has the requested tool
-            target_session = next((s for s in sessions if tool_name in [tool.name for tool in all_tools]), None)
-
-            if not target_session:
-                assistant_response = f"I'm sorry, I don't have access to the tool '{tool_name}'."
-                await context.send_messages(
-                    NewConversationMessage(
-                        content=assistant_response,
-                        message_type=MessageType.chat,
-                        metadata=metadata,
-                    )
-                )
-                return
-
-            # Execute the tool
-
-            # Update metadata with tool action details
-            deepmerge.always_merger.merge(
-                metadata,
-                {
-                    method_metadata_key: {
-                        "tool_action": {
-                            "tool_name": tool_name,
-                            "arguments": arguments,
-                        },
-                    },
-                },
-            )
-
             try:
-                tool_result = await target_session.call_tool(tool_name, arguments=arguments)
-                tool_output = tool_result.content[0] if tool_result.content else ""
-            except Exception as e:
-                logger.exception(f"Error executing tool '{tool_name}': {e}")
-                tool_output = f"An error occurred while executing the tool '{tool_name}': {e}"
-
-            # Update metadata with tool result
-            deepmerge.always_merger.merge(
-                metadata,
-                {
-                    method_metadata_key: {
-                        "tool_result": tool_output,
-                    },
-                },
-            )
-
-            # Add tool output to the conversation
-            completion_messages.append(
-                CompletionMessage(
-                    role="user",
-                    content=f"Tool '{tool_name}' output:\n{tool_output}",
+                tool_action_result = await handle_tool_action(
+                    sessions,
+                    tool_action,
+                    all_tools,
+                    context,
+                    completion_messages,
+                    response_provider,
+                    metadata,
+                    method_metadata_key,
                 )
-            )
-
-            # Generate the final response incorporating the tool output
-            try:
-                final_response = await response_provider.get_response(
-                    messages=completion_messages,
-                    metadata_key=method_metadata_key + "_after_tool",
-                )
-                content = final_response.content
-                message_type = final_response.message_type
-                completion_total_tokens += final_response.completion_total_tokens
             except Exception as e:
-                logger.exception(f"Error generating final AI response after tool execution: {e}")
+                logger.exception(f"Error handling tool action: {e}")
                 await context.send_messages(
                     NewConversationMessage(
-                        content="An error occurred while generating the final response after tool execution.",
+                        content="An error occurred while handling the tool action.",
                         message_type=MessageType.notice,
                         metadata=metadata,
                     )
                 )
                 return
 
-            deepmerge.always_merger.merge(metadata, final_response.metadata)
+            content = tool_action_result.content
+            message_type = tool_action_result.message_type
+            completion_total_tokens += tool_action_result.completion_total_tokens
+            deepmerge.always_merger.merge(metadata, tool_action_result.metadata)
 
         # Create the footer items for the response
         footer_items = []
