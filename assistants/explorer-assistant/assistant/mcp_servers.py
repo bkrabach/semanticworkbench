@@ -28,7 +28,7 @@ mcp_servers = [
     MCPServer(
         name="Filesystem MCP Server",
         command="node",
-        args=["vendor/mcp-servers/src/filesystem/dist/index.js", "/workspaces/semanticworkbench"],
+        args=["assistant/vendor/mcp-servers/src/filesystem/dist/index.js", "/workspaces/semanticworkbench"],
     ),
     MCPServer(name="Web Research MCP Server", command="npx", args=["-y", "@mzxrai/mcp-webresearch@latest"]),
 ]
