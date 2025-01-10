@@ -1,14 +1,8 @@
-# Copyright (c) Microsoft. All rights reserved.
-
-# Prospector Assistant
-#
-# This assistant helps you mine ideas from artifacts.
-#
-
+import json  # Added import for JSON handling
 import logging
 import time
 from contextlib import AsyncExitStack
-from typing import Any, List
+from typing import Any, Dict, List
 
 import deepmerge
 from assistant_extensions.ai_clients.model import CompletionMessage
@@ -30,12 +24,13 @@ from .utils import (
     get_history_messages,
     get_response_duration_message,
     get_token_usage_message,
-    handle_tool_action,
+    handle_tool_action,  # Now returns ToolActionsResult
     initialize_response_provider,
     inject_attachments_inline,
     num_tokens_from_messages,
     retrieve_tools_from_sessions,
 )
+from .utils.tool_utils import ToolActionsResult  # Corrected relative import
 
 logger = logging.getLogger(__name__)
 
@@ -47,10 +42,10 @@ async def respond_to_conversation(
     config: AssistantConfigModel,
     message: ConversationMessage,
     metadata: dict[str, Any] = {},
-    config_file: str = "mcp_servers_config.json",  # Specify the config file path
+    config_file: str = "mcp_servers_config.json",
 ) -> None:
     """
-    Respond to a conversation message using dynamically loaded MCP servers.
+    Respond to a conversation message using dynamically loaded MCP servers with support for multiple tool invocations.
     """
 
     async with AsyncExitStack() as stack:
@@ -186,68 +181,106 @@ async def respond_to_conversation(
         else:
             return
 
-        # Generate AI response
-        try:
-            response_result = await response_provider.get_response(
-                messages=completion_messages,
-                metadata_key=method_metadata_key,
-            )
-        except Exception as e:
-            logger.exception(f"Error generating AI response: {e}")
-            await context.send_messages(
-                NewConversationMessage(
-                    content="An error occurred while generating your response.",
-                    message_type=MessageType.notice,
-                    metadata=metadata,
+        # Initialize context data to accumulate tool results
+        context_data: Dict[str, Any] = {}
+
+        # Initialize a loop control variable
+        max_tool_calls = 5  # Prevent infinite loops
+        tool_call_count = 0
+
+        # Initialize variables to prevent "possibly unbound" warnings
+        completion_total_tokens: int = 0
+        content: str = ""
+        message_type: MessageType = MessageType.chat
+
+        while tool_call_count < max_tool_calls:
+            # If there is accumulated context data, append it as a system message
+            if context_data:
+                context_message = CompletionMessage(
+                    role="system",
+                    content=f"Context Data: {json.dumps(context_data)}",
                 )
-            )
-            return
+                completion_messages.append(context_message)
 
-        content = response_result.content
-        message_type = response_result.message_type
-        completion_total_tokens = response_result.completion_total_tokens
-
-        deepmerge.always_merger.merge(metadata, response_result.metadata)
-
-        if not content:
-            await context.send_messages(
-                NewConversationMessage(
-                    content="[no response from AI]",
-                    message_type=MessageType.chat,
-                    metadata=metadata,
-                )
-            )
-            return
-
-        # Handle tool actions
-        tool_action, remaining_content = parse_tool_response(content)
-        if tool_action:
+            # Generate AI response
             try:
-                tool_action_result = await handle_tool_action(
-                    sessions,
-                    tool_action,
-                    all_tools,
-                    context,
-                    completion_messages,
-                    response_provider,
-                    metadata,
-                    method_metadata_key,
+                response_result = await response_provider.get_response(
+                    messages=completion_messages,
+                    metadata_key=method_metadata_key,
                 )
             except Exception as e:
-                logger.exception(f"Error handling tool action: {e}")
+                logger.exception(f"Error generating AI response: {e}")
                 await context.send_messages(
                     NewConversationMessage(
-                        content="An error occurred while handling the tool action.",
+                        content="An error occurred while generating your response.",
                         message_type=MessageType.notice,
                         metadata=metadata,
                     )
                 )
                 return
 
-            content = tool_action_result.content
-            message_type = tool_action_result.message_type
-            completion_total_tokens += tool_action_result.completion_total_tokens
-            deepmerge.always_merger.merge(metadata, tool_action_result.metadata)
+            # Safely assign values to prevent unbound issues
+            content = response_result.content if response_result.content else ""
+            message_type = response_result.message_type if response_result.message_type else MessageType.chat
+            completion_total_tokens = (
+                response_result.completion_total_tokens if response_result.completion_total_tokens else 0
+            )
+
+            deepmerge.always_merger.merge(metadata, response_result.metadata)
+
+            if not content:
+                await context.send_messages(
+                    NewConversationMessage(
+                        content="[no response from AI]",
+                        message_type=MessageType.chat,
+                        metadata=metadata,
+                    )
+                )
+                return
+
+            # Handle tool actions
+            tool_action, remaining_content = parse_tool_response(content)
+            if tool_action:
+                tool_call_count += 1
+                try:
+                    tool_action_result: ToolActionsResult = await handle_tool_action(
+                        sessions,
+                        tool_action,
+                        all_tools,
+                        f"tool_action_{tool_call_count}",
+                    )
+                except Exception as e:
+                    logger.exception(f"Error handling tool action: {e}")
+                    await context.send_messages(
+                        NewConversationMessage(
+                            content="An error occurred while handling the tool action.",
+                            message_type=MessageType.notice,
+                            metadata=metadata,
+                        )
+                    )
+                    return
+
+                # Update content and metadata with tool action result
+                content = tool_action_result.content
+                message_type = tool_action_result.message_type
+                deepmerge.always_merger.merge(metadata, tool_action_result.metadata)
+
+                # Accumulate context data from tool action result
+                if tool_action_result.metadata.get("tool_result"):
+                    tool_name = tool_action_result.metadata.get("tool_action", {}).get("tool_name")
+                    if tool_name:
+                        context_data[tool_name] = tool_action_result.metadata["tool_result"]
+
+                # Optionally, append the tool's response to the messages
+                completion_messages.append(
+                    CompletionMessage(
+                        role="assistant",
+                        content=tool_action_result.content,
+                    )
+                )
+            else:
+                # No more tool actions; prepare to send the final response
+                break
 
         # Create the footer items for the response
         footer_items = []
