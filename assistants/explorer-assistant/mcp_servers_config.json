@@ -3,7 +3,7 @@
     "name": "Filesystem MCP Server",
     "command": "node",
     "args": [
-      "assistant/vendor/mcp-servers/src/filesystem/dist/index.js",
+      "vendor/mcp-servers/src/filesystem/dist/index.js",
       "/workspaces/semanticworkbench"
     ],
     "env": null
