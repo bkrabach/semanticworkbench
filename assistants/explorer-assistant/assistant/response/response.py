@@ -149,11 +149,6 @@ async def respond_to_conversation(
         # Add history messages
         completion_messages.extend(history_messages)
 
-        # Add the incoming message
-        completion_messages.extend(
-            await conversation_message_to_completion_messages(context, message, participants_response.participants)
-        )
-
         # Check token count
         result = await num_tokens_from_messages(
             context=context,
@@ -192,6 +187,7 @@ async def respond_to_conversation(
         completion_total_tokens: int = 0
         content: str = ""
         message_type: MessageType = MessageType.chat
+        final_response: str = ""  # New variable to accumulate responses
 
         while tool_call_count < max_tool_calls:
             # If there is accumulated context data, append it as a system message
@@ -206,7 +202,7 @@ async def respond_to_conversation(
             try:
                 response_result = await response_provider.get_response(
                     messages=completion_messages,
-                    metadata_key=method_metadata_key,
+                    metadata_key=f"{method_metadata_key}:request_{tool_call_count + 1}",
                 )
             except Exception as e:
                 logger.exception(f"Error generating AI response: {e}")
@@ -247,7 +243,7 @@ async def respond_to_conversation(
                         sessions,
                         tool_action,
                         all_tools,
-                        f"tool_action_{tool_call_count}",
+                        f"{method_metadata_key}:request_tool_action_{tool_call_count}",
                     )
                 except Exception as e:
                     logger.exception(f"Error handling tool action: {e}")
@@ -259,6 +255,13 @@ async def respond_to_conversation(
                         )
                     )
                     return
+
+                # Add remaining_content to final_response
+                final_response += remaining_content + "\n"
+
+                # Wrap tool_action in ```tool_action<data>```
+                tool_action_formatted = f"```tool_action\n{json.dumps(tool_action, indent=4)}\n```"
+                final_response += tool_action_formatted + "\n"
 
                 # Update content and metadata with tool action result
                 content = tool_action_result.content
@@ -279,7 +282,8 @@ async def respond_to_conversation(
                     )
                 )
             else:
-                # No more tool actions; prepare to send the final response
+                # Add the remaining_content to final_response
+                final_response += remaining_content + "\n"
                 break
 
         # Create the footer items for the response
@@ -304,9 +308,9 @@ async def respond_to_conversation(
             },
         )
 
-        if content:
+        if final_response:
             # Handle silence token
-            if content.replace(" ", "") == silence_token:
+            if final_response.replace(" ", "") == silence_token:
                 # If debug output is enabled, notify that the assistant chose to remain silent
                 if config.enable_debug_output:
                     # Add debug metadata to indicate the assistant chose to remain silent
@@ -333,17 +337,17 @@ async def respond_to_conversation(
                 return  # Exit the function if the assistant remains silent
 
             # Override message type if content starts with '/'
-            if content.startswith("/"):
+            if final_response.startswith("/"):
                 message_type = MessageType.command_response
 
-        # Send the final response to the conversation
-        await context.send_messages(
-            NewConversationMessage(
-                content=content or "[no response from AI]",
-                message_type=message_type,
-                metadata=metadata,
+            # Send the final accumulated response to the conversation
+            await context.send_messages(
+                NewConversationMessage(
+                    content=final_response or "[no response from AI]",
+                    message_type=message_type,
+                    metadata=metadata,
+                )
             )
-        )
 
         # Send token usage warning if applicable
         if completion_total_tokens and config.high_token_usage_warning.enabled:
