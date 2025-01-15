@@ -1,9 +1,10 @@
 [
   {
     "name": "Filesystem MCP Server",
-    "command": "node",
+    "command": "npx",
     "args": [
-      "vendor/mcp-servers/src/filesystem/dist/index.js",
+      "-y",
+      "@modelcontextprotocol/server-filesystem",
       "/workspaces/semanticworkbench"
     ],
     "env": null
