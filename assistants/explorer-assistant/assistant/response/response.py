@@ -215,7 +215,17 @@ async def respond_to_conversation(
 
             deepmerge.always_merger.merge(metadata, response_result.metadata)
 
-            final_response += content + "\n"
+            # Append the AI's response to the messages
+            if content.replace(" ", "") != silence_token:
+                final_response += content + "\n"
+
+                # Add the AI's response to the messages
+                completion_messages.append(
+                    CompletionMessage(
+                        role="assistant",
+                        content=content,
+                    )
+                )
 
             if len(tool_actions) == 0:
                 # No tool actions, exit the loop
@@ -314,14 +324,14 @@ async def respond_to_conversation(
             if final_response.startswith("/"):
                 message_type = MessageType.command_response
 
-            # Send the final accumulated response to the conversation
-            await context.send_messages(
-                NewConversationMessage(
-                    content=final_response or "[no response from AI]",
-                    message_type=message_type,
-                    metadata=metadata,
-                )
+        # Send the final accumulated response to the conversation
+        await context.send_messages(
+            NewConversationMessage(
+                content=final_response or "[no response from AI]",
+                message_type=message_type,
+                metadata=metadata,
             )
+        )
 
         # Send token usage warning if applicable
         if completion_total_tokens and config.high_token_usage_warning.enabled:
