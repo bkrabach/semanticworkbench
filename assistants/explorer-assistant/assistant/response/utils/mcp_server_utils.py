@@ -41,13 +41,13 @@ async def connect_to_mcp_server(server_config) -> AsyncIterator[Optional[ClientS
         yield None  # Yield None if connection fails
 
 
-def load_server_configs(config_file: str) -> list:
+def load_server_configs(config_file: str) -> List[dict[str, Any]]:
     """
     Load server configurations from a JSON file.
     """
     if os.path.exists(config_file):
-        with open(config_file, "r") as f:
-            server_configs = json.load(f)
+        with open(config_file, "r") as config_data:
+            server_configs = json.load(config_data)
         logger.debug(f"Loaded server configurations from {config_file}")
         return server_configs
     else:
@@ -55,16 +55,16 @@ def load_server_configs(config_file: str) -> list:
         return []
 
 
-async def establish_mcp_sessions(config_file: str, stack) -> List[Any]:
+async def establish_mcp_sessions(config_file: str, stack) -> List[ClientSession]:
     """
     Establish connections to MCP servers using the provided AsyncExitStack.
     """
 
     server_configs = load_server_configs(config_file)
 
-    sessions = []
+    sessions: List[ClientSession] = []
     for server_config in server_configs:
-        session = await stack.enter_async_context(connect_to_mcp_server(server_config))
+        session: ClientSession | None = await stack.enter_async_context(connect_to_mcp_server(server_config))
         if session:
             sessions.append(session)
         else:

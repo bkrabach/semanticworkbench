@@ -21,25 +21,13 @@ def build_system_message_content(
     config,
     context,
     participants,
-    all_tools,
     silence_token,
 ) -> str:
     """
     Construct the system message content with tool descriptions and instructions.
     """
-    tool_descriptions = [
-        f"Tool Name: {tool.name}\nDescription: {tool.description}\nInput Parameters: {tool.inputSchema}\n"
-        for tool in all_tools
-    ]
 
-    system_message_content = (
-        f'{config.instruction_prompt}\n\nYour name is "{context.assistant.name}".\n'
-        "You have access to the following tools:\n"
-        f"{''.join(tool_descriptions)}"
-        "\nWhen you need to use a tool, output a JSON object in the following format:\n"
-        '{"action": "call_tool", "tool_name": "TOOL_NAME", "arguments": {"arg1": "value1", ...}}\n'
-        "After receiving the tool's output, incorporate it into your response."
-    )
+    system_message_content = f'{config.instruction_prompt}\n\nYour name is "{context.assistant.name}".\n'
 
     if len(participants) > 2:
         participant_names = ", ".join([

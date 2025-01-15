@@ -1,18 +1,24 @@
 # Copyright (c) Microsoft. All rights reserved.
 
+import json
 import logging
-from typing import Iterable, Sequence
+from typing import Any, Iterable, List, Sequence
 
 import deepmerge
 import openai_client
 from assistant_extensions.ai_clients.config import AzureOpenAIClientConfigModel, OpenAIClientConfigModel
 from assistant_extensions.ai_clients.model import CompletionMessage
 from assistant_extensions.artifacts import ArtifactsExtension
+from mcp import ClientSession, Tool
+from openai import AsyncOpenAI
 from openai.types.chat import (
     ChatCompletion,
     ChatCompletionMessageParam,
+    ChatCompletionSystemMessageParam,
+    ChatCompletionToolParam,
     ParsedChatCompletion,
 )
+from openai.types.shared_params.function_definition import FunctionDefinition
 from semantic_workbench_api_model.workbench_model import (
     AssistantStateEvent,
     MessageType,
@@ -22,7 +28,7 @@ from semantic_workbench_assistant.assistant_app import (
 )
 
 from ...config import AssistantConfigModel
-from .base_provider import NumberTokensResult, ResponseProvider, ResponseResult
+from .base_provider import NumberTokensResult, ResponseProvider, ResponseResult, ToolAction
 
 logger = logging.getLogger(__name__)
 
@@ -72,8 +78,10 @@ class OpenAIResponseProvider(ResponseProvider):
 
     async def get_response(
         self,
-        messages: list[CompletionMessage],
+        messages: List[CompletionMessage],
         metadata_key: str,
+        mcp_tools: List[Tool],
+        mcp_sessions: List[ClientSession],
     ) -> ResponseResult:
         """
         Respond to a conversation message.
@@ -89,6 +97,7 @@ class OpenAIResponseProvider(ResponseProvider):
 
         response_result = ResponseResult(
             content=None,
+            tool_actions=None,
             message_type=MessageType.chat,
             metadata={},
             completion_total_tokens=0,
@@ -100,36 +109,29 @@ class OpenAIResponseProvider(ResponseProvider):
         # initialize variables for the response content
         completion: ParsedChatCompletion | ChatCompletion | None = None
 
+        # convert the tools to make them compatible with the OpenAI API
+        tools = convert_mcp_tools_to_openai_tools(mcp_tools)
+
         # convert the messages to chat completion message parameters
         chat_message_params: Iterable[ChatCompletionMessageParam] = openai_client.convert_from_completion_messages(
             messages
         )
 
+        if len(tools) > 0:
+            # add another instruction message to the chat
+            chat_message_params = [
+                ChatCompletionSystemMessageParam(
+                    role="system",
+                    content="Always include content with your tool requests, explaining why you are using the tool.",
+                ),
+                *chat_message_params,
+            ]
+
         # generate a response from the AI model
         async with openai_client.create_client(self.service_config) as client:
             try:
-                if self.request_config.is_reasoning_model:
-                    # convert all messages that use system role to user role as reasoning models do not support system role
-                    chat_message_params = [
-                        {
-                            "role": "user",
-                            "content": message["content"],
-                        }
-                        if message["role"] == "system"
-                        else message
-                        for message in chat_message_params
-                    ]
-
-                    # for reasoning models, use max_completion_tokens instead of max_tokens
-                    completion = await client.chat.completions.create(
-                        messages=chat_message_params,
-                        model=self.request_config.model,
-                        max_completion_tokens=self.request_config.response_tokens,
-                    )
-
-                    response_result.content = completion.choices[0].message.content
-
-                elif self.assistant_config.extensions_config.artifacts.enabled:
+                if self.assistant_config.extensions_config.artifacts.enabled:
+                    # FIXME: consider if/how we want to use tools here
                     response = await self.artifacts_extension.get_openai_completion_response(
                         client,
                         chat_message_params,
@@ -164,21 +166,7 @@ class OpenAIResponseProvider(ResponseProvider):
                     )
 
                 else:
-                    # call the OpenAI API to generate a completion
-                    if self.request_config.is_reasoning_model:
-                        # for reasoning models, use max_completion_tokens instead of max_tokens
-                        completion = await client.chat.completions.create(
-                            messages=chat_message_params,
-                            model=self.request_config.model,
-                            max_completion_tokens=self.request_config.response_tokens,
-                        )
-                    else:
-                        completion = await client.chat.completions.create(
-                            messages=chat_message_params,
-                            model=self.request_config.model,
-                            max_tokens=self.request_config.response_tokens,
-                        )
-
+                    completion = await self.get_completion(client, chat_message_params, tools)
                     response_result.content = completion.choices[0].message.content
 
             except Exception as e:
@@ -196,6 +184,19 @@ class OpenAIResponseProvider(ResponseProvider):
         if completion is not None:
             # get the total tokens used for the completion
             response_result.completion_total_tokens = completion.usage.total_tokens if completion.usage else 0
+
+            # check if the completion has tool calls
+            tool_calls = completion.choices[0].message.tool_calls
+            if tool_calls:
+                for tool_call in tool_calls:
+                    tool_action = ToolAction(
+                        id=tool_call.id,
+                        name=tool_call.function.name,
+                        arguments=json.loads(tool_call.function.arguments),
+                    )
+                    if response_result.tool_actions is None:
+                        response_result.tool_actions = []
+                    response_result.tool_actions.append(tool_action)
 
         # update the metadata with debug information
         deepmerge.always_merger.merge(
@@ -216,3 +217,65 @@ class OpenAIResponseProvider(ResponseProvider):
 
         # send the response to the conversation
         return response_result
+
+    async def get_completion(
+        self,
+        client: AsyncOpenAI,
+        chat_message_params: List[ChatCompletionMessageParam],
+        tools: List[ChatCompletionToolParam],
+    ) -> ChatCompletion:
+        """
+        Generate a completion from the OpenAI API.
+        """
+
+        # initialize variables for the response content
+        completion: ChatCompletion | None = None
+
+        if self.request_config.is_reasoning_model:
+            # convert all messages that use system role to user role as reasoning models do not support system role
+            chat_message_params = [
+                {
+                    "role": "user",
+                    "content": message["content"],
+                }
+                if message["role"] == "system"
+                else message
+                for message in chat_message_params
+            ]
+
+            # for reasoning models, use max_completion_tokens instead of max_tokens
+            completion = await client.chat.completions.create(
+                messages=chat_message_params,
+                model=self.request_config.model,
+                max_completion_tokens=self.request_config.response_tokens,
+                tools=tools,
+                tool_choice="auto",
+            )
+
+        else:
+            # call the OpenAI API to generate a completion
+            completion = await client.chat.completions.create(
+                messages=chat_message_params,
+                model=self.request_config.model,
+                max_tokens=self.request_config.response_tokens,
+                tools=tools,
+                tool_choice="auto",
+            )
+
+        return completion
+
+
+def convert_mcp_tools_to_openai_tools(mcp_tools: List[Any]) -> List[ChatCompletionToolParam]:
+    tools_list: List[ChatCompletionToolParam] = []
+    for mcp_tool in mcp_tools:
+        tools_list.append(
+            ChatCompletionToolParam(
+                function=FunctionDefinition(
+                    name=mcp_tool.name,
+                    description=mcp_tool.description,
+                    parameters=mcp_tool.inputSchema,
+                ),
+                type="function",
+            )
+        )
+    return tools_list

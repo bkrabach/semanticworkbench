@@ -1,8 +1,7 @@
-import json  # Added import for JSON handling
 import logging
 import time
 from contextlib import AsyncExitStack
-from typing import Any, Dict, List
+from typing import Any, List
 
 import deepmerge
 from assistant_extensions.ai_clients.model import CompletionMessage
@@ -16,7 +15,6 @@ from semantic_workbench_api_model.workbench_model import (
 from semantic_workbench_assistant.assistant_app import ConversationContext
 
 from ..config import AssistantConfigModel
-from .tool_handler import parse_tool_response
 from .utils import (
     build_system_message_content,
     conversation_message_to_completion_messages,
@@ -24,13 +22,12 @@ from .utils import (
     get_history_messages,
     get_response_duration_message,
     get_token_usage_message,
-    handle_tool_action,  # Now returns ToolActionsResult
+    handle_tool_action,
     initialize_response_provider,
     inject_attachments_inline,
     num_tokens_from_messages,
     retrieve_tools_from_sessions,
 )
-from .utils.tool_utils import ToolActionsResult  # Corrected relative import
 
 logger = logging.getLogger(__name__)
 
@@ -49,8 +46,8 @@ async def respond_to_conversation(
     """
 
     async with AsyncExitStack() as stack:
-        sessions = await establish_mcp_sessions(config_file, stack)
-        if not sessions:
+        mcp_sessions = await establish_mcp_sessions(config_file, stack)
+        if not mcp_sessions:
             await context.send_messages(
                 NewConversationMessage(
                     content="Unable to connect to any MCP servers. Please ensure the servers are running.",
@@ -61,7 +58,7 @@ async def respond_to_conversation(
             return
 
         # Retrieve tools from the MCP sessions
-        all_tools = await retrieve_tools_from_sessions(sessions)
+        mcp_tools = await retrieve_tools_from_sessions(mcp_sessions)
 
         # Initialize the response provider based on configuration
         response_provider = initialize_response_provider(config, artifacts_extension, context)
@@ -83,7 +80,7 @@ async def respond_to_conversation(
         silence_token = "{{SILENCE}}"
 
         # Build system message content
-        system_message_content = build_system_message_content(config, context, participants, all_tools, silence_token)
+        system_message_content = build_system_message_content(config, context, participants, silence_token)
 
         # Initialize the completion messages with the system message
         completion_messages: List[CompletionMessage] = [
@@ -176,33 +173,26 @@ async def respond_to_conversation(
         else:
             return
 
-        # Initialize context data to accumulate tool results
-        context_data: Dict[str, Any] = {}
-
-        # Initialize a loop control variable
-        max_tool_calls = 5  # Prevent infinite loops
-        tool_call_count = 0
-
         # Initialize variables to prevent "possibly unbound" warnings
         completion_total_tokens: int = 0
         content: str = ""
         message_type: MessageType = MessageType.chat
         final_response: str = ""  # New variable to accumulate responses
 
-        while tool_call_count < max_tool_calls:
-            # If there is accumulated context data, append it as a system message
-            if context_data:
-                context_message = CompletionMessage(
-                    role="system",
-                    content=f"Context Data: {json.dumps(context_data)}",
-                )
-                completion_messages.append(context_message)
+        # Initialize a loop control variable
+        max_steps = 5  # Prevent infinite loops
+        step_count = 0
+
+        while step_count < max_steps:
+            step_count += 1
 
             # Generate AI response
             try:
                 response_result = await response_provider.get_response(
                     messages=completion_messages,
-                    metadata_key=f"{method_metadata_key}:request_{tool_call_count + 1}",
+                    metadata_key=f"{method_metadata_key}:request:step_{step_count}",
+                    mcp_tools=mcp_tools,
+                    mcp_sessions=mcp_sessions,
                 )
             except Exception as e:
                 logger.exception(f"Error generating AI response: {e}")
@@ -217,6 +207,7 @@ async def respond_to_conversation(
 
             # Safely assign values to prevent unbound issues
             content = response_result.content if response_result.content else ""
+            tool_actions = response_result.tool_actions if response_result.tool_actions else []
             message_type = response_result.message_type if response_result.message_type else MessageType.chat
             completion_total_tokens = (
                 response_result.completion_total_tokens if response_result.completion_total_tokens else 0
@@ -224,26 +215,22 @@ async def respond_to_conversation(
 
             deepmerge.always_merger.merge(metadata, response_result.metadata)
 
-            if not content:
-                await context.send_messages(
-                    NewConversationMessage(
-                        content="[no response from AI]",
-                        message_type=MessageType.chat,
-                        metadata=metadata,
-                    )
-                )
-                return
+            final_response += content + "\n"
+
+            if len(tool_actions) == 0:
+                # No tool actions, exit the loop
+                break
 
             # Handle tool actions
-            tool_action, remaining_content = parse_tool_response(content)
-            if tool_action:
+            tool_call_count = 0
+            for tool_action in tool_actions:
                 tool_call_count += 1
                 try:
-                    tool_action_result: ToolActionsResult = await handle_tool_action(
-                        sessions,
+                    tool_action_result = await handle_tool_action(
+                        mcp_sessions,
                         tool_action,
-                        all_tools,
-                        f"{method_metadata_key}:request_tool_action_{tool_call_count}",
+                        mcp_tools,
+                        f"{method_metadata_key}:request:step_{step_count}:tool_action_{tool_call_count}",
                     )
                 except Exception as e:
                     logger.exception(f"Error handling tool action: {e}")
@@ -256,35 +243,22 @@ async def respond_to_conversation(
                     )
                     return
 
-                # Add remaining_content to final_response
-                final_response += remaining_content + "\n"
-
                 # Wrap tool_action in ```tool_action<data>```
-                tool_action_formatted = f"```tool_action\n{json.dumps(tool_action, indent=4)}\n```"
+                tool_action_formatted = f"```tool_action\n{tool_action_result.content}\n```"
                 final_response += tool_action_formatted + "\n"
 
                 # Update content and metadata with tool action result
-                content = tool_action_result.content
-                message_type = tool_action_result.message_type
                 deepmerge.always_merger.merge(metadata, tool_action_result.metadata)
 
-                # Accumulate context data from tool action result
-                if tool_action_result.metadata.get("tool_result"):
-                    tool_name = tool_action_result.metadata.get("tool_action", {}).get("tool_name")
-                    if tool_name:
-                        context_data[tool_name] = tool_action_result.metadata["tool_result"]
-
-                # Optionally, append the tool's response to the messages
+                # Append the tool's response to the messages
                 completion_messages.append(
                     CompletionMessage(
-                        role="assistant",
+                        # FIXME: should use role "tool", but need to make sure that prior message has tool_calls prop for OpenAI
+                        role="user",
+                        tool_call_id=tool_action.id,
                         content=tool_action_result.content,
                     )
                 )
-            else:
-                # Add the remaining_content to final_response
-                final_response += remaining_content + "\n"
-                break
 
         # Create the footer items for the response
         footer_items = []

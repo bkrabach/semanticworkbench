@@ -1,7 +1,9 @@
 # Copyright (c) Microsoft. All rights reserved.
 
+import json
 import logging
-from typing import Iterable, Sequence
+import uuid
+from typing import Iterable, List, Sequence
 
 import anthropic_client
 import deepmerge
@@ -9,12 +11,13 @@ from anthropic import NotGiven
 from anthropic.types import Message, MessageParam, TextBlock, ToolUseBlock
 from assistant_extensions.ai_clients.config import AnthropicClientConfigModel
 from assistant_extensions.ai_clients.model import CompletionMessage
+from mcp import ClientSession, Tool
 from semantic_workbench_api_model.workbench_model import (
     MessageType,
 )
 
 from ...config import AssistantConfigModel
-from .base_provider import NumberTokensResult, ResponseProvider, ResponseResult
+from .base_provider import NumberTokensResult, ResponseProvider, ResponseResult, ToolAction
 
 logger = logging.getLogger(__name__)
 
@@ -75,8 +78,10 @@ class AnthropicResponseProvider(ResponseProvider):
 
     async def get_response(
         self,
-        messages: list[CompletionMessage],
+        messages: List[CompletionMessage],
         metadata_key: str,
+        mcp_tools: List[Tool],
+        mcp_sessions: List[ClientSession],
     ) -> ResponseResult:
         """
         Respond to a conversation message.
@@ -92,6 +97,7 @@ class AnthropicResponseProvider(ResponseProvider):
 
         response_result = ResponseResult(
             content=None,
+            tool_actions=None,
             message_type=MessageType.chat,
             metadata={},
             completion_total_tokens=0,
@@ -105,10 +111,44 @@ class AnthropicResponseProvider(ResponseProvider):
 
         # pluck first system message to send as system prompt, remove it from the list
         system_message = next((m for m in messages if m.role == "system"), None)
+        system_message_content = (
+            str(system_message.content) if system_message and isinstance(system_message, str) else None
+        )
         system_prompt: str | NotGiven = NotGiven()
+
+        # tool_descriptions = [
+        #     f"Tool Name: {tool.name}\nDescription: {tool.description}\nInput Parameters: {tool.inputSchema}\n"
+        #     for tool in all_tools
+        # ]
+
+        # system_message_content = (
+        #     f'{config.instruction_prompt}\n\nYour name is "{context.assistant.name}".\n'
+        #     "You have access to the following tools:\n"
+        #     f"{''.join(tool_descriptions)}"
+        #     "\nWhen you need to use a tool, output a JSON object in the following format:\n"
+        #     '{"action": "call_tool", "tool_name": "TOOL_NAME", "arguments": {"arg1": "value1", ...}}\n'
+        #     "After receiving the tool's output, incorporate it into your response."
+        # )
+
+        # build tool descriptions
+        if mcp_tools and len(mcp_tools) > 0:
+            tool_descriptions = create_tool_descriptions(mcp_tools)
+            tools_prompt = (
+                f"You have access to the following tools:\n{tool_descriptions}\n"
+                # Include any additional instructions if necessary
+                "When you need to use a tool, respond with a JSON object in the following format:\n"
+                '{"action": "tool_name", "arguments": {"arg1": "value1", "arg2": "value2"}}\n'
+                "After receiving the tool's output, incorporate it into your response."
+            )
+            system_message_content = (
+                f"{system_message_content}\n\n{tools_prompt}" if system_message_content else tools_prompt
+            )
+
+        if system_message_content:
+            system_prompt = anthropic_client.create_system_prompt(system_message_content)
+
+        # remove the system message from the list of messages
         if system_message:
-            if isinstance(system_message.content, str):
-                system_prompt = anthropic_client.create_system_prompt(system_message.content)
             messages.remove(system_message)
 
         # convert the messages to chat completion message parameters
@@ -139,7 +179,13 @@ class AnthropicResponseProvider(ResponseProvider):
                             continue
 
                         if isinstance(item, ToolUseBlock):
-                            raise ValueError("Anthropic API returned a ToolUseBlock which is not yet supported.")
+                            response_result.tool_actions = [
+                                ToolAction(
+                                    id=str(uuid.UUID),
+                                    name=item.name,
+                                    arguments={k: v for k, v in item.input.__dict__.items()},
+                                )
+                            ]
 
                         raise ValueError(f"Anthropic API returned an unexpected type: {type(item)}")
 
@@ -183,3 +229,14 @@ class AnthropicResponseProvider(ResponseProvider):
 
         # send the response to the conversation
         return response_result
+
+
+def create_tool_descriptions(tools) -> str:
+    descriptions = ""
+    for tool in tools:
+        descriptions += (
+            f"Tool Name: {tool.name}\n"
+            f"Description: {tool.description}\n"
+            f"Input Parameters: {json.dumps(tool.inputSchema)}\n\n"
+        )
+    return descriptions

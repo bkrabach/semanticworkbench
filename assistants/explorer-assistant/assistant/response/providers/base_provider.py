@@ -1,10 +1,13 @@
-from typing import Any, Protocol, Sequence
+from typing import Any, List, Protocol, Sequence
 
 from assistant_extensions.ai_clients.model import CompletionMessage
 from attr import dataclass
+from mcp import ClientSession, Tool
 from semantic_workbench_api_model.workbench_model import (
     MessageType,
 )
+
+from assistant.response.utils.mcp_tool_utils import ToolAction
 
 
 @dataclass
@@ -17,6 +20,7 @@ class NumberTokensResult:
 @dataclass
 class ResponseResult:
     content: str | None
+    tool_actions: List[ToolAction] | None
     message_type: MessageType
     metadata: dict[str, Any]
     completion_total_tokens: int
@@ -25,8 +29,10 @@ class ResponseResult:
 class ResponseProvider(Protocol):
     async def get_response(
         self,
-        messages: list[CompletionMessage],
+        messages: List[CompletionMessage],
         metadata_key: str,
+        mcp_tools: List[Tool],
+        mcp_sessions: List[ClientSession],
     ) -> ResponseResult: ...
 
     async def num_tokens_from_messages(
