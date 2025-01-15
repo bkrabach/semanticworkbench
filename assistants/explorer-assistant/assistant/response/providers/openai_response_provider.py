@@ -14,7 +14,6 @@ from openai import AsyncOpenAI
 from openai.types.chat import (
     ChatCompletion,
     ChatCompletionMessageParam,
-    ChatCompletionSystemMessageParam,
     ChatCompletionToolParam,
     ParsedChatCompletion,
 )
@@ -117,16 +116,6 @@ class OpenAIResponseProvider(ResponseProvider):
             messages
         )
 
-        if len(tools) > 0:
-            # add another instruction message to the chat
-            chat_message_params = [
-                ChatCompletionSystemMessageParam(
-                    role="system",
-                    content="Always include content with your tool requests, explaining why you are using the tool.",
-                ),
-                *chat_message_params,
-            ]
-
         # generate a response from the AI model
         async with openai_client.create_client(self.service_config) as client:
             try:
@@ -197,6 +186,8 @@ class OpenAIResponseProvider(ResponseProvider):
                     if response_result.tool_actions is None:
                         response_result.tool_actions = []
                     response_result.tool_actions.append(tool_action)
+                    if response_result.content is None:
+                        response_result.content = tool_action.arguments.get("aiContext")
 
         # update the metadata with debug information
         deepmerge.always_merger.merge(
@@ -265,15 +256,32 @@ class OpenAIResponseProvider(ResponseProvider):
         return completion
 
 
-def convert_mcp_tools_to_openai_tools(mcp_tools: List[Any]) -> List[ChatCompletionToolParam]:
+def convert_mcp_tools_to_openai_tools(mcp_tools: List[Tool]) -> List[ChatCompletionToolParam]:
     tools_list: List[ChatCompletionToolParam] = []
     for mcp_tool in mcp_tools:
+        # add parameter for explaining the step for the user observing the assistant
+        aiContext: dict[str, Any] = {
+            "type": "string",
+            "description": (
+                "Explanation of why the AI is using this tool and what it expects to accomplish."
+                "This message is displayed to the user, coming from the point of view of the assistant"
+                " and should fit within the flow of the ongoing conversation."
+            ),
+        }
+
         tools_list.append(
             ChatCompletionToolParam(
                 function=FunctionDefinition(
                     name=mcp_tool.name,
-                    description=mcp_tool.description,
-                    parameters=mcp_tool.inputSchema,
+                    description=mcp_tool.description if mcp_tool.description else "[no description provided]",
+                    parameters=deepmerge.always_merger.merge(
+                        mcp_tool.inputSchema,
+                        {
+                            "properties": {
+                                "aiContext": aiContext,
+                            },
+                        },
+                    ),
                 ),
                 type="function",
             )

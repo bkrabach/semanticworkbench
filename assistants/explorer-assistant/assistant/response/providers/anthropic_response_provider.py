@@ -8,7 +8,7 @@ from typing import Iterable, List, Sequence
 import anthropic_client
 import deepmerge
 from anthropic import NotGiven
-from anthropic.types import Message, MessageParam, TextBlock, ToolUseBlock
+from anthropic.types import Message, MessageParam, TextBlock, ToolParam, ToolUseBlock
 from assistant_extensions.ai_clients.config import AnthropicClientConfigModel
 from assistant_extensions.ai_clients.model import CompletionMessage
 from mcp import ClientSession, Tool
@@ -116,33 +116,8 @@ class AnthropicResponseProvider(ResponseProvider):
         )
         system_prompt: str | NotGiven = NotGiven()
 
-        # tool_descriptions = [
-        #     f"Tool Name: {tool.name}\nDescription: {tool.description}\nInput Parameters: {tool.inputSchema}\n"
-        #     for tool in all_tools
-        # ]
-
-        # system_message_content = (
-        #     f'{config.instruction_prompt}\n\nYour name is "{context.assistant.name}".\n'
-        #     "You have access to the following tools:\n"
-        #     f"{''.join(tool_descriptions)}"
-        #     "\nWhen you need to use a tool, output a JSON object in the following format:\n"
-        #     '{"action": "call_tool", "tool_name": "TOOL_NAME", "arguments": {"arg1": "value1", ...}}\n'
-        #     "After receiving the tool's output, incorporate it into your response."
-        # )
-
-        # build tool descriptions
-        if mcp_tools and len(mcp_tools) > 0:
-            tool_descriptions = create_tool_descriptions(mcp_tools)
-            tools_prompt = (
-                f"You have access to the following tools:\n{tool_descriptions}\n"
-                # Include any additional instructions if necessary
-                "When you need to use a tool, respond with a JSON object in the following format:\n"
-                '{"action": "tool_name", "arguments": {"arg1": "value1", "arg2": "value2"}}\n'
-                "After receiving the tool's output, incorporate it into your response."
-            )
-            system_message_content = (
-                f"{system_message_content}\n\n{tools_prompt}" if system_message_content else tools_prompt
-            )
+        # convert the tools to make them compatible with the Anthropic API
+        tools = convert_mcp_tools_to_anthropic_tools(mcp_tools)
 
         if system_message_content:
             system_prompt = anthropic_client.create_system_prompt(system_message_content)
@@ -167,6 +142,7 @@ class AnthropicResponseProvider(ResponseProvider):
                         max_tokens=self.request_config.response_tokens,
                         system=system_prompt,
                         messages=chat_message_params,
+                        tools=tools,
                     )
                     content = response_message.content
 
@@ -183,7 +159,7 @@ class AnthropicResponseProvider(ResponseProvider):
                                 ToolAction(
                                     id=str(uuid.UUID),
                                     name=item.name,
-                                    arguments={k: v for k, v in item.input.__dict__.items()},
+                                    arguments=item.input.__dict__,
                                 )
                             ]
 
@@ -192,7 +168,7 @@ class AnthropicResponseProvider(ResponseProvider):
             except Exception as e:
                 logger.exception(f"exception occurred calling openai chat completion: {e}")
                 response_result.content = (
-                    "An error occurred while calling the OpenAI API. Is it configured correctly?"
+                    "An error occurred while calling the Anthropic API. Is it configured correctly?"
                     " View the debug inspector for more information."
                 )
                 response_result.message_type = MessageType.notice
@@ -240,3 +216,17 @@ def create_tool_descriptions(tools) -> str:
             f"Input Parameters: {json.dumps(tool.inputSchema)}\n\n"
         )
     return descriptions
+
+
+def convert_mcp_tools_to_anthropic_tools(mcp_tools: List[Tool]) -> List[ToolParam]:
+    tools_list: List[ToolParam] = []
+    for tool in mcp_tools:
+        tools_list.append(
+            ToolParam(
+                name=tool.name,
+                description=tool.description if tool.description else "",
+                input_schema=tool.inputSchema,
+            )
+        )
+
+    return tools_list
