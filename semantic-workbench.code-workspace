@@ -150,6 +150,9 @@
     {
       "name": ".github",
       "path": ".github"
+    },
+    {
+      "path": "workspaces-app"
     }
   ],
   "settings": {

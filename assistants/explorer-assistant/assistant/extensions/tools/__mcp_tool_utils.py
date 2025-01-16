@@ -1,35 +1,17 @@
 # utils/tool_utils.py
-import json
 import logging
-from typing import Any, List
+from typing import List
 
 import deepmerge
-from attr import dataclass
 from mcp import ClientSession, Tool
 from mcp.types import TextContent
 from semantic_workbench_api_model.workbench_model import (
     MessageType,
 )
 
+from .__model import ToolAction, ToolActionResult
+
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class ToolAction:
-    id: str
-    name: str
-    arguments: dict[str, Any]
-
-    def to_json(self, **kwargs) -> str:
-        return json.dumps(self, default=lambda o: o.__dict__, **kwargs)
-
-
-@dataclass
-class ToolActionResult:
-    id: str
-    content: str
-    message_type: MessageType
-    metadata: dict[str, Any]
 
 
 async def retrieve_tools_from_sessions(sessions: List[ClientSession]) -> List[Tool]:
@@ -93,6 +75,7 @@ async def handle_tool_action(
 
     # Invoke the tool
     try:
+        logger.debug(f"Invoking tool '{tool_action.name}' with arguments: {tool_action.arguments}")
         tool_result = await target_session.call_tool(tool_action.name, tool_action.arguments)
         tool_output = tool_result.content[0] if tool_result.content else ""
     except Exception as e:

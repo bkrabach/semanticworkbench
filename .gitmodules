@@ -1,3 +1,0 @@
-[submodule "assistants/explorer-assistant/assistant/vendor/mcp-servers"]
-	path = assistants/explorer-assistant/vendor/mcp-servers
-	url = https://github.com/modelcontextprotocol/servers.git

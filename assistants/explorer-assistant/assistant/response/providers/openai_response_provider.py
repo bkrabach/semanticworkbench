@@ -2,24 +2,25 @@
 
 import json
 import logging
-import re
 from textwrap import dedent
-from typing import Any, List, Optional, Sequence, Tuple
+from typing import Any, List, Sequence, Tuple, Type
 
 import deepmerge
 import openai_client
 from assistant_extensions.ai_clients.config import AzureOpenAIClientConfigModel, OpenAIClientConfigModel
 from assistant_extensions.ai_clients.model import CompletionMessage
 from assistant_extensions.artifacts import ArtifactsExtension
-from mcp import ClientSession, Tool
-from openai import AsyncOpenAI
+from mcp import Tool
+from openai import AsyncOpenAI, NotGiven
 from openai.types.chat import (
     ChatCompletion,
     ChatCompletionMessageParam,
     ChatCompletionToolParam,
+    ChatCompletionUserMessageParam,
     ParsedChatCompletion,
 )
 from openai.types.shared_params import FunctionDefinition
+from pydantic import BaseModel
 from semantic_workbench_api_model.workbench_model import (
     AssistantStateEvent,
     MessageType,
@@ -32,6 +33,38 @@ from ...config import AssistantConfigModel
 from .base_provider import NumberTokensResult, ResponseProvider, ResponseResult, ToolAction
 
 logger = logging.getLogger(__name__)
+
+
+class OpenAIToolCallStructuredOutput(BaseModel):
+    class Config:
+        extra = "forbid"
+        json_schema_extra = {
+            "description": (
+                "The format for a tool call. Only use the provided tool definitions to define the tool calls."
+            ),
+            "required": ["id", "function"],
+        }
+
+    id: str
+    function: str
+    arguments: dict
+
+
+class StructuredResponse(BaseModel):
+    class Config:
+        extra = "forbid"
+        json_schema_extra = {
+            "description": (
+                "The response format for the assistant. Use the assistant_response field for the"
+                " response content and the tool_calls field for any tool calls. Use the assistant_response"
+                " to inform the user of what you are doing as they will see this status while the tool"
+                " calls run."
+            ),
+            "required": ["assistant_response", "tool_calls"],
+        }
+
+    assistant_response: str
+    tool_calls: List[OpenAIToolCallStructuredOutput]
 
 
 class OpenAIResponseProvider(ResponseProvider):
@@ -79,10 +112,10 @@ class OpenAIResponseProvider(ResponseProvider):
 
     async def get_response(
         self,
+        config: AssistantConfigModel,
         messages: List[CompletionMessage],
         metadata_key: str,
-        mcp_tools: List[Tool],
-        mcp_sessions: List[ClientSession],
+        mcp_tools: List[Tool] | None,
     ) -> ResponseResult:
         """
         Respond to a conversation message.
@@ -117,7 +150,7 @@ class OpenAIResponseProvider(ResponseProvider):
         tools = convert_mcp_tools_to_openai_tools(mcp_tools)
 
         if self.request_config.is_reasoning_model:
-            chat_message_params = customize_chat_message_params_for_reasoning(chat_message_params, tools)
+            chat_message_params = customize_chat_message_params_for_reasoning(config, chat_message_params, tools)
 
         # generate a response from the AI model
         async with openai_client.create_client(self.service_config) as client:
@@ -158,8 +191,38 @@ class OpenAIResponseProvider(ResponseProvider):
                     )
 
                 else:
-                    completion = await self.get_completion(client, chat_message_params, tools)
-                    response_result.content = completion.choices[0].message.content
+                    if self.request_config.model == "o1-preview":
+                        # o1-preview does not support tools calls, so we need to hack around that
+
+                        # make a normal completion
+                        first_completion = await self.get_completion(
+                            client, self.request_config, chat_message_params, tools
+                        )
+
+                        first_completion_content = first_completion.choices[0].message.content
+
+                        # if the message content has tools_calls content, pass to fallback model
+                        # to have it transform it to structured output
+                        if (
+                            tools is not None
+                            and first_completion_content is not None
+                            # FIXME: quick hack to test
+                            and "assistant_response" in first_completion_content
+                            and "tool_calls" in first_completion_content
+                        ):
+                            # use the fallback model to transform the content to a tools call
+                            completion = await self.use_fallback_model_to_transform_tool_calls(
+                                config,
+                                first_completion_content,
+                                tools,
+                            )
+
+                        else:
+                            # no tool calls, so we can use the completion as is
+                            completion = first_completion
+
+                    else:
+                        completion = await self.get_completion(client, self.request_config, chat_message_params, tools)
 
             except Exception as e:
                 logger.exception(f"exception occurred calling openai chat completion: {e}")
@@ -178,14 +241,19 @@ class OpenAIResponseProvider(ResponseProvider):
             response_result.completion_total_tokens = completion.usage.total_tokens if completion.usage else 0
 
             # check if the completion has tool calls
-            tool_actions = get_tool_actions_from_response(completion)
-            response_result.tool_actions = tool_actions
-            if len(tool_actions) > 0:
-                # check within the tool actions for any that have an "aiContext" argument
-                # and if so, set the content to the value of the "aiContext" arguments
-                updated_content, updated_tool_actions = extract_content_from_tool_actions(tool_actions)
-                response_result.content = updated_content
-                response_result.tool_actions = updated_tool_actions
+            if completion.choices[0].message.tool_calls:
+                response_result.tool_actions = [
+                    ToolAction(
+                        id=tool_call.id,
+                        name=tool_call.function.name,
+                        arguments=json.loads(
+                            tool_call.function.arguments,
+                        ),
+                    )
+                    for tool_call in completion.choices[0].message.tool_calls
+                ]
+
+            response_result.content = completion.choices[0].message.content
 
         # update the metadata with debug information
         deepmerge.always_merger.merge(
@@ -210,47 +278,93 @@ class OpenAIResponseProvider(ResponseProvider):
     async def get_completion(
         self,
         client: AsyncOpenAI,
+        request_config: openai_client.OpenAIRequestConfig,
         chat_message_params: List[ChatCompletionMessageParam],
-        tools: List[ChatCompletionToolParam],
-    ) -> ChatCompletion:
+        tools: List[ChatCompletionToolParam] | None,
+    ) -> ParsedChatCompletion[BaseModel] | ChatCompletion:
         """
         Generate a completion from the OpenAI API.
         """
 
-        # initialize variables for the response content
-        completion: ChatCompletion | None = None
+        completion_args = {
+            "messages": chat_message_params,
+            "model": request_config.model,
+        }
 
-        if self.request_config.is_reasoning_model:
-            # for reasoning models, use max_completion_tokens instead of max_tokens
-            completion = await client.chat.completions.create(
-                messages=chat_message_params,
-                model=self.request_config.model,
-                max_completion_tokens=self.request_config.response_tokens,
-            )
+        if request_config.is_reasoning_model:
+            # reasoning models
+            # note: tools are not supported by reasoning models currently
+            completion_args["max_completion_tokens"] = request_config.response_tokens
 
         else:
-            # call the OpenAI API to generate a completion, include tools if provided
-            completion = await client.chat.completions.create(
-                messages=chat_message_params,
-                model=self.request_config.model,
-                max_tokens=self.request_config.response_tokens,
-                tools=tools,
-                tool_choice="auto",
-            )
+            # all other models
+            completion_args["max_tokens"] = request_config.response_tokens
+            completion_args["tools"] = tools or NotGiven()
+            completion_args["tool_choice"] = "auto"
 
-        return completion
+        return await client.chat.completions.create(**completion_args)
+
+    async def get_parsed_completion(
+        self,
+        client: AsyncOpenAI,
+        request_config: openai_client.OpenAIRequestConfig,
+        chat_message_params: List[ChatCompletionMessageParam],
+        response_format: Type[BaseModel],
+    ) -> ParsedChatCompletion[BaseModel]:
+        """
+        Generate a parsed completion from the OpenAI API.
+        """
+
+        completion_args = {
+            "messages": chat_message_params,
+            "model": request_config.model,
+            "response_format": response_format,
+        }
+
+        if request_config.is_reasoning_model:
+            # reasoning models
+            completion_args["max_completion_tokens"] = request_config.response_tokens
+
+        else:
+            # all other models
+            completion_args["max_tokens"] = request_config.response_tokens
+
+        return await client.beta.chat.completions.parse(**completion_args)
+
+    async def use_fallback_model_to_transform_tool_calls(
+        self,
+        config: AssistantConfigModel,
+        content: str,
+        tools: List[ChatCompletionToolParam],
+    ) -> ChatCompletion:
+        # use the fallback model to transform the content to a tools call
+        fallback_service_config = get_fallback_service_config(self.service_config)
+        fallback_request_config = get_fallback_request_config(self.request_config)
+
+        async with openai_client.create_client(fallback_service_config) as fallback_client:
+            # make the fallback completion
+
+            chat_message_params: List[ChatCompletionMessageParam] = [
+                ChatCompletionUserMessageParam(role="user", content=f"Please make the following tool call: {content}"),
+            ]
+
+            completion = await self.get_completion(fallback_client, fallback_request_config, chat_message_params, tools)
+
+            return completion
 
 
 def customize_chat_message_params_for_reasoning(
+    config: AssistantConfigModel,
     chat_message_params: List[ChatCompletionMessageParam],
-    tools: List[ChatCompletionToolParam],
+    tools: List[ChatCompletionToolParam] | None,
 ) -> List[ChatCompletionMessageParam]:
     """
     Applies some hacks to the chat completions to make them work with reasoning models.
     """
 
     # reasoning models do not support tool calls, so we will hack it via instruction
-    chat_message_params = inject_tools_into_system_message(chat_message_params, tools)
+    if tools is not None:
+        chat_message_params = inject_tools_into_system_message(config, chat_message_params, tools)
 
     # convert all messages that use system role to user role as reasoning models do not
     # support system role - at all, not even the first message/instruction
@@ -316,84 +430,10 @@ def split_ai_content_from_tool_action(
     return None, tool_action
 
 
-def clean_json_content(json_content: str) -> str:
-    """
-    Removes '+' operators used for string concatenation in JSON strings.
-    """
-    # Remove '+' operators and concatenate the strings
-    cleaned_content = re.sub(r'"\s*\+\s*\n\s*"', "", json_content)
-    return cleaned_content
+def convert_mcp_tools_to_openai_tools(mcp_tools: List[Tool] | None) -> List[ChatCompletionToolParam] | None:
+    if not mcp_tools:
+        return None
 
-
-def get_tool_actions_from_response(
-    response: ChatCompletion,
-) -> List[ToolAction]:
-    """
-    Extract tool calls from the response.
-
-    This function takes a ChatCompletion response and extracts the tool calls from it. It returns a list of
-    ToolAction objects, which contain the tool call ID, name, and arguments.
-
-    Args:
-        response (ChatCompletion): The ChatCompletion response.
-
-    Returns:
-        List[ToolAction]: A list of ToolAction objects.
-    """
-    tool_actions = []
-    if response.choices[0].message.tool_calls:
-        for json_data in response.choices[0].message.tool_calls:
-            tool_action = ToolAction(
-                id=json_data.id,
-                name=json_data.function.name,
-                arguments=json.loads(json_data.function.arguments),
-            )
-            tool_actions.append(tool_action)
-
-    # also handle the case where we're using a reasoning model and the tool calls are in the content
-    if response.choices[0].message.content:
-        content = response.choices[0].message.content
-
-        # extract the JSON content from the markdown
-        json_content = extract_json_from_markdown(content)
-
-        if json_content:
-            # clean the JSON content
-            json_content = clean_json_content(json_content)
-            # parse the JSON content
-            try:
-                json_data = json.loads(json_content)
-
-                # check if the JSON content has the required fields
-                if "tool_calls" in json_data:
-                    # iterate over the tool calls
-                    for tool_call in json_data["tool_calls"]:
-                        # check if the tool call has the required fields
-                        if (
-                            "id" in tool_call
-                            and "function" in tool_call
-                            and "name" in tool_call["function"]
-                            and "arguments" in tool_call["function"]
-                        ):
-                            # create a ToolAction object from the tool call
-                            tool_action = ToolAction(
-                                id=tool_call["id"],
-                                name=tool_call["function"]["name"],
-                                arguments=tool_call["function"]["arguments"],
-                            )
-                            # add the tool action to the list
-                            tool_actions.append(tool_action)
-
-            except json.JSONDecodeError:
-                logger.debug(f"Failed to parse JSON content: {json_content}")
-            except Exception as e:
-                logger.debug(f"Failed to extract tool calls from content: {content}. Error: {e}")
-
-    # return the list of tool calls
-    return tool_actions
-
-
-def convert_mcp_tools_to_openai_tools(mcp_tools: List[Tool]) -> List[ChatCompletionToolParam]:
     tools_list: List[ChatCompletionToolParam] = []
     for mcp_tool in mcp_tools:
         # add parameter for explaining the step for the user observing the assistant
@@ -428,6 +468,7 @@ def convert_mcp_tools_to_openai_tools(mcp_tools: List[Tool]) -> List[ChatComplet
 
 
 def inject_tools_into_system_message(
+    config: AssistantConfigModel,
     chat_message_params: List[ChatCompletionMessageParam],
     tools: List[ChatCompletionToolParam],
 ) -> List[ChatCompletionMessageParam]:
@@ -453,7 +494,7 @@ def inject_tools_into_system_message(
     first_system_message_content = chat_message_params[first_system_message_index].get("content", "")
 
     # append the tools list and descriptions to the system message
-    tools_prompt = create_tool_descriptions(tools)
+    tools_prompt = create_tools_instructions(config, tools)
 
     # update the system message content to include the tools prompt
     chat_message_params[first_system_message_index]["content"] = f"{first_system_message_content}\n\n{tools_prompt}"
@@ -461,62 +502,69 @@ def inject_tools_into_system_message(
     return chat_message_params
 
 
-def create_tool_descriptions(tools: List[ChatCompletionToolParam]) -> str:
-    descriptions = ""
+def create_tools_instructions(config: AssistantConfigModel, tools: List[ChatCompletionToolParam]) -> str:
+    tool_definitions = ""
     for tool in tools:
         function: FunctionDefinition = tool.get("function")
-        descriptions += (
+        tool_definitions += (
             f"Tool Name: {function.get('name')}\n"
             f"Description: {function.get('description')}\n"
             f"Input Parameters: {json.dumps(function.get('parameters'))}\n\n"
         )
-    return dedent(f"""
-    You can perform specific tasks using available tools. When you need to use a tool, respond
-    with a strict JSON object containing only the tool's `id` and function name and arguments.
 
-    Available Tools:
-    {descriptions}
-
-    ### Instructions:
-    - If you need to use a tool to answer the user's query, respond with **ONLY** a JSON object in the following format:
-    {{
-        "tool_calls": [
-            {{
-                "id": "tool_id",
-                "function": {{
-                    "name": "tool_name",
-                    "arguments": {{
-                        "parameter1": "value1",
-                        ...
-                    }}
-                }}
-            }}
-        ]
-    }}
-    - If you can answer without using a tool, provide the answer directly.
-    - Ensure the JSON is properly formatted, using the exact format shown above.
-    - **No code, no text, no markdown** within the JSON.
-    - Ensure that all values are plain data types (e.g., strings, numbers).
-    - **Do not** include any additional characters, functions, or expressions within the JSON.
-    """)
+    return openai_client.format_with_liquid(
+        config.extensions_config.tools.tools_instructions,
+        {
+            "tools": dedent(f"""
+                {tool_definitions}
+                Response format:
+                {StructuredResponse.model_json_schema()}
+            """)
+        },
+    )
 
 
-def extract_json_from_markdown(content: str) -> Optional[str]:
+def get_fallback_service_config(
+    service_config: openai_client.AzureOpenAIServiceConfig | openai_client.OpenAIServiceConfig,
+) -> openai_client.AzureOpenAIServiceConfig | openai_client.OpenAIServiceConfig:
     """
-    Extracts JSON content from a markdown code block.
+    Get the fallback service config.
 
-    Args:
-        content (str): The content containing the markdown code block.
-
-    Returns:
-        [Optional] The extracted JSON string if successful, else None.
+    This function takes a service config and returns a copy of it with the fallback deployment set.
     """
-    # Define a regex pattern to match ```json ... ```
-    pattern = re.compile(r"```json\s*(\{.*?\})\s*```", re.DOTALL)
-    match = pattern.search(content)
+    # make a copy for service_config to new fallback_service_config
+    fallback_service_config: openai_client.AzureOpenAIServiceConfig | openai_client.OpenAIServiceConfig = (
+        service_config.model_copy(deep=True)
+    )
 
-    if match:
-        json_content = match.group(1)
-        return json_content
-    else:
-        return None
+    # if using Azure OpenAI, swap the deployment for the fallback one
+    if isinstance(fallback_service_config, openai_client.AzureOpenAIServiceConfig):
+        fallback_deployment = fallback_service_config.azure_openai_fallback_deployment
+        if fallback_deployment.strip() == "":
+            raise ValueError("Fallback deployment not set for Azure OpenAI config.")
+        fallback_service_config.azure_openai_deployment = fallback_deployment
+
+    return fallback_service_config
+
+
+def get_fallback_request_config(
+    request_config: openai_client.OpenAIRequestConfig,
+) -> openai_client.OpenAIRequestConfig:
+    """
+    Get the fallback request config.
+
+    This function takes a request config and returns a copy of it with the fallback model set.
+    """
+    fallback_request_config = request_config.model_copy(deep=True)
+    fallback_model = request_config.fallback_model
+    if fallback_model.strip() == "":
+        raise ValueError("Fallback model not set for OpenAI config.")
+    fallback_request_config.model = fallback_model
+
+    # set the response tokens to a reasonable value for the fallback model
+    fallback_request_config.response_tokens = 16_384
+
+    # set the reasoning model flag to False
+    fallback_request_config.is_reasoning_model = False
+
+    return fallback_request_config

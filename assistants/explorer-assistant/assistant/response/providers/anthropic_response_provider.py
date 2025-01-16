@@ -11,7 +11,7 @@ from anthropic import NotGiven
 from anthropic.types import Message, MessageParam, TextBlock, ToolParam, ToolUseBlock
 from assistant_extensions.ai_clients.config import AnthropicClientConfigModel
 from assistant_extensions.ai_clients.model import CompletionMessage
-from mcp import ClientSession, Tool
+from mcp import Tool
 from semantic_workbench_api_model.workbench_model import (
     MessageType,
 )
@@ -78,10 +78,10 @@ class AnthropicResponseProvider(ResponseProvider):
 
     async def get_response(
         self,
+        config: AssistantConfigModel,
         messages: List[CompletionMessage],
         metadata_key: str,
-        mcp_tools: List[Tool],
-        mcp_sessions: List[ClientSession],
+        mcp_tools: List[Tool] | None,
     ) -> ResponseResult:
         """
         Respond to a conversation message.
@@ -142,7 +142,7 @@ class AnthropicResponseProvider(ResponseProvider):
                         max_tokens=self.request_config.response_tokens,
                         system=system_prompt,
                         messages=chat_message_params,
-                        tools=tools,
+                        tools=tools or NotGiven(),
                     )
                     content = response_message.content
 
@@ -218,7 +218,10 @@ def create_tool_descriptions(tools) -> str:
     return descriptions
 
 
-def convert_mcp_tools_to_anthropic_tools(mcp_tools: List[Tool]) -> List[ToolParam]:
+def convert_mcp_tools_to_anthropic_tools(mcp_tools: List[Tool] | None) -> List[ToolParam] | None:
+    if not mcp_tools:
+        return None
+
     tools_list: List[ToolParam] = []
     for tool in mcp_tools:
         tools_list.append(

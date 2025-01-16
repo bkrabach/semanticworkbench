@@ -7,26 +7,24 @@ import deepmerge
 from assistant_extensions.ai_clients.model import CompletionMessage
 from assistant_extensions.artifacts import ArtifactsExtension
 from assistant_extensions.attachments import AttachmentsExtension
+from mcp import ClientSession, Tool
 from semantic_workbench_api_model.workbench_model import (
-    ConversationMessage,
     MessageType,
     NewConversationMessage,
 )
 from semantic_workbench_assistant.assistant_app import ConversationContext
 
 from ..config import AssistantConfigModel
+from ..extensions.tools import establish_mcp_sessions, handle_tool_action, retrieve_tools_from_sessions
 from .utils import (
     build_system_message_content,
     conversation_message_to_completion_messages,
-    establish_mcp_sessions,
     get_history_messages,
     get_response_duration_message,
     get_token_usage_message,
-    handle_tool_action,
     initialize_response_provider,
     inject_attachments_inline,
     num_tokens_from_messages,
-    retrieve_tools_from_sessions,
 )
 
 logger = logging.getLogger(__name__)
@@ -37,7 +35,6 @@ async def respond_to_conversation(
     attachments_extension: AttachmentsExtension,
     context: ConversationContext,
     config: AssistantConfigModel,
-    message: ConversationMessage,
     metadata: dict[str, Any] = {},
     config_file: str = "mcp_servers_config.json",
 ) -> None:
@@ -46,19 +43,23 @@ async def respond_to_conversation(
     """
 
     async with AsyncExitStack() as stack:
-        mcp_sessions = await establish_mcp_sessions(config_file, stack)
-        if not mcp_sessions:
-            await context.send_messages(
-                NewConversationMessage(
-                    content="Unable to connect to any MCP servers. Please ensure the servers are running.",
-                    message_type=MessageType.notice,
-                    metadata=metadata,
-                )
-            )
-            return
+        mcp_sessions: List[ClientSession] = []
+        mcp_tools: List[Tool] = []
 
-        # Retrieve tools from the MCP sessions
-        mcp_tools = await retrieve_tools_from_sessions(mcp_sessions)
+        if config.extensions_config.tools.enabled:
+            mcp_sessions = await establish_mcp_sessions(config_file, stack)
+            if not mcp_sessions:
+                await context.send_messages(
+                    NewConversationMessage(
+                        content="Unable to connect to any MCP servers. Please ensure the servers are running.",
+                        message_type=MessageType.notice,
+                        metadata=metadata,
+                    )
+                )
+                return
+
+            # Retrieve tools from the MCP sessions
+            mcp_tools = await retrieve_tools_from_sessions(mcp_sessions)
 
         # Initialize the response provider based on configuration
         response_provider = initialize_response_provider(config, artifacts_extension, context)
@@ -180,7 +181,8 @@ async def respond_to_conversation(
         final_response: str = ""  # New variable to accumulate responses
 
         # Initialize a loop control variable
-        max_steps = 5  # Prevent infinite loops
+        max_steps = config.extensions_config.tools.max_steps
+        completed_within_max_steps = False
         step_count = 0
 
         while step_count < max_steps:
@@ -189,10 +191,10 @@ async def respond_to_conversation(
             # Generate AI response
             try:
                 response_result = await response_provider.get_response(
+                    config=config,
                     messages=completion_messages,
                     metadata_key=f"{method_metadata_key}:request:step_{step_count}",
                     mcp_tools=mcp_tools,
-                    mcp_sessions=mcp_sessions,
                 )
             except Exception as e:
                 logger.exception(f"Error generating AI response: {e}")
@@ -229,6 +231,7 @@ async def respond_to_conversation(
 
             if len(tool_actions) == 0:
                 # No tool actions, exit the loop
+                completed_within_max_steps = True
                 break
 
             # Handle tool actions
@@ -293,6 +296,10 @@ async def respond_to_conversation(
         )
 
         if final_response:
+            if not completed_within_max_steps:
+                # Add a note at the end of the content to indicate such
+                final_response += "\n\n" + config.extensions_config.tools.max_steps_truncation_message
+
             # Handle silence token
             if final_response.replace(" ", "") == silence_token:
                 # If debug output is enabled, notify that the assistant chose to remain silent

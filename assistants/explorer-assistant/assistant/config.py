@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from semantic_workbench_assistant.config import UISchema
 
 from . import helpers
+from .extensions.tools import ToolsConfigModel
 
 # The semantic workbench app uses react-jsonschema-form for rendering
 # dynamic configuration forms based on the configuration model and UI schema
@@ -49,6 +50,14 @@ class ExtensionsConfigModel(BaseModel):
             description="Configuration for the artifacts extension.",
         ),
     ] = ArtifactsConfigModel()
+
+    tools: Annotated[
+        ToolsConfigModel,
+        Field(
+            title="Tools Configuration",
+            description="Configuration for the tools.",
+        ),
+    ] = ToolsConfigModel()
 
 
 class HighTokenUsageWarning(BaseModel):

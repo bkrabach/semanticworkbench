@@ -1,4 +1,5 @@
 from enum import StrEnum
+from textwrap import dedent
 from typing import Annotated, Literal
 
 from assistant_extensions.ai_clients.model import RequestConfigBaseModel
@@ -83,6 +84,19 @@ class AzureOpenAIServiceConfig(BaseModel):
             title="Azure OpenAI Deployment",
             description="The Azure OpenAI deployment to use.",
             default=first_env_var("azure_openai_deployment", "assistant__azure_openai_deployment") or "gpt-4o",
+        ),
+    ]
+
+    azure_openai_fallback_deployment: Annotated[
+        str,
+        Field(
+            title="Azure OpenAI Fallback Deployment",
+            description="The Azure OpenAI fallback deployment to use for a fallback model if defined in the request config.",
+            default=first_env_var(
+                "azure_openai_fallback_deployment",
+                "assistant__azure_openai_fallback_deployment",
+            )
+            or "",
         ),
     ]
 
@@ -175,6 +189,17 @@ class OpenAIRequestConfig(RequestConfigBaseModel):
             description="Experimental: enable support for reasoning models such as o1-preview, o1-mini, etc.",
         ),
     ] = False
+
+    fallback_model: Annotated[
+        str,
+        Field(
+            title="Fallback Model",
+            description=dedent("""
+                If using a reasoning model, provide a fallback model to use for features not supported by the
+                reasoning model, such as structured outputs.
+            """),
+        ),
+    ] = ""
 
 
 """

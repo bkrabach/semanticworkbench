@@ -30,6 +30,7 @@ from semantic_workbench_assistant.assistant_app import (
 )
 
 from .config import AssistantConfigModel
+from .extensions.tools import ToolsConfigModel
 from .response import respond_to_conversation
 
 logger = logging.getLogger(__name__)
@@ -75,6 +76,10 @@ async def artifacts_config_provider(context: AssistantContext) -> ArtifactsConfi
 
 async def workflows_config_provider(context: AssistantContext) -> WorkflowsConfigModel:
     return (await assistant_config.get(context)).extensions_config.workflows
+
+
+async def tools_config_provider(context: AssistantContext) -> ToolsConfigModel:
+    return (await assistant_config.get(context)).extensions_config.tools
 
 
 artifacts_extension = ArtifactsExtension(assistant, artifacts_config_provider)
@@ -123,11 +128,11 @@ async def on_message_created(
       - @assistant.events.conversation.message.on_created
     """
 
-    # Check if the assistant should respond to the message
+    # check if the assistant should respond to the message
     if not await should_respond_to_message(context, message):
         return
 
-    # Update the participant status to indicate the assistant is thinking
+    # update the participant status to indicate the assistant is thinking
     async with context.set_status("thinking..."):
         config = await assistant_config.get(context.assistant)
         metadata: dict[str, Any] = {"debug": {"content_safety": event.data.get(content_safety.metadata_key, {})}}
@@ -138,7 +143,6 @@ async def on_message_created(
                 attachments_extension=attachments_extension,
                 context=context,
                 config=config,
-                message=message,
                 metadata=metadata,
             )
         except Exception as e:
