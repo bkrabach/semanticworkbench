@@ -1,4 +1,5 @@
 import logging
+import re
 import time
 from contextlib import AsyncExitStack
 from typing import Any, List, Literal
@@ -299,6 +300,10 @@ async def next_turn(
 
         # Set the conversation tokens for the turn result
         turn_result.conversation_tokens = completion_total_tokens
+
+        # strip out the username from the response
+        if content.startswith("["):
+            content = re.sub(r"\[.*\]:\s", "", content)
 
         # Handle silence token
         if content.replace(" ", "") == silence_token or content.strip() == "":
