@@ -19,9 +19,8 @@ class CompletionMessageTextContent:
 
 @dataclass
 class CompletionMessage:
-    role: Literal["assistant", "user", "system", "tool"]
+    role: Literal["assistant", "user", "system"]
     content: str | list[CompletionMessageImageContent | CompletionMessageTextContent]
-    tool_call_id: str | None = None
 
 
 class RequestConfigBaseModel(BaseModel):

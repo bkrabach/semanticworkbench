@@ -11,7 +11,6 @@ from openai.types.chat import (
     ChatCompletionMessageParam,
     ChatCompletionMessageToolCallParam,
     ChatCompletionSystemMessageParam,
-    ChatCompletionToolMessageParam,
     ChatCompletionUserMessageParam,
 )
 
@@ -157,13 +156,6 @@ def create_assistant_message(
     return message
 
 
-def create_tool_message(
-    content: str,
-    tool_call_id: str,
-) -> ChatCompletionToolMessageParam:
-    return {"role": "tool", "content": content, "tool_call_id": tool_call_id}
-
-
 def convert_from_completion_messages(
     completion_message: Iterable[CompletionMessage],
 ) -> list[ChatCompletionMessageParam]:
@@ -184,15 +176,6 @@ def convert_from_completion_messages(
         if message.role == "assistant" and isinstance(message.content, str):
             messages.append(
                 create_assistant_message(
-                    content=message.content,
-                )
-            )
-            continue
-
-        if message.role == "tool" and message.tool_call_id is not None and isinstance(message.content, str):
-            messages.append(
-                create_tool_message(
-                    tool_call_id=message.tool_call_id,
                     content=message.content,
                 )
             )
