@@ -40,7 +40,7 @@ See the [Responsible AI FAQ](../../RESPONSIBLE_AI_FAQ.md) for more information.
 - Use VS Code > `Run and Debug` (ctrl/cmd+shift+d) > `launch assistant` to start the assistant.
 - If running in a devcontainer, follow the instructions in [.devcontainer/POST_SETUP_README.md](../../.devcontainer/POST_SETUP_README.md#start-the-app-and-service) for any additional steps.
 - Return to the workbench app to interact with the assistant
-- Add a new assistant from the main menu of the app, choose the assistant name as defined by the `service_name` in [chat.py](./explorer_assistant/chat.py)
+- Add a new assistant from the main menu of the app, choose the assistant name as defined by the `service_name` in [chat.py](./assistant/chat.py)
 - Click the newly created assistant to configure and interact with it
 
 ## Starting the example from CLI
