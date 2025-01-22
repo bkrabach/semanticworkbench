@@ -2,7 +2,7 @@
   "folders": [
     {
       "path": ".",
-      "name": "assistants/explorer-assistant"
+      "name": "assistants/codespace-assistant"
     },
     {
       "path": "../.."

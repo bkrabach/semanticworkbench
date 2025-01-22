@@ -16,7 +16,6 @@ from openai.types.chat import (
     ChatCompletion,
     ChatCompletionMessageParam,
     ChatCompletionToolParam,
-    ChatCompletionUserMessageParam,
     ParsedChatCompletion,
 )
 from openai.types.shared_params import FunctionDefinition
@@ -210,12 +209,15 @@ class OpenAIResponseProvider(ResponseProvider):
                             and "assistant_response" in first_completion_content
                             and "tool_calls" in first_completion_content
                         ):
+                            # FIXME: Disabled for now, will instead implement multi-model support
                             # use the fallback model to transform the content to a tools call
-                            completion = await self.use_fallback_model_to_transform_tool_calls(
-                                config,
-                                first_completion_content,
-                                tools,
-                            )
+                            # completion = await self.use_fallback_model_to_transform_tool_calls(
+                            #     config,
+                            #     first_completion_content,
+                            #     tools,
+                            # )
+
+                            raise NotImplementedError("o1-preview does not support tool calls")
 
                         else:
                             # no tool calls, so we can use the completion as is
@@ -342,26 +344,26 @@ class OpenAIResponseProvider(ResponseProvider):
 
         return await client.beta.chat.completions.parse(**completion_args)
 
-    async def use_fallback_model_to_transform_tool_calls(
-        self,
-        config: AssistantConfigModel,
-        content: str,
-        tools: List[ChatCompletionToolParam],
-    ) -> ChatCompletion:
-        # use the fallback model to transform the content to a tools call
-        fallback_service_config = get_fallback_service_config(self.service_config)
-        fallback_request_config = get_fallback_request_config(self.request_config)
+    # async def use_fallback_model_to_transform_tool_calls(
+    #     self,
+    #     config: AssistantConfigModel,
+    #     content: str,
+    #     tools: List[ChatCompletionToolParam],
+    # ) -> ChatCompletion:
+    #     # use the fallback model to transform the content to a tools call
+    #     fallback_service_config = get_fallback_service_config(self.service_config)
+    #     fallback_request_config = get_fallback_request_config(self.request_config)
 
-        async with openai_client.create_client(fallback_service_config) as fallback_client:
-            # make the fallback completion
+    #     async with openai_client.create_client(fallback_service_config) as fallback_client:
+    #         # make the fallback completion
 
-            chat_message_params: List[ChatCompletionMessageParam] = [
-                ChatCompletionUserMessageParam(role="user", content=f"Please make the following tool call: {content}"),
-            ]
+    #         chat_message_params: List[ChatCompletionMessageParam] = [
+    #             ChatCompletionUserMessageParam(role="user", content=f"Please make the following tool call: {content}"),
+    #         ]
 
-            completion = await self.get_completion(fallback_client, fallback_request_config, chat_message_params, tools)
+    #         completion = await self.get_completion(fallback_client, fallback_request_config, chat_message_params, tools)
 
-            return completion
+    #         return completion
 
 
 def customize_chat_message_params_for_reasoning(
@@ -535,47 +537,47 @@ def create_tools_instructions(config: AssistantConfigModel, tools: List[ChatComp
     )
 
 
-def get_fallback_service_config(
-    service_config: openai_client.AzureOpenAIServiceConfig | openai_client.OpenAIServiceConfig,
-) -> openai_client.AzureOpenAIServiceConfig | openai_client.OpenAIServiceConfig:
-    """
-    Get the fallback service config.
+# def get_fallback_service_config(
+#     service_config: openai_client.AzureOpenAIServiceConfig | openai_client.OpenAIServiceConfig,
+# ) -> openai_client.AzureOpenAIServiceConfig | openai_client.OpenAIServiceConfig:
+#     """
+#     Get the fallback service config.
 
-    This function takes a service config and returns a copy of it with the fallback deployment set.
-    """
-    # make a copy for service_config to new fallback_service_config
-    fallback_service_config: openai_client.AzureOpenAIServiceConfig | openai_client.OpenAIServiceConfig = (
-        service_config.model_copy(deep=True)
-    )
+#     This function takes a service config and returns a copy of it with the fallback deployment set.
+#     """
+#     # make a copy for service_config to new fallback_service_config
+#     fallback_service_config: openai_client.AzureOpenAIServiceConfig | openai_client.OpenAIServiceConfig = (
+#         service_config.model_copy(deep=True)
+#     )
 
-    # if using Azure OpenAI, swap the deployment for the fallback one
-    if isinstance(fallback_service_config, openai_client.AzureOpenAIServiceConfig):
-        fallback_deployment = fallback_service_config.azure_openai_fallback_deployment
-        if fallback_deployment.strip() == "":
-            raise ValueError("Fallback deployment not set for Azure OpenAI config.")
-        fallback_service_config.azure_openai_deployment = fallback_deployment
+#     # if using Azure OpenAI, swap the deployment for the fallback one
+#     if isinstance(fallback_service_config, openai_client.AzureOpenAIServiceConfig):
+#         fallback_deployment = fallback_service_config.azure_openai_fallback_deployment
+#         if fallback_deployment.strip() == "":
+#             raise ValueError("Fallback deployment not set for Azure OpenAI config.")
+#         fallback_service_config.azure_openai_deployment = fallback_deployment
 
-    return fallback_service_config
+#     return fallback_service_config
 
 
-def get_fallback_request_config(
-    request_config: openai_client.OpenAIRequestConfig,
-) -> openai_client.OpenAIRequestConfig:
-    """
-    Get the fallback request config.
+# def get_fallback_request_config(
+#     request_config: openai_client.OpenAIRequestConfig,
+# ) -> openai_client.OpenAIRequestConfig:
+#     """
+#     Get the fallback request config.
 
-    This function takes a request config and returns a copy of it with the fallback model set.
-    """
-    fallback_request_config = request_config.model_copy(deep=True)
-    fallback_model = request_config.fallback_model
-    if fallback_model.strip() == "":
-        raise ValueError("Fallback model not set for OpenAI config.")
-    fallback_request_config.model = fallback_model
+#     This function takes a request config and returns a copy of it with the fallback model set.
+#     """
+#     fallback_request_config = request_config.model_copy(deep=True)
+#     fallback_model = request_config.fallback_model
+#     if fallback_model.strip() == "":
+#         raise ValueError("Fallback model not set for OpenAI config.")
+#     fallback_request_config.model = fallback_model
 
-    # set the response tokens to a reasonable value for the fallback model
-    fallback_request_config.response_tokens = 16_384
+#     # set the response tokens to a reasonable value for the fallback model
+#     fallback_request_config.response_tokens = 16_384
 
-    # set the reasoning model flag to False
-    fallback_request_config.is_reasoning_model = False
+#     # set the reasoning model flag to False
+#     fallback_request_config.is_reasoning_model = False
 
-    return fallback_request_config
+#     return fallback_request_config

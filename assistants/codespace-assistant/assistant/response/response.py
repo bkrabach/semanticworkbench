@@ -370,7 +370,7 @@ async def next_turn(
             # FIXME: should use role "tool", but need to make sure that prior message has tool_calls prop for OpenAI
             tool_action_result_message = CompletionMessage(
                 role="user",
-                tool_call_id=tool_action.id,
+                # tool_call_id=tool_action.id,
                 content=tool_action_formatted,
             )
 

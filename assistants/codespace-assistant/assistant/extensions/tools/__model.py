@@ -1,12 +1,10 @@
+from enum import StrEnum
 import json
 from textwrap import dedent
 from typing import Annotated, Any, List, Optional
 
 from attr import dataclass
 from pydantic import BaseModel, Field
-from semantic_workbench_api_model.workbench_model import (
-    MessageType,
-)
 from semantic_workbench_assistant.config import UISchema
 
 
@@ -28,11 +26,15 @@ class ToolAction:
         return json.dumps(self, default=lambda o: o.__dict__, **kwargs)
 
 
+class ToolMessageType(StrEnum):
+    notice = "notice"
+    tool_result = "tool_result"
+
 @dataclass
 class ToolActionResult:
     id: str
     content: str
-    message_type: MessageType
+    message_type: ToolMessageType
     metadata: dict[str, Any]
 
 

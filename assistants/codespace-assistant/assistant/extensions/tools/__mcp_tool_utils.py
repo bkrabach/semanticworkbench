@@ -5,11 +5,8 @@ from typing import List
 import deepmerge
 from mcp import ClientSession, Tool
 from mcp.types import TextContent
-from semantic_workbench_api_model.workbench_model import (
-    MessageType,
-)
 
-from .__model import ToolAction, ToolActionResult
+from .__model import ToolAction, ToolActionResult, ToolMessageType
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +44,7 @@ async def handle_tool_action(
         return ToolActionResult(
             id=tool_action.id,
             content=f"Tool '{tool_action.name}' not found.",
-            message_type=MessageType.notice,
+            message_type=ToolMessageType.notice,
             metadata={},
         )
 
@@ -106,6 +103,6 @@ async def handle_tool_action(
     return ToolActionResult(
         id=tool_action.id,
         content=content or "Error executing tool, unsupported output type.",
-        message_type=MessageType.tool_result,
+        message_type=ToolMessageType.tool_result,
         metadata=metadata,
     )
