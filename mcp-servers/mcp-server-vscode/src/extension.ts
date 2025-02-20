@@ -74,11 +74,13 @@ export const activate = async (context: vscode.ExtensionContext) => {
     context.subscriptions.push(
         vscode.commands.registerCommand('mcpServer.getStatus', async () => {
             const status = server.listening
-                ? `MCP Server is running on port ${(server.address() as any).port}. Active sessions: ${Array.from(activeSessions).join(', ')}`
+                ? `MCP Server is running on port ${(server.address() as any).port}. Active sessions: ${Array.from(
+                      activeSessions,
+                  ).join(', ')}`
                 : 'MCP Server is not running.';
             vscode.window.showInformationMessage(status);
             outputChannel.appendLine(status);
-        })
+        }),
     );
 
     // COMMAND PALETTE COMMAND: Get the current MCP Server port
@@ -98,7 +100,7 @@ export const activate = async (context: vscode.ExtensionContext) => {
                 vscode.window.showWarningMessage('Failed to retrieve MCP Server port.');
                 outputChannel.appendLine('Failed to retrieve MCP Server port.');
             }
-        })
+        }),
     );
 
     // Register 'focus_editor' tool
@@ -250,7 +252,11 @@ export const activate = async (context: vscode.ExtensionContext) => {
                     if (sseTransport?.sessionId) {
                         activeSessions.delete(sseTransport.sessionId);
                     }
-                    outputChannel.appendLine(`Session ${sseTransport.sessionId} disconnected. Active sessions: ${Array.from(activeSessions).join(', ')}`);
+                    outputChannel.appendLine(
+                        `Session ${sseTransport.sessionId} disconnected. Active sessions: ${Array.from(
+                            activeSessions,
+                        ).join(', ')}`,
+                    );
                 });
             }
         } catch (err) {

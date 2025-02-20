@@ -9,7 +9,7 @@
       "module": "semantic_workbench_assistant.start",
       "consoleTitle": "${workspaceFolderBasename}",
       "env": {
-        "MCP_SSE_PORT": "${command:mcpServer.getCurrentPort}"
+        // "MCP_SSE_PORT": "${command:mcpServer.getCurrentPort}"
       }
       //"justMyCode": false, // Set to false to debug external libraries
     }

@@ -96,16 +96,15 @@ To integrate with external tools (like an AI assistant), set the `MCP_SSE_PORT` 
 
 ```json
 {
-  "env": {
-    "MCP_SSE_PORT": "${command:mcpServer.getCurrentPort}"
-  }
+    "env": {
+        "MCP_SSE_PORT": "${command:mcpServer.getCurrentPort}"
+    }
 }
 ```
+
 This ensures the assistant can dynamically connect to the active MCP server port.
 
 ---
-
-
 
 If the port is already in use, the extension will suggest the next available port and apply it dynamically. Logs reflecting the selected port can be found in the **MCP Server Logs** output channel.
 
