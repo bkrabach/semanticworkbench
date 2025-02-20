@@ -275,16 +275,32 @@ export const activate = async (context: vscode.ExtensionContext) => {
 
     // COMMAND PALETTE COMMAND: Start the MCP Server
     context.subscriptions.push(
-        vscode.commands.registerCommand('mcpServer.startServer', async () => {
+        vscode.commands.registerCommand('mcpServer.startServer', async (args?: { port?: number }) => {
             if (server.listening) {
-                vscode.window.showWarningMessage('MCP Server is already running.');
-                outputChannel.appendLine('Attempted to start the MCP Server, but it is already running.');
-                return;
+                const address = server.address() as { port: number };
+                if (address?.port === port) {
+                    outputChannel.appendLine(`MCP Server already running on ${port}, ready for connections.`);
+                    return;
+                }
+
+                const choice = await vscode.window.showQuickPick(
+                    ['Restart on new port', 'Keep running on current port'],
+                    {
+                        title: `MCP Server is running on port ${address.port}. What would you like to do?`,
+                    },
+                );
+
+                if (choice === 'Keep running on current port') {
+                    outputChannel.appendLine(`MCP Server remains running on port ${address.port}.`);
+                    return;
+                }
+
+                server.close(); // Stop the current server before restarting
             }
-            const newPort = await resolvePort(mcpConfig.get<number>('port', 6010));
-            startServer(newPort);
-            outputChannel.appendLine(`MCP Server started on port ${newPort}.`);
-            vscode.window.showInformationMessage(`MCP Server started on port ${newPort}.`);
+            const desiredPort = args && args.port ? args.port : mcpConfig.get<number>('port', 6010);
+            const resolvedPort = await resolvePort(desiredPort);
+            startServer(resolvedPort);
+            outputChannel.appendLine(`MCP Server started on port ${resolvedPort} (desired port: ${desiredPort}).`);
         }),
     );
 
