@@ -249,11 +249,13 @@ export const activate = async (context: vscode.ExtensionContext) => {
             },
         });
     }
-    const startOnActivate = mcpConfig.get<boolean>('startOnActivate', true);
+    const startOnActivate = mcpConfig.get<boolean>('startOnActivate', false);
     if (startOnActivate) {
         startServer(port);
     } else {
-        outputChannel.appendLine('MCP Server startup disabled by configuration.');
+        outputChannel.appendLine(
+            'MCP Server awaiting start (optional: enable `startOnActivate` in VSCode configuration).',
+        );
     }
 
     // COMMAND PALETTE COMMAND: Stop the MCP Server

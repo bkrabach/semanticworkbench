@@ -39,7 +39,7 @@
             "properties": {
                 "mcpServer.startOnActivate": {
                     "type": "boolean",
-                    "default": true,
+                    "default": false,
                     "description": "Determines if the MCP Server should start automatically on VSCode activation."
                 },
                 "mcpServer.port": {
