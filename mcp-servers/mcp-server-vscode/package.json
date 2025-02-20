@@ -36,6 +36,10 @@
             {
                 "command": "mcpServer.getCurrentPort",
                 "title": "MCP Server: Get Current Port"
+            },
+            {
+                "command": "mcpServer.getStatus",
+                "title": "MCP Server: Get Status" 
             }
         ],
         "configuration": {

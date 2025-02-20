@@ -70,6 +70,17 @@ export const activate = async (context: vscode.ExtensionContext) => {
         },
     );
 
+    // COMMAND PALETTE COMMAND: Get the MCP Server status
+    context.subscriptions.push(
+        vscode.commands.registerCommand('mcpServer.getStatus', async () => {
+            const status = server.listening
+                ? `MCP Server is running on port ${(server.address() as any).port}. Active sessions: ${Array.from(activeSessions).join(', ')}`
+                : 'MCP Server is not running.';
+            vscode.window.showInformationMessage(status);
+            outputChannel.appendLine(status);
+        })
+    );
+
     // COMMAND PALETTE COMMAND: Get the current MCP Server port
     context.subscriptions.push(
         vscode.commands.registerCommand('mcpServer.getCurrentPort', async () => {
