@@ -82,11 +82,30 @@ To use the VSCode MCP Server with Claude Desktop, you need to configure Claude D
 The MCP Server status can now be managed directly from the Command Palette:
 
 1. **Stop MCP Server** (`mcpServer.stopServer`): Stops the currently running MCP Server.
-2. **Start MCP Server** (`mcpServer.startServer`): Starts the server on the configured or next available port.
+2. **Start MCP Server** (`mcpServer.startServer`): Starts the server on the configured or next available port. If already running, users can choose to restart on a new port or keep the current configuration.
+3. **Get Current Port** (`mcpServer.getCurrentPort`): Retrieves the current port the MCP Server is running on (if active).
+4. **Get Status** (`mcpServer.getStatus`): Provides a diagnostic summary of the MCP Server state, including whether it's running, the active port, and any connected sessions.
 
 These commands help manage server lifecycle dynamically, without requiring a VSCode restart.
 
-## Dynamic Port Configuration
+## Dynamic Port Configuration & Launch Integration
+
+### Launch Configuration Integration
+
+To integrate with external tools (like an AI assistant), set the `MCP_SSE_PORT` environment variable dynamically using the `mcpServer.getCurrentPort` command. For example, in the assistant’s launch configuration:
+
+```json
+{
+  "env": {
+    "MCP_SSE_PORT": "${command:mcpServer.getCurrentPort}"
+  }
+}
+```
+This ensures the assistant can dynamically connect to the active MCP server port.
+
+---
+
+
 
 If the port is already in use, the extension will suggest the next available port and apply it dynamically. Logs reflecting the selected port can be found in the **MCP Server Logs** output channel.
 
