@@ -217,6 +217,7 @@ export const activate = async (context: vscode.ExtensionContext) => {
     const port = await resolvePort(mcpConfig.get<number>('port', 6010));
 
     let sseTransport: SSEServerTransport | undefined;
+    const activeSessions: Set<string> = new Set(); // Track active session IDs
 
     // GET /sse endpoint: the external MCP client connects here (SSE)
     app.get('/sse', async (_req: Request, res: Response) => {
@@ -226,6 +227,21 @@ export const activate = async (context: vscode.ExtensionContext) => {
             await mcpServer.connect(sseTransport);
             outputChannel.appendLine('MCP Server connected via SSE.');
             outputChannel.appendLine(`SSE Transport sessionId: ${sseTransport.sessionId}`);
+            if (sseTransport?.sessionId) {
+                activeSessions.add(sseTransport.sessionId);
+                outputChannel.appendLine(`Active sessions: ${Array.from(activeSessions).join(', ')}`);
+
+                // Clean up sessions on disconnect
+                res.on('close', () => {
+                    if (!sseTransport) {
+                        return;
+                    }
+                    if (sseTransport?.sessionId) {
+                        activeSessions.delete(sseTransport.sessionId);
+                    }
+                    outputChannel.appendLine(`Session ${sseTransport.sessionId} disconnected. Active sessions: ${Array.from(activeSessions).join(', ')}`);
+                });
+            }
         } catch (err) {
             outputChannel.appendLine('Error connecting MCP Server via SSE: ' + err);
         }
