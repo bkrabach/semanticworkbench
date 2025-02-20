@@ -7,7 +7,10 @@
       "name": "assistants: codespace-assistant",
       "cwd": "${workspaceFolder}",
       "module": "semantic_workbench_assistant.start",
-      "consoleTitle": "${workspaceFolderBasename}"
+      "consoleTitle": "${workspaceFolderBasename}",
+      "env": {
+        "MCP_SSE_PORT": "${command:mcpServer.getCurrentPort}"
+      }
       //"justMyCode": false, // Set to false to debug external libraries
     }
   ],
