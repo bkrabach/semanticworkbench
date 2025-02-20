@@ -70,6 +70,26 @@ export const activate = async (context: vscode.ExtensionContext) => {
         },
     );
 
+    // COMMAND PALETTE COMMAND: Get the current MCP Server port
+    context.subscriptions.push(
+        vscode.commands.registerCommand('mcpServer.getCurrentPort', async () => {
+            if (!server.listening) {
+                vscode.window.showWarningMessage('MCP Server is not running.');
+                outputChannel.appendLine('MCP Server is not running. Cannot retrieve port.');
+                return;
+            }
+            const address = server.address() as { port: number };
+            if (address?.port) {
+                const message = `MCP Server is running on port ${address.port}.`;
+                vscode.window.showInformationMessage(message);
+                outputChannel.appendLine(message);
+            } else {
+                vscode.window.showWarningMessage('Failed to retrieve MCP Server port.');
+                outputChannel.appendLine('Failed to retrieve MCP Server port.');
+            }
+        })
+    );
+
     // Register 'focus_editor' tool
     mcpServer.tool(
         'focus_editor',
