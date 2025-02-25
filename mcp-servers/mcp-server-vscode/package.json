@@ -3,7 +3,7 @@
     "displayName": "VSCode MCP Server",
     "publisher": "SemanticWorkbenchTeam",
     "description": "VSCode tools and resources as a Model Context Protocol (MCP) server in a VSCode extension.",
-    "version": "0.0.9",
+    "version": "0.1.0",
     "type": "commonjs",
     "icon": "images/icon.png",
     "engines": {
@@ -83,7 +83,7 @@
         "webpack-cli": "^6.0.1"
     },
     "dependencies": {
-        "@modelcontextprotocol/sdk": "^1.4.1",
+        "@modelcontextprotocol/sdk": "^1.6.0",
         "dedent": "^1.5.3",
         "express": "^4.21.2",
         "get-port": "^7.1.0"
