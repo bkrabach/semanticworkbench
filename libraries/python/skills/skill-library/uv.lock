@@ -219,7 +219,6 @@ requires-dist = [
     { name = "assistant-drive", editable = "../../assistant-drive" },
     { name = "deepmerge", specifier = ">=2.0" },
     { name = "docx2txt", marker = "extra == 'attachments'", specifier = ">=0.8" },
-    { name = "mcp", marker = "extra == 'mcp'", specifier = ">=1.2.1" },
     { name = "mcp-extensions", extras = ["openai"], marker = "extra == 'mcp'", editable = "../../mcp-extensions" },
     { name = "openai", specifier = ">=1.61.0" },
     { name = "openai-client", editable = "../../openai-client" },
