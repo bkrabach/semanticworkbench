@@ -16,23 +16,38 @@ OnMCPLoggingMessageHandler = Callable[[str], Awaitable[None]]
 
 class MCPServerEnvConfig(BaseModel):
     key: Annotated[str, Field(title="Key", description="Environment variable key.")]
-    value: Annotated[str, Field(title="Value", description="Environment variable value.")]
+    value: Annotated[
+        str, Field(title="Value", description="Environment variable value.")
+    ]
 
 
 class MCPServerConfig(BaseModel):
-    enabled: Annotated[bool, Field(title="Enabled", description="Enable the server.")] = True
+    enabled: Annotated[
+        bool, Field(title="Enabled", description="Enable the server.")
+    ] = True
 
-    key: Annotated[str, Field(title="Key", description="Unique key for the server configuration.")]
-
-    command: Annotated[
-        str, Field(title="Command", description="Command to run the server, use url if using SSE transport.")
+    key: Annotated[
+        str, Field(title="Key", description="Unique key for the server configuration.")
     ]
 
-    args: Annotated[List[str], Field(title="Arguments", description="Arguments to pass to the server.")]
+    command: Annotated[
+        str,
+        Field(
+            title="Command",
+            description="Command to run the server, use url if using SSE transport.",
+        ),
+    ]
+
+    args: Annotated[
+        List[str],
+        Field(title="Arguments", description="Arguments to pass to the server."),
+    ]
 
     env: Annotated[
         List[MCPServerEnvConfig],
-        Field(title="Environment Variables", description="Environment variables to set."),
+        Field(
+            title="Environment Variables", description="Environment variables to set."
+        ),
     ] = []
 
     prompt: Annotated[
@@ -43,7 +58,9 @@ class MCPServerConfig(BaseModel):
 
     long_running: Annotated[
         bool,
-        Field(title="Long Running", description="Does this server run long running tasks?"),
+        Field(
+            title="Long Running", description="Does this server run long running tasks?"
+        ),
     ] = False
 
     task_completion_estimate: Annotated[
@@ -70,7 +87,7 @@ class MCPToolsConfigModel(BaseModel):
             title="Maximum Steps",
             description="The maximum number of steps to take when using tools, to avoid infinite loops.",
         ),
-    ] = 5
+    ] = 50
 
     max_steps_truncation_message: Annotated[
         str,
@@ -113,13 +130,16 @@ class MCPToolsConfigModel(BaseModel):
         MCPServerConfig(
             key="filesystem",
             command="npx",
-            args=["-y", "@modelcontextprotocol/server-filesystem", "/workspaces/semanticworkbench"],
+            args=[
+                "-y",
+                "@modelcontextprotocol/server-filesystem",
+                "/workspaces/semanticworkbench",
+            ],
         ),
         MCPServerConfig(
             key="vscode",
             command="http://127.0.0.1:6010/sse",
             args=[],
-            enabled=False,
         ),
         MCPServerConfig(
             key="bing-search",
@@ -135,8 +155,38 @@ class MCPToolsConfigModel(BaseModel):
         ),
         MCPServerConfig(
             key="giphy",
-            command="http://http://127.0.0.1:6000/sse",
+            command="http://127.0.0.1:6000/sse",
             args=[],
+            enabled=False,
+        ),
+        MCPServerConfig(
+            key="fusion",
+            command="http://127.0.0.1:6050/sse",
+            args=[],
+            prompt=dedent("""
+                When creating models using the Fusion tool suite, keep these guidelines in mind:
+
+                - **Coordinate System & Planes:**
+                - **Axes:** Z is vertical, X is horizontal, and Y is depth.
+                - **Primary Planes:**
+                    - **XY:** Represents top and bottom surfaces (use the top or bottom Z coordinate as needed).
+                    - **XZ:** Represents the front and back surfaces (use the appropriate Y coordinate).
+                    - **YZ:** Represents the left and right surfaces (use the appropriate X coordinate).
+
+                - **Sketch & Geometry Management:**
+                - **Sketch Creation:** Always create or select the proper sketch using `create_sketch` or `create_sketch_on_offset_plane` before adding geometry. This ensures the correct reference plane is used.
+                - **Top-Face Features:** For features intended for the top surface (like button openings), use `create_sketch_on_offset_plane` with an offset equal to the block's height and confirm the sketch is positioned at the correct Z value.
+                - **Distinct Sketches for Operations:** Use separate sketches for base extrusions and cut operations (e.g., avoid reusing the same sketch for both extrude and cut_extrude) to maintain clarity and prevent unintended geometry modifications.
+                - **Validation:** Use the `sketches` tool to list available sketches and confirm names before referencing them in other operations.
+
+                - **Feature Operations & Parameters:**
+                - **Extrude vs. Cut:** When using extrude operations, verify that the direction vector is correctly defined (defaults to positive Z if omitted) and that distances (extrusion or cut depth) are positive.
+                - **Cut Direction for Top-Face Features:** When cutting features from the top face, ensure the extrusion (cut) direction is set to [0, 0, -1] so that the cut is made downward from the top surface.
+                - **Targeting Entities:** For operations like `cut_extrude` and `rectangular_pattern`, ensure the entity names provided refer to existing, valid bodies.
+                - **Adjustment Consideration:** Always consider the required adjustment on the third axis (depth for XY-based operations, etc.) to maintain proper alignment and avoid unintended modifications.
+
+                By following these guidelines, you help ensure that operations are applied to the correct geometry and that the overall modeling process remains stable and predictable.
+            """).strip(),
             enabled=False,
         ),
         MCPServerConfig(
@@ -191,6 +241,7 @@ class MCPSession:
     config: MCPServerConfig
     client_session: ClientSession
     tools: List[Tool] = []
+    is_connected: bool = True
 
     def __init__(self, config: MCPServerConfig, client_session: ClientSession) -> None:
         self.config = config
@@ -200,7 +251,10 @@ class MCPSession:
         # Load all tools from the session, later we can do the same for resources, prompts, etc.
         tools_result = await self.client_session.list_tools()
         self.tools = tools_result.tools
-        logger.debug(f"Loaded {len(tools_result.tools)} tools from session '{self.config.key}'")
+        self.is_connected = True
+        logger.debug(
+            f"Loaded {len(tools_result.tools)} tools from session '{self.config.key}'"
+        )
 
 
 class ExtendedCallToolRequestParams(CallToolRequestParams):
