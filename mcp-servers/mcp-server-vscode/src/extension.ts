@@ -255,9 +255,9 @@ export const activate = async (context: vscode.ExtensionContext) => {
     context.subscriptions.push(
         vscode.commands.registerCommand('mcpServer.getStatus', async () => {
             const status = server.listening
-                ? `MCP Server is running on port ${(server.address() as any).port}. Active sessions: ${Array.from(
-                      activeSessions,
-                  ).join(', ')}`
+                ? `MCP Server is running on port ${(server.address() as any).port}. Active sessions: ${
+                      server.sessions.length
+                  }`
                 : 'MCP Server is not running.';
             vscode.window.showInformationMessage(status);
             outputChannel.appendLine(status);
