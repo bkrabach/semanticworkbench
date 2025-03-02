@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Exploration of a python Semantic Workbench OpenAI assistant to help mine artifacts for ideas."
 authors = [{ name = "Semantic Workbench Team" }]
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.12"
 dependencies = [
     "assistant-extensions[attachments]>=0.1.0",
     "content-safety>=0.1.0",

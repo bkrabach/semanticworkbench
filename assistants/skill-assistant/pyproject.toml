@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "MADE:Exploration skill assistant."
 authors = [{ name = "MADE:Exploration" }]
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.12"
 dependencies = [
     "azure-ai-contentsafety>=1.0.0",
     "azure-core[aio]>=1.30.0",

@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Extensions for Model Context Protocol (MCP) clients / servers."
 authors = [{ name = "Semantic Workbench Team" }]
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.12"
 dependencies = ["deepmerge>=2.0", "mcp>=1.3.0"]
 
 [project.optional-dependencies]

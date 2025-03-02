@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "A python Semantic Workbench OpenAI assistant for exploring capabilities."
 authors = [{ name = "Semantic Workbench Team" }]
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.12"
 dependencies = [
     "anthropic>=0.40.0",
     "anthropic-client>=0.1.0",

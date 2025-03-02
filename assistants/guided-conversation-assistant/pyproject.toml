@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "An assistant that will guide users through a conversation towards a specific goal."
 authors = [{ name = "Semantic Workbench Team" }]
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.12"
 dependencies = [
     "deepmerge>=2.0",
     "docx2txt>=0.8",

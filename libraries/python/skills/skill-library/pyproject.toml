@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "MADE:Exploration Skill library"
 authors = [{name="MADE:Explorers"}]
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.12"
 dependencies = [
     "assistant-drive>=0.1.0",
     "assistant-extensions[attachments]>=0.1.0",
