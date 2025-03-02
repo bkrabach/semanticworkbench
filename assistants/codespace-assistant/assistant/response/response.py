@@ -1,4 +1,5 @@
 import logging
+import time
 from contextlib import AsyncExitStack
 from typing import Any, List
 
@@ -102,8 +103,28 @@ async def respond_to_conversation(
                 logger.info("Response interrupted.")
                 break
 
-            # Reconnect to the MCP servers if they were disconnected
+            # Track session health and reconnect to the MCP servers if they were disconnected
+            before_refresh_count = len(mcp_sessions)
+            before_connected_count = sum(1 for s in mcp_sessions if s.is_connected)
+            logger.info(
+                f"Step {step_count}: Before refresh - {before_connected_count}/{before_refresh_count} sessions connected"
+            )
+
+            refresh_start_time = time.time()
             mcp_sessions = await refresh_mcp_sessions(mcp_sessions)
+            refresh_duration = time.time() - refresh_start_time
+
+            after_refresh_count = len(mcp_sessions)
+            after_connected_count = sum(1 for s in mcp_sessions if s.is_connected)
+            logger.info(
+                f"Step {step_count}: After refresh ({refresh_duration:.2f}s) - {after_connected_count}/{after_refresh_count} sessions connected"
+            )
+
+            # Alert if sessions were lost during refresh
+            if after_refresh_count < before_refresh_count:
+                logger.warning(
+                    f"Step {step_count}: Lost {before_refresh_count - after_refresh_count} MCP sessions during refresh"
+                )
 
             step_result = await next_step(
                 sampling_handler=sampling_handler,

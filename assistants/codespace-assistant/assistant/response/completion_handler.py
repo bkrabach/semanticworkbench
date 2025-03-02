@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import re
@@ -166,7 +167,41 @@ async def handle_completion(
                 async def on_logging_message(msg: str) -> None:
                     await context.update_participant_me(UpdateParticipant(status=f"{tool_call_status}: {msg}"))
 
+                tool_call_id = f"{metadata_key}:tool:{tool_call_count}"
+                logger.info(f"[MCP-TOOL:{tool_call_id}] Starting tool call to '{tool_call.name}'")
+                tool_call_start_time = time.time()
+                heartbeat_task = None
+
                 try:
+                    # Periodically log heartbeat during long-running tool calls
+                    async def tool_call_heartbeat():
+                        heartbeat_count = 0
+                        try:
+                            while True:
+                                heartbeat_count += 1
+                                elapsed = time.time() - tool_call_start_time
+                                logger.debug(
+                                    f"[MCP-TOOL:{tool_call_id}] Heartbeat #{heartbeat_count} at {elapsed:.2f}s"
+                                )
+                                await asyncio.sleep(15)  # Heartbeat every 15 seconds during tool call
+                        except asyncio.CancelledError:
+                            elapsed = time.time() - tool_call_start_time
+                            logger.debug(f"[MCP-TOOL:{tool_call_id}] Heartbeat task cancelled after {elapsed:.2f}s")
+                            raise
+                        except Exception as e:
+                            logger.error(f"[MCP-TOOL:{tool_call_id}] Heartbeat task error: {e}")
+
+                    # Start heartbeat task to detect if tool call is stalling
+                    heartbeat_task = asyncio.create_task(tool_call_heartbeat())
+
+                    # Check MCP sessions before tool call
+                    session_count_before = len(mcp_sessions)
+                    connected_count_before = sum(1 for s in mcp_sessions if s.is_connected)
+                    logger.debug(
+                        f"[MCP-TOOL:{tool_call_id}] Before tool call: {connected_count_before}/{session_count_before} sessions connected"
+                    )
+
+                    # Perform the actual tool call
                     tool_call_result = await handle_mcp_tool_call(
                         sampling_handler,
                         mcp_sessions,
@@ -174,14 +209,39 @@ async def handle_completion(
                         f"{metadata_key}:request:tool_call_{tool_call_count}",
                         on_logging_message,
                     )
+
+                    # Log success
+                    tool_call_duration = time.time() - tool_call_start_time
+                    logger.info(
+                        f"[MCP-TOOL:{tool_call_id}] Tool call '{tool_call.name}' completed in {tool_call_duration:.2f}s"
+                    )
+
+                    # Check MCP sessions after tool call
+                    session_count_after = len(mcp_sessions)
+                    connected_count_after = sum(1 for s in mcp_sessions if s.is_connected)
+                    logger.debug(
+                        f"[MCP-TOOL:{tool_call_id}] After tool call: {connected_count_after}/{session_count_after} sessions connected"
+                    )
+
+                    # Refresh sessions if any disconnected during this tool call
+                    if connected_count_after < connected_count_before:
+                        logger.warning(
+                            f"[MCP-TOOL:{tool_call_id}] Detected {connected_count_before - connected_count_after} "
+                            f"disconnected sessions during tool call"
+                        )
+
                 except Exception as e:
-                    logger.exception(f"Error handling tool call '{tool_call.name}': {e}")
+                    tool_call_duration = time.time() - tool_call_start_time
+                    logger.exception(
+                        f"[MCP-TOOL:{tool_call_id}] Error handling tool call '{tool_call.name}' after {tool_call_duration:.2f}s: {e}"
+                    )
                     deepmerge.always_merger.merge(
                         step_result.metadata,
                         {
                             "debug": {
                                 f"{metadata_key}:request:tool_call_{tool_call_count}": {
                                     "error": str(e),
+                                    "duration": f"{tool_call_duration:.2f}s",
                                 },
                             },
                         },
@@ -195,6 +255,14 @@ async def handle_completion(
                     )
                     step_result.status = "error"
                     return step_result
+                finally:
+                    # Ensure the heartbeat task is always cleaned up
+                    if heartbeat_task is not None and not heartbeat_task.done():
+                        heartbeat_task.cancel()
+                        try:
+                            await heartbeat_task
+                        except asyncio.CancelledError:
+                            pass
 
             # Update content and metadata with tool call result metadata
             deepmerge.always_merger.merge(step_result.metadata, tool_call_result.metadata)

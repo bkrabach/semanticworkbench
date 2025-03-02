@@ -1,3 +1,4 @@
 {
-  "cSpell.words": ["addin", "fastmcp", "futil", "levelname"]
+  "cSpell.words": ["addin", "fastmcp", "futil", "levelname"],
+  "python.analysis.autoImportCompletions": true
 }

@@ -1,15 +1,16 @@
+import asyncio
 import logging
-from asyncio import CancelledError
-from contextlib import AsyncExitStack, asynccontextmanager
 import pathlib
+import time
+from asyncio import CancelledError, create_task
+from contextlib import AsyncExitStack, asynccontextmanager
 from typing import Any, AsyncIterator, List, Optional
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
+import pydantic
 from mcp import ClientSession, types
 from mcp.client.session import SamplingFnT
-from mcp.client.sse import sse_client
 from mcp.client.stdio import StdioServerParameters, stdio_client
-import pydantic
 from mcp.shared.context import RequestContext
 
 from ._model import (
@@ -19,6 +20,9 @@ from ._model import (
     MCPSession,
     MCPToolsConfigModel,
 )
+
+# Use our patched SSE client instead of the original one
+from .patched_sse import sse_client
 
 logger = logging.getLogger(__name__)
 
@@ -67,14 +71,18 @@ def list_roots_callback_for(server_config: MCPServerConfig):
             case _:
                 return pydantic.FileUrl(f"file://{path.as_posix()}")
 
-    async def cb(context: RequestContext[ClientSession, Any]) -> types.ListRootsResult | types.ErrorData:
+    async def cb(
+        context: RequestContext[ClientSession, Any],
+    ) -> types.ListRootsResult | types.ErrorData:
         roots = server_config.roots
-        return types.ListRootsResult(roots=[
-            # mcp sdk is currently typed to FileUrl, but the MCP spec allows for any URL
-            # the mcp sdk doesn't call any of the FileUrl methods, so this is safe for now
-            types.Root(uri=root_to_uri(root)) # type: ignore
-            for root in roots
-            ])
+        return types.ListRootsResult(
+            roots=[
+                # mcp sdk is currently typed to FileUrl, but the MCP spec allows for any URL
+                # the mcp sdk doesn't call any of the FileUrl methods, so this is safe for now
+                types.Root(uri=root_to_uri(root))  # type: ignore
+                for root in roots
+            ]
+        )
 
     return cb
 
@@ -131,6 +139,37 @@ async def connect_to_mcp_server_sse(
 ) -> AsyncIterator[Optional[ClientSession]]:
     """Connect to a single MCP server defined in the config using SSE transport."""
 
+    start_time = time.time()
+    connection_id = f"{server_config.key}_{int(start_time)}"
+    logger.info(
+        f"[MCP-CONN:{connection_id}] Starting connection attempt to {server_config.key}"
+    )
+
+    # Start a background task to monitor connection status
+    # This will help us understand if the connection is stalling
+    heartbeat_task = None
+
+    async def connection_heartbeat():
+        heartbeat_count = 0
+        try:
+            while True:
+                heartbeat_count += 1
+                elapsed = time.time() - start_time
+                logger.debug(
+                    f"[MCP-CONN:{connection_id}] Heartbeat #{heartbeat_count} at {elapsed:.2f}s"
+                )
+                await asyncio.sleep(
+                    30
+                )  # Send heartbeat every 30 seconds - check connection health
+        except CancelledError:
+            elapsed = time.time() - start_time
+            logger.debug(
+                f"[MCP-CONN:{connection_id}] Heartbeat task cancelled after {elapsed:.2f}s"
+            )
+            raise
+        except Exception as e:
+            logger.error(f"[MCP-CONN:{connection_id}] Heartbeat task error: {e}")
+
     try:
         headers = get_env_dict(server_config)
         url = server_config.command
@@ -144,32 +183,68 @@ async def connect_to_mcp_server_sse(
             # Add to URL with 'args' as the parameter name
             url_params = {"args": args_value}
             url = add_params_to_url(url, url_params)
-            logger.debug(f"Added parameter args={args_value} to URL")
+            logger.debug(
+                f"[MCP-CONN:{connection_id}] Added parameter args={args_value} to URL"
+            )
 
-        logger.debug(
-            f"Attempting to connect to {server_config.key} with SSE transport: {url}"
+        # Define timeout values and log them
+        connect_timeout = 60 * 5  # 5 minutes
+        read_timeout = 60 * 15  # 15 minutes
+        logger.info(
+            f"[MCP-CONN:{connection_id}] Attempting to connect to {server_config.key} with SSE transport: {url} "
+            f"(connect_timeout={connect_timeout}s, read_timeout={read_timeout}s)"
         )
+
+        # Start heartbeat task
+        heartbeat_task = create_task(connection_heartbeat())
 
         # FIXME: Bumping sse_read_timeout to 15 minutes and timeout to 5 minutes, but this should be configurable
         async with sse_client(
-            url=url, headers=headers, timeout=60 * 5, sse_read_timeout=60 * 15
+            url=url,
+            headers=headers,
+            timeout=connect_timeout,
+            sse_read_timeout=read_timeout,
         ) as (
             read_stream,
             write_stream,
         ):
+            connection_time = time.time() - start_time
+            logger.info(
+                f"[MCP-CONN:{connection_id}] SSE client connected after {connection_time:.2f}s"
+            )
+
             async with ClientSession(
                 read_stream,
                 write_stream,
                 list_roots_callback=list_roots_callback_for(server_config),
                 sampling_callback=sampling_callback,
             ) as client_session:
+                session_creation_time = time.time() - start_time
+                logger.info(
+                    f"[MCP-CONN:{connection_id}] Client session created after {session_creation_time:.2f}s"
+                )
+
                 await client_session.initialize()
+                init_time = time.time() - start_time
+                logger.info(
+                    f"[MCP-CONN:{connection_id}] Session initialized after {init_time:.2f}s"
+                )
+
                 yield client_session  # Yield the session for use
 
+                end_use_time = time.time() - start_time
+                logger.info(
+                    f"[MCP-CONN:{connection_id}] Session use completed after {end_use_time:.2f}s"
+                )
+
     except ExceptionGroup as e:
-        logger.exception(f"TaskGroup failed in SSE client for {server_config.key}: {e}")
+        logger.exception(
+            f"[MCP-CONN:{connection_id}] TaskGroup failed in SSE client for {server_config.key}: {e}"
+        )
         for sub in e.exceptions:
-            logger.error(f"Sub-exception: {server_config.key}: {sub}")
+            logger.error(
+                f"[MCP-CONN:{connection_id}] Sub-exception: {server_config.key}: {sub}"
+            )
         # If there's exactly one underlying exception, re-raise it
         if len(e.exceptions) == 1:
             raise e.exceptions[0]
@@ -177,15 +252,24 @@ async def connect_to_mcp_server_sse(
             raise
     except CancelledError as e:
         logger.exception(
-            f"Task was cancelled in SSE client for {server_config.key}: {e}"
+            f"[MCP-CONN:{connection_id}] Task was cancelled in SSE client for {server_config.key}: {e}"
         )
         raise
     except RuntimeError as e:
-        logger.exception(f"Runtime error in SSE client for {server_config.key}: {e}")
+        logger.exception(
+            f"[MCP-CONN:{connection_id}] Runtime error in SSE client for {server_config.key}: {e}"
+        )
         raise
     except Exception as e:
-        logger.exception(f"Error connecting to {server_config.key}: {e}")
+        logger.exception(
+            f"[MCP-CONN:{connection_id}] Error connecting to {server_config.key}: {e}"
+        )
         raise
+    finally:
+        # Ensure the heartbeat task is cancelled when the connection exits
+        if heartbeat_task is not None and not heartbeat_task.done():
+            logger.debug(f"[MCP-CONN:{connection_id}] Cancelling heartbeat task")
+            heartbeat_task.cancel()
 
 
 async def refresh_mcp_sessions(mcp_sessions: list[MCPSession]) -> list[MCPSession]:
@@ -193,19 +277,55 @@ async def refresh_mcp_sessions(mcp_sessions: list[MCPSession]) -> list[MCPSessio
     Check each MCP session for connectivity. If a session is marked as disconnected,
     attempt to reconnect it using reconnect_mcp_session.
     """
+    refresh_id = int(time.time())
+    logger.info(
+        f"[MCP-REFRESH:{refresh_id}] Refreshing {len(mcp_sessions)} MCP sessions"
+    )
+
     active_sessions = []
-    for session in mcp_sessions:
+    for idx, session in enumerate(mcp_sessions):
+        session_key = session.config.key if session else "unknown"
+
+        # Add a delay between session checks to avoid overwhelming the system
+        if idx > 0:
+            await asyncio.sleep(0.1)
+
+        # Log session state
+        logger.debug(
+            f"[MCP-REFRESH:{refresh_id}] Checking session {idx + 1}/{len(mcp_sessions)}: "
+            f"{session_key}, connected: {session.is_connected}"
+        )
+
+        # Perform a health check on the session
+        start_time = time.time()
         if not session.is_connected:
             logger.info(
-                f"Session {session.config.key} is disconnected. Attempting to reconnect..."
+                f"[MCP-REFRESH:{refresh_id}] Session {session_key} is disconnected. "
+                f"Attempting to reconnect..."
             )
             new_session = await reconnect_mcp_session(session.config)
             if new_session:
                 active_sessions.append(new_session)
+                logger.info(
+                    f"[MCP-REFRESH:{refresh_id}] Successfully reconnected to {session_key} "
+                    f"in {time.time() - start_time:.2f}s"
+                )
             else:
-                logger.error(f"Failed to reconnect MCP server {session.config.key}.")
+                logger.error(
+                    f"[MCP-REFRESH:{refresh_id}] Failed to reconnect MCP server {session_key} "
+                    f"after {time.time() - start_time:.2f}s"
+                )
         else:
+            # Even if the session says it's connected, do a basic health check if possible
             active_sessions.append(session)
+            logger.debug(
+                f"[MCP-REFRESH:{refresh_id}] Session {session_key} is marked as connected"
+            )
+
+    logger.info(
+        f"[MCP-REFRESH:{refresh_id}] Session refresh complete. "
+        f"{len(active_sessions)}/{len(mcp_sessions)} sessions active"
+    )
     return active_sessions
 
 
