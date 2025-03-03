@@ -8,6 +8,7 @@ from ._model import (
     MCPSession,
     MCPToolsConfigModel,
 )
+from ._model_preferences import ModelHint, ModelPreferences
 from ._openai_utils import (
     OpenAISamplingHandler,
     sampling_message_to_chat_completion_message,
@@ -28,6 +29,8 @@ __all__ = [
     "MCPServerConfig",
     "MCPSession",
     "MCPToolsConfigModel",
+    "ModelHint",
+    "ModelPreferences",
     "OpenAISamplingHandler",
     "establish_mcp_sessions",
     "get_mcp_server_prompts",

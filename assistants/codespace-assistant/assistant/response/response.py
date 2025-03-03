@@ -20,7 +20,6 @@ from semantic_workbench_assistant.assistant_app import ConversationContext
 
 from ..config import AssistantConfigModel
 from .step_handler import next_step
-from .utils import get_ai_client_configs
 
 logger = logging.getLogger(__name__)
 
@@ -52,16 +51,14 @@ async def respond_to_conversation(
                 )
             )
 
-        # TODO: This is a temporary hack to allow directing the request to the reasoning model
-        request_type = "reasoning" if message.content.startswith("reason:") else "generative"
-
-        # Get the AI client configuration based on the request type
-        request_config, service_config = get_ai_client_configs(config, request_type)
-
-        # Create a sampling handler for handling requests from the MCP servers
+        # Create a sampling handler with all available model configurations
+        # This allows the handler to select the most appropriate model based on modelPreferences
         sampling_handler = OpenAISamplingHandler(
-            service_config=service_config,
-            request_config=request_config,
+            client_configs=[
+                config.generative_ai_client_config,
+                config.reasoning_ai_client_config,
+                # More configs can be added here in the future when available
+            ]
         )
 
         mcp_sessions = await establish_mcp_sessions(
@@ -105,14 +102,64 @@ async def respond_to_conversation(
             # Reconnect to the MCP servers if they were disconnected
             mcp_sessions = await refresh_mcp_sessions(mcp_sessions)
 
+            # Get the current request_config and service_config from the sampling_handler
+            # These will be updated by the handler when it selects models based on preferences
+            current_request_config = sampling_handler.request_config
+            current_service_config = sampling_handler.service_config
+
+            # Check for missing configs
+            if not current_request_config or not current_service_config:
+                logger.error("No request_config or service_config available in sampling_handler")
+                await context.send_messages(
+                    NewConversationMessage(
+                        content="Configuration error: No models available for completion. Please check assistant configuration.",
+                        message_type=MessageType.notice,
+                        metadata=metadata,
+                    )
+                )
+                break
+
+            # Type check to ensure we're passing compatible configs to next_step
+            from openai_client import AzureOpenAIServiceConfig, OpenAIRequestConfig, OpenAIServiceConfig
+
+            # Verify request_config is an OpenAIRequestConfig
+            if not isinstance(current_request_config, OpenAIRequestConfig):
+                logger.error(f"Incompatible request_config type: {type(current_request_config).__name__}")
+                await context.send_messages(
+                    NewConversationMessage(
+                        content=f"Configuration error: Incompatible model type {type(current_request_config).__name__}. Only OpenAI models are supported.",
+                        message_type=MessageType.notice,
+                        metadata=metadata,
+                    )
+                )
+                break
+
+            # Verify service_config is a compatible OpenAI service config
+            if not isinstance(current_service_config, (AzureOpenAIServiceConfig, OpenAIServiceConfig)):
+                logger.error(f"Incompatible service_config type: {type(current_service_config).__name__}")
+                await context.send_messages(
+                    NewConversationMessage(
+                        content=f"Configuration error: Incompatible service type {type(current_service_config).__name__}. Only OpenAI services are supported.",
+                        message_type=MessageType.notice,
+                        metadata=metadata,
+                    )
+                )
+                break
+
+            # Now we know the types are compatible
+            openai_request_config = current_request_config  # Now typed as OpenAIRequestConfig
+            openai_service_config = (
+                current_service_config  # Now typed as AzureOpenAIServiceConfig | OpenAIServiceConfig
+            )
+
             step_result = await next_step(
                 sampling_handler=sampling_handler,
                 mcp_sessions=mcp_sessions,
                 mcp_prompts=mcp_prompts,
                 attachments_extension=attachments_extension,
                 context=context,
-                request_config=request_config,
-                service_config=service_config,
+                request_config=openai_request_config,
+                service_config=openai_service_config,
                 prompts_config=config.prompts,
                 tools_config=config.extensions_config.tools,
                 attachments_config=config.extensions_config.attachments,

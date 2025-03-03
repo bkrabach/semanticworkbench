@@ -6,6 +6,8 @@ from typing import List
 from assistant_extensions.attachments import AttachmentsConfigModel, AttachmentsExtension
 from assistant_extensions.mcp import (
     MCPToolsConfigModel,
+    ModelHint,
+    ModelPreferences,
     OpenAISamplingHandler,
     sampling_message_to_chat_completion_message,
 )
@@ -41,6 +43,52 @@ class BuildRequestResult:
     token_overage: int
 
 
+def extract_model_preferences(message_content: str) -> ModelPreferences:
+    """
+    Extract model preferences from the user's message content.
+
+    Look for prefixes or keywords that indicate preferred model characteristics.
+
+    Args:
+        message_content: The content of the user's message
+
+    Returns:
+        ModelPreferences object with appropriate priorities and hints
+    """
+    preferences = ModelPreferences(costPriority=None, speedPriority=None, intelligencePriority=None, hints=[])
+    content_lower = message_content.lower()
+
+    # Check for explicit model type hints
+    if content_lower.startswith("reason:") or content_lower.startswith("reasoning:"):
+        # User wants deep reasoning - high intelligence, lower speed
+        preferences.intelligencePriority = 10
+        preferences.speedPriority = 1
+        preferences.hints = [ModelHint(name="gpt-4")]
+
+    elif content_lower.startswith("fast:") or content_lower.startswith("quick:"):
+        # User wants a fast response - high speed, lower intelligence
+        preferences.speedPriority = 10
+        preferences.intelligencePriority = 1
+        preferences.hints = [ModelHint(name="gpt-3.5")]
+
+    elif content_lower.startswith("code:"):
+        # For code generation, balance of speed and intelligence
+        preferences.speedPriority = 5
+        preferences.intelligencePriority = 5
+
+    elif any(keyword in content_lower for keyword in ["analyze", "explain", "complex", "detail"]):
+        # More intelligent model for analytical tasks
+        preferences.intelligencePriority = 8
+        preferences.speedPriority = 3
+
+    elif any(keyword in content_lower for keyword in ["quickly", "simple", "brief", "short"]):
+        # Faster model for simpler tasks
+        preferences.speedPriority = 8
+        preferences.intelligencePriority = 3
+
+    return preferences
+
+
 async def build_request(
     sampling_handler: OpenAISamplingHandler,
     mcp_prompts: List[str],
@@ -53,6 +101,20 @@ async def build_request(
     attachments_config: AttachmentsConfigModel,
     silence_token: str,
 ) -> BuildRequestResult:
+    # Get the latest message to extract model preferences
+    latest_messages = await context.get_messages(limit=1)
+
+    # Extract model preferences from the latest message if it exists
+    if latest_messages and latest_messages.messages:
+        latest_message = latest_messages.messages[0]
+        if latest_message.content:
+            model_preferences = extract_model_preferences(latest_message.content)
+            logger.info(f"Extracted model preferences: {model_preferences}")
+
+            # Set the model preferences on the sampling handler to influence model selection
+            # This will be used by the OpenAISamplingHandler._select_model method
+            sampling_handler.model_preferences = model_preferences
+
     # Get the list of conversation participants
     participants_response = await context.get_participants(include_inactive=True)
     participants = participants_response.participants
