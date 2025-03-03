@@ -11,6 +11,7 @@ from mcp.server.fastmcp import Context
 from mcp.types import ImageContent, SamplingMessage, TextContent
 from mcp_extensions import send_sampling_request, send_tool_call_progress
 
+from .model_preferences import get_model_preferences
 from .utils import fetch_url
 
 logger = logging.getLogger(__name__)
@@ -108,10 +109,15 @@ async def perform_sampling(
     # Generate sampling messages
     messages += await generate_sampling_messages(search_results)
 
-    await send_tool_call_progress(ctx, "choosing image...")
+    await send_tool_call_progress(ctx, "analyzing context and choosing image...")
 
-    # FIXME add support for structured output to enforce image selection
-    # Send sampling request to FastMCP server
+    # Determine model preferences based on context
+    model_preferences = get_model_preferences(context)
+
+    # Log the model preferences being used
+    logger.info(f"Using model preferences: {model_preferences}")
+
+    # Send sampling request to FastMCP server with model preferences
     sampling_result = await send_sampling_request(
         fastmcp_server_context=ctx,
         system_prompt=dedent(f"""
@@ -120,7 +126,8 @@ async def perform_sampling(
             Return the url for the chosen image.
         """).strip(),
         messages=messages,
-        max_tokens=100,
+        max_tokens=150,  # Increased from 100 to allow for more reasoning
+        model_preferences=model_preferences,
     )
 
     return sampling_result.content

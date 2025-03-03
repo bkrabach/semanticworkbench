@@ -1,16 +1,17 @@
 import logging
+import re
 from contextlib import AsyncExitStack
-from typing import Any, List
+from typing import Any, List, Literal
 
 from assistant_extensions.attachments import AttachmentsExtension
 from assistant_extensions.mcp import (
     MCPServerConfig,
     MCPSession,
-    OpenAISamplingHandler,
     establish_mcp_sessions,
     get_mcp_server_prompts,
     refresh_mcp_sessions,
 )
+from openai_client import AzureOpenAIServiceConfig, OpenAIRequestConfig, OpenAIServiceConfig
 from semantic_workbench_api_model.workbench_model import (
     ConversationMessage,
     MessageType,
@@ -19,7 +20,10 @@ from semantic_workbench_api_model.workbench_model import (
 from semantic_workbench_assistant.assistant_app import ConversationContext
 
 from ..config import AssistantConfigModel
+from .model_selection import initialize_default_models
+from .sampling import SamplingConfig, SamplingManager
 from .step_handler import next_step
+from .utils import get_ai_client_configs
 
 logger = logging.getLogger(__name__)
 
@@ -51,14 +55,85 @@ async def respond_to_conversation(
                 )
             )
 
-        # Create a sampling handler with all available model configurations
-        # This allows the handler to select the most appropriate model based on modelPreferences
-        sampling_handler = OpenAISamplingHandler(
+        # Initialize the model selector with default models
+        model_selector = initialize_default_models()
+
+        # Determine request type based on message content
+        # Parse model selection directives from message content
+        request_type: Literal["reasoning", "generative"] = "generative"
+        preferred_model = None
+
+        # Check for model directive patterns
+        # Examples: "reason: what is the...", "use:gpt-4o tell me about...", "model:claude-3-opus explain..."
+        reason_match = re.match(r"^reason:\s*(.*)", message.content, re.DOTALL)
+        model_match = re.match(r"^(use|model):\s*([a-zA-Z0-9\-]+)\s+(.*)", message.content, re.DOTALL)
+
+        if reason_match:
+            # Use reasoning model
+            request_type = "reasoning"
+            # Update message content to remove the directive
+            message.content = reason_match.group(1).strip()
+            logger.info(f"Using reasoning model for request: {message.content[:50]}...")
+        elif model_match:
+            # Use specified model
+            preferred_model = model_match.group(2).strip()
+            # Update message content to remove the directive
+            message.content = model_match.group(3).strip()
+            logger.info(f"Using specified model '{preferred_model}' for request: {message.content[:50]}...")
+            # Determine model type from name pattern (simple heuristic)
+            if "o3" in preferred_model or "claude" in preferred_model:
+                request_type = "reasoning"
+
+        # Create sampling configuration
+        sampling_config = SamplingConfig(
             client_configs=[
                 config.generative_ai_client_config,
                 config.reasoning_ai_client_config,
                 # More configs can be added here in the future when available
-            ]
+            ],
+            tools_config=config.extensions_config.tools,
+        )
+
+        # Create sampling manager
+        sampling_manager = SamplingManager(sampling_config)
+
+        # Get the AI client configuration based on the request type
+        request_config, service_config = get_ai_client_configs(config, request_type)
+
+        # If a specific model was requested, override the model in request_config
+        if preferred_model:
+            # Create a new request config with the preferred model
+            # but keeping other settings from the original config
+            updated_model = model_selector.get_model_option(preferred_model)
+            if updated_model:
+                # Use model selector to update the config appropriately for this model
+                request_config = model_selector.update_request_config_for_model(preferred_model, request_config)
+                logger.info(f"Using model: {preferred_model} (overriding default)")
+            else:
+                # Model not found in our catalog, but try using it directly anyway
+                logger.warning(f"Requested model {preferred_model} not in catalog, but attempting to use it")
+                request_config.model = preferred_model
+                # We don't know if this is a reasoning model, so make a guess based on name
+                request_config.is_reasoning_model = (
+                    "o3" in preferred_model.lower() or "claude" in preferred_model.lower()
+                )
+
+        # Update sampling config with selected configs
+        sampling_config.request_config = request_config
+        sampling_config.service_config = service_config
+
+        # Get model preferences for this request type
+        model_preferences = sampling_manager.get_model_preferences_for_request(request_type)
+        sampling_config.default_model_preferences = model_preferences
+
+        # Create handler with appropriate model preferences
+        sampling_handler = sampling_manager.create_handler()
+
+        # Log the selected model configuration
+        logger.info(
+            f"Selected model: {request_config.model} "
+            f"(reasoning={request_config.is_reasoning_model}, "
+            f"type={request_type})"
         )
 
         mcp_sessions = await establish_mcp_sessions(
@@ -119,9 +194,6 @@ async def respond_to_conversation(
                 )
                 break
 
-            # Type check to ensure we're passing compatible configs to next_step
-            from openai_client import AzureOpenAIServiceConfig, OpenAIRequestConfig, OpenAIServiceConfig
-
             # Verify request_config is an OpenAIRequestConfig
             if not isinstance(current_request_config, OpenAIRequestConfig):
                 logger.error(f"Incompatible request_config type: {type(current_request_config).__name__}")
@@ -165,6 +237,7 @@ async def respond_to_conversation(
                 attachments_config=config.extensions_config.attachments,
                 metadata=metadata,
                 metadata_key=f"respond_to_conversation:step_{step_count}",
+                sampling_manager=sampling_manager,  # Pass the sampling_manager to next_step
             )
 
             if step_result.status == "error":
