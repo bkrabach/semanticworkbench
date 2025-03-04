@@ -1,1365 +1,743 @@
 # Cortex Platform - Implementation Plan
 
-This document provides a detailed implementation plan for the Cortex Platform, focusing on practical steps to build a 3-day Proof of Concept (PoC) that demonstrates the key architectural concepts.
+## 1. Overview
 
-## 1. Technical Specifications
+This implementation plan outlines the approach, tasks, and timeline for developing the Cortex Platform based on the architecture defined in the unified architecture document. The plan focuses on creating a functional proof-of-concept (PoC) that demonstrates the core capabilities of the platform while establishing a foundation for future expansion.
 
-### 1.1 Backend Services
+## 2. Implementation Approach
 
-#### 1.1.1 Central AI Core (Python/FastAPI)
+The implementation will follow an incremental, component-based approach with continuous integration. This allows for testing individual components early and adapting as needed.
 
-- **Service Structure**
+```mermaid
+gantt
+    title Cortex Platform Implementation Timeline
+    dateFormat  YYYY-MM-DD
+    section Foundation
+    Project Setup & Infrastructure           :a1, 2025-03-10, 3d
+    Central AI Core - Basic Framework        :a2, after a1, 5d
+    JAKE Memory System                       :a3, after a2, 4d
+    Cognition System                         :a4, after a2, 4d
 
-  ```
-  cortex-core/
-  ├── app/
-  │   ├── __init__.py
-  │   ├── main.py                 # FastAPI entry point
-  │   ├── config.py               # Configuration handling
-  │   ├── api/                    # API endpoints
-  │   │   ├── __init__.py
-  │   │   ├── chat.py             # Chat endpoints
-  │   │   ├── openai_compat.py    # OpenAI-compatible endpoints
-  │   │   └── workspaces.py       # Workspace management
-  │   ├── core/                   # Core functionality
-  │   │   ├── __init__.py
-  │   │   ├── ai_manager.py       # LLM integration
-  │   │   ├── memory.py           # Memory management
-  │   │   ├── cognition.py        # Reasoning & decisions
-  │   │   └── task_orchestrator.py # Task management
-  │   ├── io/                     # I/O handlers
-  │   │   ├── __init__.py
-  │   │   ├── chat.py             # Text processing
-  │   │   ├── voice.py            # Voice processing
-  │   │   └── canvas.py           # Visual input/output
-  │   ├── mcp/                    # MCP integration
-  │   │   ├── __init__.py
-  │   │   ├── client.py           # MCP client
-  │   │   └── handler.py          # MCP message handling
-  │   └── models/                 # Data models
-  │       ├── __init__.py
-  │       ├── message.py          # Message structures
-  │       ├── workspace.py        # Workspace model
-  │       └── user.py             # User information
-  ├── tests/                      # Test suite
-  ├── requirements.txt            # Dependencies
-  └── README.md                   # Documentation
-  ```
+    section Integration
+    Input/Output Modalities - Core           :b1, after a3, 4d
+    MCP Integration Framework                :b2, after a4, 5d
+    Domain Expert - Code Assistant           :b3, after b2, 4d
 
-- **Dependencies**
-  ```
-  fastapi>=0.100.0
-  uvicorn>=0.22.0
-  pydantic>=2.0.0
-  mcp-sdk>=0.1.0
-  langchain>=0.0.200
-  openai>=0.27.0
-  requests>=2.31.0
-  tiktoken>=0.4.0
-  ```
+    section Refinement
+    Workspaces Implementation                :c1, after b1, 3d
+    UI Integration & Polish                  :c2, after b3, 5d
+    Testing & Optimization                   :c3, after c2, 3d
+    Documentation                            :c4, after c3, 2d
+```
 
-#### 1.1.2 Memory System (JAKE)
+## 3. Component Implementation Details
 
-- Simplified version of JAKE for PoC
-- Key-value store with vector embeddings
-- Persistence using SQLite for the PoC
+### 3.1 Foundation Components
 
-#### 1.1.3 Domain Expert Systems
+#### 3.1.1 Project Setup & Infrastructure
 
-- Implement as separate MCP servers
-- Modular design for easy replacement
-- Simple API for the PoC, expandable later
+**Tasks:**
 
-### 1.2 Frontend Application
+- Create repository structure and documentation
+- Set up development environment with Docker compose
+- Configure CI/CD pipeline for testing and deployment
+- Establish coding standards and patterns
 
-#### 1.2.1 React/TypeScript with Vite
+**Deliverables:**
 
-- **Project Structure**
+- Project repository with documentation
+- Docker compose configuration
+- GitHub Actions workflow
+- Code style guide and templates
 
-  ```
-  cortex-ui/
-  ├── src/
-  │   ├── components/             # UI components
-  │   │   ├── chat/               # Chat interface
-  │   │   ├── voice/              # Voice interface
-  │   │   ├── canvas/             # Canvas interface
-  │   │   ├── dashboard/          # Dashboard components
-  │   │   ├── workspace/          # Workspace management
-  │   │   └── common/             # Shared components
-  │   ├── hooks/                  # Custom React hooks
-  │   ├── services/               # API services
-  │   │   ├── api.ts              # Base API handling
-  │   │   ├── chat.ts             # Chat service
-  │   │   ├── voice.ts            # Voice service
-  │   │   └── workspace.ts        # Workspace service
-  │   ├── store/                  # State management
-  │   │   ├── index.ts            # Store configuration
-  │   │   ├── chat.ts             # Chat state
-  │   │   └── workspace.ts        # Workspace state
-  │   ├── types/                  # TypeScript types
-  │   ├── utils/                  # Utility functions
-  │   ├── App.tsx                 # Main application
-  │   └── main.tsx                # Entry point
-  ├── public/                     # Static assets
-  ├── index.html                  # HTML template
-  ├── package.json                # Dependencies
-  ├── tsconfig.json               # TypeScript config
-  ├── vite.config.ts              # Vite configuration
-  └── README.md                   # Documentation
-  ```
+#### 3.1.2 Central AI Core
 
-- **Dependencies**
-  ```json
-  {
-    "dependencies": {
-      "react": "^18.2.0",
-      "react-dom": "^18.2.0",
-      "@fluentui/react": "^8.110.0",
-      "axios": "^1.4.0",
-      "react-markdown": "^8.0.7",
-      "react-router-dom": "^6.14.1",
-      "zustand": "^4.3.9"
-    },
-    "devDependencies": {
-      "@types/react": "^18.2.15",
-      "@types/react-dom": "^18.2.7",
-      "typescript": "^5.1.6",
-      "vite": "^4.4.4"
-    }
-  }
-  ```
+**Tasks:**
 
-### 1.3 MCP Servers
+- Implement FastAPI-based service structure
+- Create message routing system
+- Develop session management
+- Implement basic LLM integration
+- Set up standardized response formatting
 
-#### 1.3.1 VS Code MCP Server (TypeScript)
+**Deliverables:**
 
-- Provides code context, file operations
-- Integrates with existing VS Code extension capabilities
+- Central AI Core service with REST API
+- Message routing system
+- Session management module
+- LLM integration adapter
+- API documentation
 
-#### 1.3.2 Browser MCP Server (Python)
+#### 3.1.3 JAKE Memory System
 
-- Implements Playwright for web automation
-- Provides web content analysis
+**Tasks:**
 
-## 2. Day-by-Day Implementation Plan
+- Implement the LLM-driven whiteboard approach
+- Create workspace-based memory organization
+- Develop whiteboard update triggers
+- Implement memory context retrieval
+- Create memory persistence layer
 
-### 2.1 Day 1: Core Framework & Basic UI
-
-#### 2.1.1 Backend Setup (2 hours)
-
-- Initialize FastAPI project
-- Configure basic routes and middleware
-- Set up project structure
-- Implement simple LLM integration with OpenAI
+**Sample Implementation:**
 
 ```python
-# app/main.py
-from fastapi import FastAPI
-from app.api import chat, openai_compat, workspaces
-
-app = FastAPI(title="Cortex AI Platform")
-
-app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
-app.include_router(openai_compat.router, prefix="/v1", tags=["openai-compat"])
-app.include_router(workspaces.router, prefix="/api/workspaces", tags=["workspaces"])
-
-@app.get("/")
-async def root():
-    return {"message": "Welcome to Cortex AI Platform"}
-```
-
-```python
-# app/api/chat.py
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
-from app.core.ai_manager import process_message
-
-router = APIRouter()
-
-class ChatMessage(BaseModel):
-    content: str
-    workspace_id: str = "default"
-
-class ChatResponse(BaseModel):
-    response: str
-
-@router.post("/send", response_model=ChatResponse)
-async def send_message(message: ChatMessage):
-    try:
-        response = await process_message(message.content, message.workspace_id)
-        return ChatResponse(response=response)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-```
-
-#### 2.1.2 Frontend Setup (2 hours)
-
-- Initialize React/TS with Vite
-- Configure project structure
-- Set up Fluent UI components
-- Create basic state management
-
-```typescript
-// src/main.tsx
-import React from "react";
-import ReactDOM from "react-dom/client";
-import { initializeIcons } from "@fluentui/react";
-import App from "./App";
-import "./index.css";
-
-// Initialize Fluent UI icons
-initializeIcons();
-
-ReactDOM.createRoot(document.getElementById("root")!).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);
-```
-
-```typescript
-// src/App.tsx
-import { useState } from "react";
-import { Stack, ThemeProvider, createTheme } from "@fluentui/react";
-import ChatInterface from "./components/chat/ChatInterface";
-import Sidebar from "./components/common/Sidebar";
-import "./App.css";
-
-const theme = createTheme({
-  palette: {
-    themePrimary: "#0078d4",
-  },
-});
-
-function App() {
-  const [currentWorkspace, setCurrentWorkspace] = useState("default");
-
-  return (
-    <ThemeProvider theme={theme}>
-      <Stack horizontal className="app-container">
-        <Sidebar
-          currentWorkspace={currentWorkspace}
-          onWorkspaceChange={setCurrentWorkspace}
-        />
-        <ChatInterface workspaceId={currentWorkspace} />
-      </Stack>
-    </ThemeProvider>
-  );
-}
-
-export default App;
-```
-
-#### 2.1.3 Core AI Integration (2 hours)
-
-- Implement basic memory management
-- Set up conversation handling
-- Create simple AI prompt templates
-
-```python
-# app/core/ai_manager.py
-from openai import AsyncOpenAI
-from app.core.memory import MemoryManager
-from app.config import settings
-
-client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
-memory_manager = MemoryManager()
-
-async def process_message(content: str, workspace_id: str) -> str:
-    # Get conversation history from memory
-    history = memory_manager.get_conversation_history(workspace_id)
-
-    # Prepare the messages for the API call
-    messages = [
-        {"role": "system", "content": "You are Cortex, an intelligent AI assistant."},
-        *history,
-        {"role": "user", "content": content}
-    ]
-
-    # Call the OpenAI API
-    response = await client.chat.completions.create(
-        model="gpt-4",
-        messages=messages,
-        temperature=0.7,
-    )
-
-    # Extract the response content
-    response_content = response.choices[0].message.content
-
-    # Save the exchange to memory
-    memory_manager.add_interaction(workspace_id,
-                                   {"role": "user", "content": content},
-                                   {"role": "assistant", "content": response_content})
-
-    return response_content
-```
-
-#### 2.1.4 Chat Interface (2 hours)
-
-- Build the chat message components
-- Implement chat input and message display
-- Add basic styling
-
-```typescript
-// src/components/chat/ChatInterface.tsx
-import { useState, useEffect } from "react";
-import {
-  Stack,
-  TextField,
-  PrimaryButton,
-  MessageBar,
-  MessageBarType,
-} from "@fluentui/react";
-import ChatMessage from "./ChatMessage";
-import { sendChatMessage } from "../../services/chat";
-import "./ChatInterface.css";
-
-interface ChatInterfaceProps {
-  workspaceId: string;
-}
-
-function ChatInterface({ workspaceId }: ChatInterfaceProps) {
-  const [messages, setMessages] = useState<
-    Array<{ role: string; content: string }>
-  >([]);
-  const [input, setInput] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const handleSendMessage = async () => {
-    if (!input.trim()) return;
-
-    // Add user message to UI immediately
-    setMessages([...messages, { role: "user", content: input }]);
-
-    // Clear input and set loading state
-    setInput("");
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      // Send message to API
-      const response = await sendChatMessage(input, workspaceId);
-
-      // Add assistant response
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: response.response },
-      ]);
-    } catch (err) {
-      setError("Failed to send message. Please try again.");
-      console.error(err);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  return (
-    <Stack className="chat-container">
-      <Stack className="messages-container">
-        {messages.map((msg, index) => (
-          <ChatMessage key={index} role={msg.role} content={msg.content} />
-        ))}
-        {isLoading && <div className="loading-indicator">Thinking...</div>}
-        {error && (
-          <MessageBar messageBarType={MessageBarType.error}>{error}</MessageBar>
-        )}
-      </Stack>
-
-      <Stack horizontal className="input-container">
-        <TextField
-          placeholder="Type your message here..."
-          value={input}
-          onChange={(_, newValue) => setInput(newValue || "")}
-          onKeyDown={(e) =>
-            e.key === "Enter" && !e.shiftKey && handleSendMessage()
-          }
-          multiline
-          autoAdjustHeight
-          className="chat-input"
-        />
-        <PrimaryButton
-          onClick={handleSendMessage}
-          disabled={isLoading || !input.trim()}
-          iconProps={{ iconName: "Send" }}
-        >
-          Send
-        </PrimaryButton>
-      </Stack>
-    </Stack>
-  );
-}
-
-export default ChatInterface;
-```
-
-### 2.2 Day 2: MCP Integration & I/O Enhancements
-
-#### 2.2.1 MCP Protocol Handler (3 hours)
-
-- Implement the MCP client functionality
-- Create server connection management
-- Set up message routing
-
-```python
-# app/mcp/client.py
-import asyncio
-import json
-from typing import Dict, List, Any, Optional
-from app.config import settings
-
-class MCPClient:
-    def __init__(self):
-        self.servers: Dict[str, Dict[str, Any]] = {}
-        self.server_processes: Dict[str, asyncio.subprocess.Process] = {}
-
-    async def initialize_servers(self):
-        """Initialize all configured MCP servers"""
-        for server_name, config in settings.MCP_SERVERS.items():
-            await self.connect_server(server_name, config)
-
-    async def connect_server(self, server_name: str, config: Dict[str, Any]):
-        """Connect to an MCP server"""
-        try:
-            # Start the server process
-            process = await asyncio.create_subprocess_exec(
-                config["command"],
-                *config.get("args", []),
-                stdin=asyncio.subprocess.PIPE,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                env=config.get("env", {})
-            )
-
-            self.server_processes[server_name] = process
-
-            # Get server capabilities
-            capabilities = await self._get_server_capabilities(server_name)
-
-            self.servers[server_name] = {
-                "process": process,
-                "capabilities": capabilities
-            }
-
-            print(f"Connected to MCP server: {server_name}")
-            return True
-
-        except Exception as e:
-            print(f"Failed to connect to MCP server {server_name}: {e}")
-            return False
-
-    async def _get_server_capabilities(self, server_name: str) -> Dict[str, Any]:
-        """Get capabilities from an MCP server"""
-        # Send a capabilities request
-        request = {
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "getCapabilities",
-            "params": {}
-        }
-
-        response = await self._send_request(server_name, request)
-        return response.get("result", {})
-
-    async def call_tool(self, server_name: str, tool_name: str, args: Dict[str, Any]) -> Dict[str, Any]:
-        """Call a tool on an MCP server"""
-        if server_name not in self.servers:
-            raise ValueError(f"MCP server '{server_name}' not connected")
-
-        # Check if tool exists
-        capabilities = self.servers[server_name]["capabilities"]
-        tools = capabilities.get("tools", {})
-
-        if tool_name not in tools:
-            raise ValueError(f"Tool '{tool_name}' not available on server '{server_name}'")
-
-        # Prepare the request
-        request = {
-            "jsonrpc": "2.0",
-            "id": 2,
-            "method": "callTool",
-            "params": {
-                "name": tool_name,
-                "arguments": args
-            }
-        }
-
-        # Send the request and return the result
-        response = await self._send_request(server_name, request)
-        return response.get("result", {})
-
-    async def _send_request(self, server_name: str, request: Dict[str, Any]) -> Dict[str, Any]:
-        """Send a request to an MCP server and get the response"""
-        process = self.server_processes[server_name]
-
-        # Ensure stdin and stdout are available
-        if process.stdin is None or process.stdout is None:
-            raise RuntimeError(f"MCP server {server_name} process streams not available")
-
-        # Send the request
-        request_str = json.dumps(request) + "\n"
-        process.stdin.write(request_str.encode())
-        await process.stdin.drain()
-
-        # Read the response
-        response_line = await process.stdout.readline()
-        response = json.loads(response_line.decode())
-
-        return response
-
-    async def close(self):
-        """Close all MCP server connections"""
-        for server_name, process in self.server_processes.items():
-            if process.returncode is None:  # Process is still running
-                process.terminate()
-                await process.wait()
-            print(f"Disconnected from MCP server: {server_name}")
-
-# Singleton instance
-mcp_client = MCPClient()
-```
-
-#### 2.2.2 Voice Input/Output (2 hours)
-
-- Implement basic speech-to-text
-- Add text-to-speech capabilities
-- Integrate with chat interface
-
-```python
-# app/io/voice.py
-import base64
-import tempfile
-import os
-from typing import Optional
-import requests
-from app.config import settings
-
-class VoiceProcessor:
-    def __init__(self):
-        self.openai_api_key = settings.OPENAI_API_KEY
-
-    async def speech_to_text(self, audio_data: bytes) -> Optional[str]:
-        """Convert speech audio to text using OpenAI Whisper API"""
-        try:
-            # Save audio data to temporary file
-            with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as temp_file:
-                temp_file.write(audio_data)
-                temp_file_path = temp_file.name
-
-            # Call OpenAI API
-            with open(temp_file_path, "rb") as audio_file:
-                response = requests.post(
-                    "https://api.openai.com/v1/audio/transcriptions",
-                    headers={"Authorization": f"Bearer {self.openai_api_key}"},
-                    files={"file": audio_file},
-                    data={"model": "whisper-1"}
-                )
-
-            # Clean up temp file
-            os.unlink(temp_file_path)
-
-            # Process response
-            if response.status_code == 200:
-                return response.json().get("text")
-            else:
-                print(f"Error in speech-to-text: {response.text}")
-                return None
-
-        except Exception as e:
-            print(f"Speech-to-text error: {e}")
-            return None
-
-    async def text_to_speech(self, text: str) -> Optional[bytes]:
-        """Convert text to speech using OpenAI TTS API"""
-        try:
-            response = requests.post(
-                "https://api.openai.com/v1/audio/speech",
-                headers={
-                    "Authorization": f"Bearer {self.openai_api_key}",
-                    "Content-Type": "application/json"
-                },
-                json={
-                    "model": "tts-1",
-                    "input": text,
-                    "voice": "alloy"
-                }
-            )
-
-            if response.status_code == 200:
-                return response.content
-            else:
-                print(f"Error in text-to-speech: {response.text}")
-                return None
-
-        except Exception as e:
-            print(f"Text-to-speech error: {e}")
-            return None
-
-# Add API endpoints for voice
-```
-
-#### 2.2.3 First Domain Expert System (3 hours)
-
-- Create a basic Code Assistant domain expert
-- Implement VS Code MCP server connector
-- Test basic functionality
-
-```typescript
-// TypeScript MCP Server for VS Code integration
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { z } from "zod";
-import * as fs from "fs/promises";
-import * as path from "path";
-import * as vscode from "vscode"; // This would be part of a VS Code extension
-
-const server = new McpServer({
-  name: "Cortex Code Assistant",
-  version: "0.1.0",
-});
-
-// Tool to list files in workspace
-server.tool(
-  "list-files",
-  { folderPath: z.string().optional() },
-  async ({ folderPath }) => {
-    try {
-      const workspaceFolders = vscode.workspace.workspaceFolders;
-
-      if (!workspaceFolders) {
-        return {
-          content: [{ type: "text", text: "No workspace folders open" }],
-          isError: true,
-        };
-      }
-
-      let targetPath: string;
-
-      if (folderPath) {
-        targetPath = path.isAbsolute(folderPath)
-          ? folderPath
-          : path.join(workspaceFolders[0].uri.fsPath, folderPath);
-      } else {
-        targetPath = workspaceFolders[0].uri.fsPath;
-      }
-
-      const files = await fs.readdir(targetPath);
-
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(files, null, 2),
-          },
-        ],
-      };
-    } catch (err) {
-      return {
-        content: [{ type: "text", text: `Error: ${err.message}` }],
-        isError: true,
-      };
-    }
-  }
-);
-
-// Tool to read file contents
-server.tool("read-file", { filePath: z.string() }, async ({ filePath }) => {
-  try {
-    const workspaceFolders = vscode.workspace.workspaceFolders;
-
-    if (!workspaceFolders) {
-      return {
-        content: [{ type: "text", text: "No workspace folders open" }],
-        isError: true,
-      };
-    }
-
-    const targetPath = path.isAbsolute(filePath)
-      ? filePath
-      : path.join(workspaceFolders[0].uri.fsPath, filePath);
-
-    const content = await fs.readFile(targetPath, "utf-8");
-
-    return {
-      content: [{ type: "text", text: content }],
-    };
-  } catch (err) {
-    return {
-      content: [{ type: "text", text: `Error: ${err.message}` }],
-      isError: true,
-    };
-  }
-});
-
-// Tool to write to a file
-server.tool(
-  "write-file",
-  {
-    filePath: z.string(),
-    content: z.string(),
-  },
-  async ({ filePath, content }) => {
-    try {
-      const workspaceFolders = vscode.workspace.workspaceFolders;
-
-      if (!workspaceFolders) {
-        return {
-          content: [{ type: "text", text: "No workspace folders open" }],
-          isError: true,
-        };
-      }
-
-      const targetPath = path.isAbsolute(filePath)
-        ? filePath
-        : path.join(workspaceFolders[0].uri.fsPath, filePath);
-
-      await fs.writeFile(targetPath, content, "utf-8");
-
-      return {
-        content: [
-          { type: "text", text: `File written successfully: ${filePath}` },
-        ],
-      };
-    } catch (err) {
-      return {
-        content: [{ type: "text", text: `Error: ${err.message}` }],
-        isError: true,
-      };
-    }
-  }
-);
-
-const transport = new StdioServerTransport();
-server.connect(transport);
-```
-
-### 2.3 Day 3: Workspaces & Polish
-
-#### 2.3.1 Workspace Implementation (3 hours)
-
-- Create workspace data structures
-- Implement persistence layer
-- Add workspace management UI
-
-```python
-# app/models/workspace.py
-from pydantic import BaseModel, Field
+# core/memory/jake.py
 from datetime import datetime
-from typing import List, Dict, Any, Optional
-import uuid
+import json
+import os
 
-class Workspace(BaseModel):
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    name: str
-    description: Optional[str] = None
-    created_at: datetime = Field(default_factory=datetime.now)
-    updated_at: datetime = Field(default_factory=datetime.now)
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+class JAKEMemory:
+    def __init__(self, llm_client, storage_path="./data/memory"):
+        self.llm_client = llm_client
+        self.storage_path = storage_path
+        self.workspaces = {}
 
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "id": "550e8400-e29b-41d4-a716-446655440000",
-                "name": "Project X",
-                "description": "AI assistant for medical research",
-                "created_at": "2025-03-04T12:30:45.123Z",
-                "updated_at": "2025-03-04T14:20:30.456Z",
-                "metadata": {
-                    "tags": ["medical", "research", "assistant"],
-                    "collaborators": ["user1", "user2"]
-                }
-            }
+        # Create storage directory if it doesn't exist
+        os.makedirs(storage_path, exist_ok=True)
+
+        # Load any existing whiteboards
+        self._load_whiteboards()
+
+    def _load_whiteboards(self):
+        """Load existing whiteboards from storage."""
+        for filename in os.listdir(self.storage_path):
+            if filename.endswith(".json"):
+                workspace_id = filename.split(".")[0]
+                filepath = os.path.join(self.storage_path, filename)
+                try:
+                    with open(filepath, "r") as f:
+                        self.workspaces[workspace_id] = json.load(f)["whiteboard"]
+                except Exception as e:
+                    print(f"Error loading whiteboard for {workspace_id}: {e}")
+
+    def _save_whiteboard(self, workspace_id):
+        """Save a whiteboard to storage."""
+        filepath = os.path.join(self.storage_path, f"{workspace_id}.json")
+        with open(filepath, "w") as f:
+            json.dump({
+                "whiteboard": self.workspaces[workspace_id],
+                "updated_at": datetime.now().isoformat()
+            }, f)
+
+    async def update_memory(self, workspace_id, recent_conversation):
+        """Process recent conversation to update the whiteboard."""
+        # Get current whiteboard (empty if none exists)
+        current_whiteboard = self.workspaces.get(workspace_id, "")
+
+        # Create system prompt for whiteboard synthesis
+        system_prompt = """
+        You are JAKE, a memory system that maintains a concise whiteboard of key information.
+        Your task is to update the whiteboard with new information while maintaining clarity and relevance.
+        - Focus on facts, insights, preferences, and important details
+        - Organize related information together
+        - Remove redundant or outdated information
+        - Keep the whiteboard concise and well-structured
+        """
+
+        # Prepare the user message with current whiteboard and new conversation
+        user_message = f"""
+        CURRENT WHITEBOARD:
+        {current_whiteboard}
+
+        RECENT CONVERSATION:
+        {recent_conversation}
+
+        Please create an updated whiteboard that incorporates relevant new information.
+        """
+
+        # Call LLM to synthesize updated whiteboard
+        response = await self.llm_client.complete(
+            system=system_prompt,
+            user=user_message,
+            max_tokens=1000
+        )
+
+        # Update stored whiteboard
+        updated_whiteboard = response.content
+        self.workspaces[workspace_id] = updated_whiteboard
+
+        # Persist the updated whiteboard
+        self._save_whiteboard(workspace_id)
+
+        return updated_whiteboard
+
+    def get_memory_context(self, workspace_id):
+        """Retrieve the current whiteboard for a workspace."""
+        return self.workspaces.get(workspace_id, "")
+```
+
+**Deliverables:**
+
+- JAKE Memory service with LLM integration
+- Memory persistence layer
+- Memory update trigger system
+- Context retrieval API
+- Memory management utility
+
+#### 3.1.4 Cognition System
+
+**Tasks:**
+
+- Implement result handling from domain experts
+- Create user state analysis functionality
+- Develop decision-making for result surfacing
+- Implement storage for delayed results
+- Create retrieval triggers for stored results
+
+**Sample Implementation:**
+
+```python
+# core/cognition/result_handler.py
+from datetime import datetime, timedelta
+import json
+
+class ResultHandler:
+    def __init__(self, llm_client, notification_service):
+        self.llm_client = llm_client
+        self.notification_service = notification_service
+        self.pending_results = {}
+        self.stored_results = {}
+
+    async def handle_new_result(self, task_id, result, user_id, workspace_id):
+        """Process a new result from a domain expert or long-running task."""
+        user_state = self._get_current_user_state(user_id)
+
+        # Determine what to do with the result
+        decision = await self._make_surface_decision(result, user_state)
+
+        # Apply the decision
+        if decision["action"] == "immediate":
+            # Send to appropriate channel immediately
+            return await self._deliver_to_channel(
+                result,
+                user_id,
+                decision["channel"],
+                workspace_id
+            )
+        elif decision["action"] == "notification":
+            # Send as notification
+            return await self._send_notification(
+                result,
+                user_id,
+                decision["priority"]
+            )
+        else:  # Store for later
+            # Store with trigger conditions
+            return self._store_with_triggers(
+                result,
+                user_id,
+                workspace_id,
+                decision["triggers"]
+            )
+
+    async def _make_surface_decision(self, result, user_state):
+        """Use LLM to decide how to surface the result."""
+        system_prompt = """
+        You are a cognitive system deciding how to handle a task result.
+        Based on the result content and user's current state, determine:
+        1. What action to take: "immediate", "notification", or "store"
+        2. If immediate, which channel to use
+        3. If notification, what priority level
+        4. If store, what trigger conditions should cause it to be surfaced later
+
+        Respond in JSON format:
+        {
+            "action": "immediate|notification|store",
+            "channel": "chat|dashboard|voice", # If action is immediate
+            "priority": "high|medium|low",     # If action is notification
+            "triggers": ["condition1", "condition2"]  # If action is store
         }
+        """
+
+        user_message = f"""
+        RESULT CONTENT:
+        {result}
+
+        USER STATE:
+        - Available channels: {", ".join(user_state["available_channels"])}
+        - Current activity: {user_state["current_activity"]}
+        - Conversation context: {user_state["conversation_context"]}
+        - Last active: {user_state["last_active"]}
+
+        Determine the most appropriate way to handle this result.
+        """
+
+        response = await self.llm_client.complete(
+            system=system_prompt,
+            user=user_message,
+            response_format={"type": "json_object"}
+        )
+
+        # Parse the response (in a real implementation, add error handling)
+        return json.loads(response.content)
+
+    def _get_current_user_state(self, user_id):
+        """Get the current state of the user."""
+        # In a real implementation, this would query various systems
+        # For the PoC, we'll return mock data
+        return {
+            "available_channels": ["chat", "notification"],
+            "current_activity": "active_conversation",
+            "conversation_context": "Discussing project implementation details",
+            "last_active": datetime.now().isoformat()
+        }
+
+    async def _deliver_to_channel(self, result, user_id, channel, workspace_id):
+        """Deliver the result to the specified channel."""
+        # Implementation would connect to the channel's service
+        # For the PoC, we'll just return the action
+        return {
+            "status": "delivered",
+            "channel": channel,
+            "workspace_id": workspace_id,
+            "timestamp": datetime.now().isoformat()
+        }
+
+    async def _send_notification(self, result, user_id, priority):
+        """Send the result as a notification."""
+        notification = {
+            "user_id": user_id,
+            "title": f"{priority.capitalize()} Priority: Task Complete",
+            "content": self._create_notification_summary(result),
+            "priority": priority,
+            "timestamp": datetime.now().isoformat()
+        }
+
+        # In a real implementation, this would call the notification service
+        # await self.notification_service.send(notification)
+
+        return {
+            "status": "notification_sent",
+            "notification": notification
+        }
+
+    def _store_with_triggers(self, result, user_id, workspace_id, triggers):
+        """Store the result with triggers for later retrieval."""
+        result_id = f"result_{datetime.now().timestamp()}"
+
+        stored_item = {
+            "id": result_id,
+            "result": result,
+            "user_id": user_id,
+            "workspace_id": workspace_id,
+            "triggers": triggers,
+            "created_at": datetime.now().isoformat(),
+            "surfaced": False
+        }
+
+        # In a real implementation, this would be stored in a database
+        if user_id not in self.stored_results:
+            self.stored_results[user_id] = {}
+
+        self.stored_results[user_id][result_id] = stored_item
+
+        return {
+            "status": "stored",
+            "result_id": result_id,
+            "triggers": triggers
+        }
+
+    def _create_notification_summary(self, result):
+        """Create a concise summary of the result for notifications."""
+        # In a real implementation, this might use an LLM to summarize
+        result_str = str(result)
+        max_length = 100
+
+        if len(result_str) > max_length:
+            return result_str[:max_length] + "..."
+        return result_str
+
+    async def check_triggers(self, user_id, current_context):
+        """Check if any stored results should be surfaced based on current context."""
+        # This would be called periodically or on context changes
+        if user_id not in self.stored_results:
+            return []
+
+        results_to_surface = []
+
+        for result_id, stored_item in self.stored_results[user_id].items():
+            if stored_item["surfaced"]:
+                continue
+
+            # Check if any triggers match the current context
+            # In a real implementation, this would be more sophisticated
+            for trigger in stored_item["triggers"]:
+                if trigger.lower() in current_context.lower():
+                    results_to_surface.append(stored_item)
+                    self.stored_results[user_id][result_id]["surfaced"] = True
+                    break
+
+        return results_to_surface
 ```
 
-```python
-# app/api/workspaces.py
-from fastapi import APIRouter, HTTPException, Depends
-from typing import List
-from app.models.workspace import Workspace
-from app.core.workspace_manager import get_workspaces, create_workspace, get_workspace, update_workspace, delete_workspace
+**Deliverables:**
 
-router = APIRouter()
+- Cognition service with result handling
+- User state analyzer
+- Surface decision maker
+- Result storage manager
+- Trigger evaluation system
 
-@router.get("/", response_model=List[Workspace])
-async def list_workspaces():
-    """Get all workspaces"""
-    return await get_workspaces()
+### 3.2 Integration Components
 
-@router.post("/", response_model=Workspace)
-async def add_workspace(workspace: Workspace):
-    """Create a new workspace"""
-    return await create_workspace(workspace)
+#### 3.2.1 Input/Output Modalities
 
-@router.get("/{workspace_id}", response_model=Workspace)
-async def get_workspace_by_id(workspace_id: str):
-    """Get a workspace by ID"""
-    workspace = await get_workspace(workspace_id)
-    if not workspace:
-        raise HTTPException(status_code=404, detail="Workspace not found")
-    return workspace
+**Tasks:**
 
-@router.put("/{workspace_id}", response_model=Workspace)
-async def update_workspace_by_id(workspace_id: str, workspace_update: Workspace):
-    """Update a workspace"""
-    updated = await update_workspace(workspace_id, workspace_update)
-    if not updated:
-        raise HTTPException(status_code=404, detail="Workspace not found")
-    return updated
+- Implement chat input/output handlers
+- Create voice input processing (speech-to-text)
+- Develop voice output generation (text-to-speech)
+- Implement canvas input/output for visual interactions
+- Create notification system for asynchronous alerts
 
-@router.delete("/{workspace_id}")
-async def delete_workspace_by_id(workspace_id: str):
-    """Delete a workspace"""
-    success = await delete_workspace(workspace_id)
-    if not success:
-        raise HTTPException(status_code=404, detail="Workspace not found")
-    return {"message": "Workspace deleted successfully"}
+**Deliverables:**
+
+- Chat service with markdown support
+- Voice processing service
+- Canvas visualization service
+- Notification service
+- Shared UI components for frontend integration
+
+#### 3.2.2 MCP Integration Framework
+
+**Tasks:**
+
+- Implement MCP client in Central AI Core
+- Create MCP server management system
+- Develop tool and resource discovery
+- Implement request routing and response handling
+- Create authentication and security layer
+
+**Deliverables:**
+
+- MCP client integration
+- Server connection manager
+- Tool and resource registry
+- Request router
+- Security layer for MCP connections
+
+#### 3.2.3 Domain Expert - Code Assistant
+
+**Tasks:**
+
+- Create Code Assistant domain expert service
+- Implement VS Code MCP server connection
+- Develop code understanding capabilities
+- Create code generation and modification features
+- Implement context-aware code assistance
+
+**Deliverables:**
+
+- Code Assistant service
+- VS Code MCP server integration
+- Code understanding modules
+- Code generation system
+- Context manager for coding tasks
+
+### 3.3 Refinement Components
+
+#### 3.3.1 Workspaces Implementation
+
+**Tasks:**
+
+- Create workspace data structure
+- Implement workspace management API
+- Develop workspace persistence layer
+- Implement workspace sharing and permissions
+- Create workspace UI components
+
+**Deliverables:**
+
+- Workspace service
+- Management API
+- Persistence layer
+- Sharing system
+- UI components
+
+#### 3.3.2 UI Integration & Polish
+
+**Tasks:**
+
+- Create unified UI shell
+- Implement responsive design across components
+- Develop consistent styling and interaction patterns
+- Create cross-component navigation
+- Implement user settings and preferences
+
+**Deliverables:**
+
+- Unified UI application
+- Responsive design system
+- Consistent component library
+- Navigation system
+- Settings manager
+
+#### 3.3.3 Testing & Optimization
+
+**Tasks:**
+
+- Implement unit tests for core components
+- Create integration tests for cross-component functionality
+- Perform load testing and optimization
+- Conduct usability testing
+- Fix critical issues and performance bottlenecks
+
+**Deliverables:**
+
+- Test suite
+- Performance benchmarks
+- Usability feedback analysis
+- Optimization report
+- Issue tracking and resolution
+
+#### 3.3.4 Documentation
+
+**Tasks:**
+
+- Create user documentation
+- Develop API documentation
+- Write developer guides
+- Create setup and deployment instructions
+- Prepare demo scenarios
+
+**Deliverables:**
+
+- User manual
+- API reference
+- Developer guides
+- Deployment documentation
+- Demo scenarios
+
+## 4. Technical Implementation Details
+
+### 4.1 Backend Services
+
+Each backend service will be implemented as a separate microservice with the following common structure:
+
+```
+service-name/
+├── Dockerfile
+├── requirements.txt
+├── app/
+│   ├── __init__.py
+│   ├── main.py          # FastAPI application
+│   ├── config.py        # Configuration management
+│   ├── models/          # Data models
+│   ├── services/        # Business logic
+│   ├── api/             # API routes
+│   │   ├── __init__.py
+│   │   ├── v1/          # API version 1
+│   │   └── ...
+│   └── utils/           # Utility functions
+└── tests/               # Unit and integration tests
 ```
 
-#### 2.3.2 Browser MCP Server (2 hours)
+### 4.2 Frontend Applications
 
-- Set up Playwright-based automation
-- Create web content extraction tools
-- Test basic functionality
+Frontend applications will share a common component library and will be structured as follows:
 
-```python
-# browser_mcp_server.py (Separate Python process)
-from mcp.server.fastmcp import FastMCP
-from playwright.sync_api import sync_playwright
-import json
-
-mcp = FastMCP("Cortex Browser Assistant")
-
-@mcp.tool()
-def visit_webpage(url: str) -> str:
-    """Visit a webpage and return its content"""
-    with sync_playwright() as p:
-        browser = p.chromium.launch()
-        page = browser.new_page()
-        page.goto(url)
-        content = page.content()
-        browser.close()
-        return content
-
-@mcp.tool()
-def take_screenshot(url: str) -> str:
-    """Visit a webpage and take a screenshot"""
-    with sync_playwright() as p:
-        browser = p.chromium.launch()
-        page = browser.new_page()
-        page.goto(url)
-
-        # Take screenshot and convert to base64
-        screenshot_bytes = page.screenshot()
-        browser.close()
-
-        import base64
-        return base64.b64encode(screenshot_bytes).decode('utf-8')
-
-@mcp.tool()
-def extract_text(url: str) -> str:
-    """Extract visible text from a webpage"""
-    with sync_playwright() as p:
-        browser = p.chromium.launch()
-        page = browser.new_page()
-        page.goto(url)
-
-        # Extract text content
-        text = page.evaluate("""() => {
-            return document.body.innerText;
-        }""")
-
-        browser.close()
-        return text
-
-if __name__ == "__main__":
-    mcp.run()
+```
+frontend/
+├── package.json
+├── vite.config.ts
+├── tsconfig.json
+├── index.html
+├── src/
+│   ├── main.tsx
+│   ├── App.tsx
+│   ├── components/      # Shared components
+│   ├── hooks/           # Custom React hooks
+│   ├── services/        # API clients
+│   ├── store/           # State management
+│   ├── utils/           # Utility functions
+│   └── apps/            # Application-specific components
+│       ├── chat/        # Chat application
+│       ├── voice/       # Voice application
+│       ├── canvas/      # Canvas application
+│       └── ...
+└── tests/               # Unit and integration tests
 ```
 
-#### 2.3.3 Documentation & Final Polish (3 hours)
+### 4.3 Docker Composition
 
-- Complete API documentation
-- Add project setup instructions
-- Fix critical issues
-- Optimization
-
-## 3. Code Examples for Key Components
-
-### 3.1 LLM Integration with OpenAI
-
-```python
-# app/core/ai_manager.py (expanded with better prompting)
-from openai import AsyncOpenAI
-from app.core.memory import MemoryManager
-from app.config import settings
-import json
-
-client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
-memory_manager = MemoryManager()
-
-# System prompt template
-SYSTEM_PROMPT = """
-You are Cortex, an advanced AI assistant with the following capabilities:
-- Answering questions and providing information
-- Assisting with coding and technical tasks
-- Helping with document creation and editing
-- Providing recommendations and suggestions
-
-You have access to various tools through a system called MCP (Model Context Protocol).
-These tools allow you to interact with the user's environment.
-
-When you respond:
-- Be concise and helpful
-- Use markdown formatting for clarity when appropriate
-- If you need to use a tool, indicate this clearly
-"""
-
-async def process_message(content: str, workspace_id: str, tools=None) -> str:
-    """Process a user message and generate a response"""
-    # Get conversation history from memory
-    history = memory_manager.get_conversation_history(workspace_id)
-
-    # Prepare the messages for the API call
-    messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
-        *history,
-        {"role": "user", "content": content}
-    ]
-
-    # Add tools information if available
-    api_params = {
-        "model": "gpt-4",
-        "messages": messages,
-        "temperature": 0.7,
-    }
-
-    if tools:
-        api_params["tools"] = tools
-
-    # Call the OpenAI API
-    response = await client.chat.completions.create(**api_params)
-
-    # Extract the response content
-    response_content = response.choices[0].message.content
-
-    # Process tool calls if present
-    tool_calls = response.choices[0].message.tool_calls
-    if tool_calls:
-        # Handle tool calls logic here
-        pass
-
-    # Save the exchange to memory
-    memory_manager.add_interaction(workspace_id,
-                                   {"role": "user", "content": content},
-                                   {"role": "assistant", "content": response_content})
-
-    return response_content
-```
-
-### 3.2 React Component for Workspace Management
-
-```typescript
-// src/components/workspace/WorkspaceManager.tsx
-import { useState, useEffect } from "react";
-import {
-  Stack,
-  PrimaryButton,
-  DetailsList,
-  IColumn,
-  SelectionMode,
-  Dialog,
-  DialogType,
-  DialogFooter,
-  DefaultButton,
-  TextField,
-  Text,
-} from "@fluentui/react";
-import {
-  createWorkspace,
-  getWorkspaces,
-  deleteWorkspace,
-} from "../../services/workspace";
-
-interface Workspace {
-  id: string;
-  name: string;
-  description: string;
-  created_at: string;
-  updated_at: string;
-}
-
-function WorkspaceManager() {
-  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [showDialog, setShowDialog] = useState(false);
-  const [newName, setNewName] = useState("");
-  const [newDescription, setNewDescription] = useState("");
-  const [deleteId, setDeleteId] = useState<string | null>(null);
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-
-  // Define the columns for the table
-  const columns: IColumn[] = [
-    {
-      key: "name",
-      name: "Name",
-      fieldName: "name",
-      minWidth: 100,
-      maxWidth: 200,
-    },
-    {
-      key: "description",
-      name: "Description",
-      fieldName: "description",
-      minWidth: 200,
-    },
-    {
-      key: "created",
-      name: "Created",
-      fieldName: "created_at",
-      minWidth: 100,
-      onRender: (item: Workspace) => {
-        return new Date(item.created_at).toLocaleString();
-      },
-    },
-    {
-      key: "actions",
-      name: "Actions",
-      minWidth: 100,
-      onRender: (item: Workspace) => (
-        <Stack horizontal tokens={{ childrenGap: 8 }}>
-          <DefaultButton
-            iconProps={{ iconName: "Delete" }}
-            onClick={() => {
-              setDeleteId(item.id);
-              setShowDeleteDialog(true);
-            }}
-          >
-            Delete
-          </DefaultButton>
-        </Stack>
-      ),
-    },
-  ];
-
-  // Load workspaces on component mount
-  useEffect(() => {
-    loadWorkspaces();
-  }, []);
-
-  const loadWorkspaces = async () => {
-    setIsLoading(true);
-    try {
-      const data = await getWorkspaces();
-      setWorkspaces(data);
-    } catch (error) {
-      console.error("Failed to load workspaces:", error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleCreateWorkspace = async () => {
-    if (!newName.trim()) return;
-
-    setIsLoading(true);
-    try {
-      await createWorkspace({
-        name: newName,
-        description: newDescription,
-      });
-      setShowDialog(false);
-      setNewName("");
-      setNewDescription("");
-      loadWorkspaces();
-    } catch (error) {
-      console.error("Failed to create workspace:", error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleDeleteWorkspace = async () => {
-    if (!deleteId) return;
-
-    setIsLoading(true);
-    try {
-      await deleteWorkspace(deleteId);
-      setShowDeleteDialog(false);
-      setDeleteId(null);
-      loadWorkspaces();
-    } catch (error) {
-      console.error("Failed to delete workspace:", error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  return (
-    <Stack tokens={{ padding: 20, childrenGap: 20 }}>
-      <Stack horizontal horizontalAlign="space-between">
-        <Text variant="xxLarge">Workspaces</Text>
-        <PrimaryButton
-          iconProps={{ iconName: "Add" }}
-          onClick={() => setShowDialog(true)}
-          disabled={isLoading}
-        >
-          New Workspace
-        </PrimaryButton>
-      </Stack>
-
-      <DetailsList
-        items={workspaces}
-        columns={columns}
-        selectionMode={SelectionMode.none}
-        isHeaderVisible={true}
-      />
-
-      {/* Create Workspace Dialog */}
-      <Dialog
-        hidden={!showDialog}
-        onDismiss={() => setShowDialog(false)}
-        dialogContentProps={{
-          type: DialogType.normal,
-          title: "Create New Workspace",
-        }}
-      >
-        <TextField
-          label="Name"
-          required
-          value={newName}
-          onChange={(_, newValue) => setNewName(newValue || "")}
-        />
-        <TextField
-          label="Description"
-          multiline
-          rows={3}
-          value={newDescription}
-          onChange={(_, newValue) => setNewDescription(newValue || "")}
-        />
-        <DialogFooter>
-          <PrimaryButton
-            onClick={handleCreateWorkspace}
-            disabled={!newName.trim() || isLoading}
-          >
-            Create
-          </PrimaryButton>
-          <DefaultButton onClick={() => setShowDialog(false)}>
-            Cancel
-          </DefaultButton>
-        </DialogFooter>
-      </Dialog>
-
-      {/* Delete Confirmation Dialog */}
-      <Dialog
-        hidden={!showDeleteDialog}
-        onDismiss={() => setShowDeleteDialog(false)}
-        dialogContentProps={{
-          type: DialogType.normal,
-          title: "Delete Workspace",
-          subText:
-            "Are you sure you want to delete this workspace? This action cannot be undone.",
-        }}
-      >
-        <DialogFooter>
-          <PrimaryButton onClick={handleDeleteWorkspace} disabled={isLoading}>
-            Delete
-          </PrimaryButton>
-          <DefaultButton onClick={() => setShowDeleteDialog(false)}>
-            Cancel
-          </DefaultButton>
-        </DialogFooter>
-      </Dialog>
-    </Stack>
-  );
-}
-
-export default WorkspaceManager;
-```
-
-## 4. Deployment Configuration
-
-### 4.1 Local Development
-
-```bash
-# Start backend
-cd cortex-core
-pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8000
-
-# Start frontend
-cd cortex-ui
-npm install
-npm run dev
-```
-
-### 4.2 Azure Deployment (Placeholder)
+Services will be orchestrated using Docker Compose:
 
 ```yaml
-# azure-deployment.yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: cortex-platform
-spec:
-  replicas: 2
-  selector:
-    matchLabels:
-      app: cortex
-  template:
-    metadata:
-      labels:
-        app: cortex
-    spec:
-      containers:
-        - name: cortex-api
-          image: cortex-api:latest
-          ports:
-            - containerPort: 8000
-          env:
-            - name: OPENAI_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: cortex-secrets
-                  key: openai-api-key
-        - name: cortex-ui
-          image: cortex-ui:latest
-          ports:
-            - containerPort: 80
+version: "3.8"
+
+services:
+  # Core services
+  cortex-core:
+    build: ./cortex-core
+    ports:
+      - "6000:6000"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - MEMORY_SERVICE_URL=http://cortex-memory:6001
+      - COGNITION_SERVICE_URL=http://cortex-cognition:6002
+    volumes:
+      - ./cortex-core:/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 6000 --reload
+
+  cortex-memory:
+    build: ./cortex-memory
+    ports:
+      - "6001:6001"
+    volumes:
+      - ./cortex-memory:/app
+      - ./data/memory:/app/data/memory
+    command: uvicorn app.main:app --host 0.0.0.0 --port 6001 --reload
+
+  cortex-cognition:
+    build: ./cortex-cognition
+    ports:
+      - "6002:6002"
+    volumes:
+      - ./cortex-cognition:/app
+      - ./data/cognition:/app/data/cognition
+    command: uvicorn app.main:app --host 0.0.0.0 --port 6002 --reload
+
+  # Frontend applications
+  cortex-frontend:
+    build: ./frontend
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./frontend:/app
+    environment:
+      - VITE_CORTEX_API_URL=http://localhost:6000
+    command: npm run dev
+
+  # Domain experts
+  code-assistant:
+    build: ./domain-experts/code-assistant
+    ports:
+      - "6010:6010"
+    volumes:
+      - ./domain-experts/code-assistant:/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 6010 --reload
 ```
 
-### 4.3 GitHub Codespaces
+## 5. Development Workflow
 
-```json
-// .devcontainer/devcontainer.json
-{
-  "name": "Cortex Development",
-  "dockerComposeFile": "docker-compose.yml",
-  "service": "app",
-  "workspaceFolder": "/workspace",
-  "extensions": [
-    "ms-python.python",
-    "ms-python.vscode-pylance",
-    "dbaeumer.vscode-eslint",
-    "esbenp.prettier-vscode"
-  ],
-  "forwardPorts": [8000, 3000],
-  "postCreateCommand": "bash .devcontainer/post-create.sh",
-  "settings": {
-    "python.linting.enabled": true,
-    "python.linting.pylintEnabled": true,
-    "editor.formatOnSave": true
-  }
-}
-```
+### 5.1 Development Environment Setup
 
-## 5. Testing Strategy
+1. Clone repository: `git clone https://github.com/org/cortex-platform.git`
+2. Navigate to the project directory: `cd cortex-platform`
+3. Copy environment template: `cp .env.example .env`
+4. Edit `.env` file to add required API keys and configuration
+5. Start development environment: `docker-compose up`
 
-### 5.1 Backend Tests
+### 5.2 Development Workflow
 
-```python
-# tests/test_api.py
-import pytest
-from fastapi.testclient import TestClient
-from app.main import app
+1. Create feature branch: `git checkout -b feature/component-name`
+2. Implement changes and write tests
+3. Run tests: `docker-compose run --rm backend pytest`
+4. Submit pull request for review
+5. After approval, merge to main branch
 
-client = TestClient(app)
+### 5.3 CI/CD Pipeline
 
-def test_root_endpoint():
-    response = client.get("/")
-    assert response.status_code == 200
-    assert "message" in response.json()
+1. Run linting and formatting checks
+2. Build Docker images
+3. Run unit and integration tests
+4. Deploy to development environment for testing
+5. On release, deploy to production environment
 
-def test_chat_endpoint():
-    response = client.post(
-        "/api/chat/send",
-        json={"content": "Hello world", "workspace_id": "default"}
-    )
-    assert response.status_code == 200
-    assert "response" in response.json()
+## 6. Testing Strategy
 
-def test_workspace_creation():
-    # Create a test workspace
-    workspace_data = {
-        "name": "Test Workspace",
-        "description": "Test description"
-    }
-    response = client.post("/api/workspaces/", json=workspace_data)
-    assert response.status_code == 200
+### 6.1 Unit Testing
 
-    workspace_id = response.json()["id"]
+- Test individual functions and classes
+- Focus on core logic and edge cases
+- Use pytest for backend and Jest for frontend
+- Maintain high code coverage (target: 80%+)
 
-    # Verify it was created
-    response = client.get(f"/api/workspaces/{workspace_id}")
-    assert response.status_code == 200
-    assert response.json()["name"] == workspace_data["name"]
+### 6.2 Integration Testing
 
-    # Clean up
-    client.delete(f"/api/workspaces/{workspace_id}")
-```
+- Test interactions between components
+- Focus on API contracts and message flows
+- Use pytest for backend and Cypress for frontend
+- Test realistic user scenarios
 
-### 5.2 Frontend Tests
+### 6.3 End-to-End Testing
 
-```typescript
-// src/components/chat/__tests__/ChatInterface.test.tsx
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import ChatInterface from "../ChatInterface";
-import { sendChatMessage } from "../../../services/chat";
+- Test complete user flows
+- Focus on critical paths and user experience
+- Use Playwright for automated browser testing
+- Include voice and visual interaction testing
 
-// Mock the API service
-jest.mock("../../../services/chat");
-const mockSendChatMessage = sendChatMessage as jest.MockedFunction<
-  typeof sendChatMessage
->;
+## 7. Deployment Strategy
 
-describe("ChatInterface", () => {
-  beforeEach(() => {
-    mockSendChatMessage.mockReset();
-  });
+### 7.1 Development Environment
 
-  it("renders input field and send button", () => {
-    render(<ChatInterface workspaceId="test" />);
+- Docker Compose for local development
+- Hot reloading for both frontend and backend
+- Local storage for development data
 
-    expect(
-      screen.getByPlaceholderText("Type your message here...")
-    ).toBeInTheDocument();
-    expect(screen.getByText("Send")).toBeInTheDocument();
-  });
+### 7.2 Staging Environment
 
-  it("sends message when send button is clicked", async () => {
-    mockSendChatMessage.mockResolvedValue({ response: "Test response" });
+- Kubernetes deployment on Azure
+- CI/CD pipeline for automated deployment
+- Containerized services with managed dependencies
+- Monitoring and logging for testing
 
-    render(<ChatInterface workspaceId="test" />);
+### 7.3 Production Environment
 
-    const input = screen.getByPlaceholderText("Type your message here...");
-    fireEvent.change(input, { target: { value: "Hello Cortex" } });
+- Kubernetes deployment on Azure
+- Blue/green deployment for zero downtime
+- Automated scaling based on load
+- Comprehensive monitoring and alerting
+- Regular backup and disaster recovery
 
-    const sendButton = screen.getByText("Send");
-    fireEvent.click(sendButton);
+## 8. Risk Management
 
-    expect(mockSendChatMessage).toHaveBeenCalledWith("Hello Cortex", "test");
+### 8.1 Technical Risks
 
-    await waitFor(() => {
-      expect(screen.getByText("Hello Cortex")).toBeInTheDocument();
-      expect(screen.getByText("Test response")).toBeInTheDocument();
-    });
-  });
+| Risk                     | Mitigation                                                   |
+| ------------------------ | ------------------------------------------------------------ |
+| LLM API reliability      | Implement retry logic and fallback providers                 |
+| Voice processing latency | Optimize streaming and implement client-side processing      |
+| Integration complexity   | Focus on well-defined interfaces and incremental integration |
+| Performance at scale     | Regular load testing and optimization                        |
 
-  it("shows error message when API call fails", async () => {
-    mockSendChatMessage.mockRejectedValue(new Error("API error"));
+### 8.2 Project Risks
 
-    render(<ChatInterface workspaceId="test" />);
+| Risk                 | Mitigation                                           |
+| -------------------- | ---------------------------------------------------- |
+| Scope creep          | Clearly defined MVP with prioritized feature backlog |
+| Dependency delays    | Identify critical path and prepare alternatives      |
+| Resource constraints | Modular architecture allowing parallel work          |
+| Technical debt       | Regular refactoring and code quality metrics         |
 
-    const input = screen.getByPlaceholderText("Type your message here...");
-    fireEvent.change(input, { target: { value: "Trigger error" } });
+## 9. Implementation Timeline
 
-    const sendButton = screen.getByText("Send");
-    fireEvent.click(sendButton);
+### Phase 1: Foundation (Weeks 1-2)
 
-    await waitFor(() => {
-      expect(
-        screen.getByText("Failed to send message. Please try again.")
-      ).toBeInTheDocument();
-    });
-  });
-});
-```
+- Set up project infrastructure
+- Implement core services (Central AI, Memory, Cognition)
+- Create basic API structure
+- Establish development workflow
+
+### Phase 2: Integration (Weeks 3-4)
+
+- Implement input/output modalities
+- Create MCP integration
+- Develop first domain expert
+- Implement workspace structure
+
+### Phase 3: Refinement (Weeks 5-6)
+
+- Create unified UI
+- Integrate all components
+- Optimize performance
+- Complete documentation
+- Prepare for release
+
+## 10. Next Steps
+
+1. Finalize architecture document with stakeholder feedback
+2. Set up development environment and repository
+3. Create initial project structure and component skeletons
+4. Begin implementation of foundation components
+5. Schedule regular progress reviews and demos

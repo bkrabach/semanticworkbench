@@ -1,8 +1,8 @@
 # Cortex Core Architecture and MCP Connectivity Design
 
-*Version: Draft 0.1*
+_Version: Draft 0.1_
 
-*Date: 2025-03-04*
+_Date: 2025-03-04_
 
 ---
 
@@ -21,9 +21,10 @@ The core is built to be **modular** (composable and interchangeable), providing 
 - **Modular, Interchangeable Components:** Each component—whether it is the memory system, cognition engine, or I/O handler—comes with a default implementation but is designed to be hot-swappable. This flexibility extends to domain expert systems (like Code Assistant and Deep Research), which are connected via MCP.
 
 - **MCP-Centric Connectivity:** MCP is the main connectivity backbone for all communications between the Cortex Core and external elements. The client aspect of MCP is embedded directly within the core, ensuring seamless messaging across:
-    - Domain Expert Systems
-    - External integration tools (e.g., VS Code Extension, M365 Apps, Browser Extensions)
-    - Any other service in the ecosystem
+
+  - Domain Expert Systems
+  - External integration tools (e.g., VS Code Extension, M365 Apps, Browser Extensions)
+  - Any other service in the ecosystem
 
 - **Adaptive Interaction:** The core intelligently adapts to the available I/O modalities. For instance, it supports dual voice processing approaches (traditional speech-to-text with text-to-speech, as well as real-time voice streaming via the OpenAI realtime API) to reduce latency and enhance the user experience.
 
@@ -34,6 +35,7 @@ The core is built to be **modular** (composable and interchangeable), providing 
 ### 3.1. Central AI Core
 
 - **Responsibilities:**
+
   - **Task Orchestration & Routing:** Routes inputs, updates memory context, triggers cognition, and selects the best output modality based on context.
   - **API Exposure:** Provides REST endpoints, an OpenAI-compatible API, and MCP connectivity to interact with both front-end interfaces and external services.
   - **MCP Integration:** Embeds the MCP client functionality, enabling standardized communication with domain expert systems and community MCP servers.
@@ -44,6 +46,7 @@ The core is built to be **modular** (composable and interchangeable), providing 
 ### 3.2. Memory and Cognition Systems
 
 - **Memory System:**
+
   - Synthesizes high-level memories from interactions without storing raw conversation history.
   - Uses vector-based semantic search to retrieve context relevant for decision-making.
 
@@ -54,6 +57,7 @@ The core is built to be **modular** (composable and interchangeable), providing 
 ### 3.3. I/O Modalities
 
 - **Inputs:**
+
   - **Chat Input:** Textual communication, including markdown and multi-language support.
   - **Voice Input (Two Flavors):**
     - Traditional: Speech-to-text conversion.
@@ -93,7 +97,3 @@ The core is built to be **modular** (composable and interchangeable), providing 
 ## 6. Summary
 
 This document outlines the strategic design for the Cortex Core, emphasizing modularity, adaptive interaction, and robust MCP-centric connectivity. It provides a high-level blueprint that drives both current implementations and future extensions, ensuring that the core remains flexible, scalable, and ready to integrate with a thriving ecosystem of domain experts and external tools.
-
----
-
-*End of Document*
