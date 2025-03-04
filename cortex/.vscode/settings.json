@@ -1,4 +1,4 @@
 {
   "cSpell.ignorePaths": ["**/ai-context/**", "*.code-workspace"],
-  "cSpell.words": ["fastmcp", "modelcontextprotocol"]
+  "cSpell.words": ["fastmcp", "modelcontextprotocol", "Multimodal"]
 }
