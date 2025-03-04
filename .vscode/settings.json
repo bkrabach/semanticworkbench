@@ -212,6 +212,7 @@
     "tamasfe",
     "tracebacks",
     "uvicorn",
+    "venv",
     "webservice",
     "winget",
     "workbenchservice"
