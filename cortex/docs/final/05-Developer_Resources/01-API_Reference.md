@@ -14,7 +14,8 @@ The Cortex Platform exposes the following API categories:
 1. **Core API** - Primary interface for interacting with the central AI system
 2. **Domain Expert APIs** - Specialized interfaces for domain-specific capabilities
 3. **Integration APIs** - Interfaces for third-party tool integration
-4. **Management API** - Administrative functions for platform management
+4. **Model Context Protocol (MCP)** - Standardized protocol for providing context to LLMs
+5. **Management API** - Administrative functions for platform management
 
 All APIs follow consistent REST patterns with JSON payloads, using OAuth 2.0 for authentication.
 
@@ -573,6 +574,126 @@ Authorization: Bearer {access_token}
 }
 ```
 
+## Model Context Protocol (MCP)
+
+The Model Context Protocol (MCP) enables applications to provide context to Large Language Models (LLMs) in a standardized way. MCP allows your systems to expose data and functionality to the Cortex Platform Core AI.
+
+### MCP Registry
+
+```http
+GET /v1/mcp/registry
+```
+
+List registered MCP servers.
+
+**Request Headers:**
+
+```
+Authorization: Bearer {access_token}
+```
+
+**Response:**
+
+```json
+{
+  "servers": [
+    {
+      "id": "mcp_code_assistant",
+      "name": "Code Assistant",
+      "version": "1.0.0",
+      "url": "https://mcp.example.com/code-assistant",
+      "description": "Provides code-related context and tools",
+      "capabilities": ["resources", "tools", "prompts"],
+      "status": "online"
+    },
+    {
+      "id": "mcp_weather_service",
+      "name": "Weather Service",
+      "version": "0.9.1",
+      "url": "https://mcp.example.com/weather",
+      "description": "Provides weather data and forecasts",
+      "capabilities": ["resources", "tools"],
+      "status": "online"
+    }
+  ]
+}
+```
+
+### MCP Server Registration
+
+```http
+POST /v1/mcp/registry
+```
+
+Register a new MCP server.
+
+**Request Headers:**
+
+```
+Authorization: Bearer {access_token}
+Content-Type: application/json
+```
+
+**Request Body:**
+
+```json
+{
+  "name": "Data Analytics Provider",
+  "version": "1.0.0",
+  "url": "https://mcp.example.com/analytics",
+  "description": "Provides data analytics functions and datasets",
+  "capabilities": ["resources", "tools", "prompts"],
+  "auth": {
+    "type": "api_key",
+    "header_name": "X-API-Key"
+  }
+}
+```
+
+**Response:**
+
+```json
+{
+  "id": "mcp_data_analytics",
+  "name": "Data Analytics Provider",
+  "version": "1.0.0",
+  "url": "https://mcp.example.com/analytics",
+  "description": "Provides data analytics functions and datasets",
+  "capabilities": ["resources", "tools", "prompts"],
+  "status": "registered",
+  "created_at": "2025-03-05T16:30:00Z"
+}
+```
+
+### MCP Server Health Check
+
+```http
+GET /v1/mcp/registry/{server_id}/health
+```
+
+Check health of an MCP server.
+
+**Request Headers:**
+
+```
+Authorization: Bearer {access_token}
+```
+
+**Response:**
+
+```json
+{
+  "id": "mcp_code_assistant",
+  "status": "online",
+  "latency": 42,
+  "last_check": "2025-03-05T16:40:00Z",
+  "uptime": 98.5,
+  "resources_count": 15,
+  "tools_count": 8,
+  "prompts_count": 3
+}
+```
+
 ## Integration APIs
 
 ### VS Code Extension API
@@ -1032,10 +1153,16 @@ Webhook payloads follow this format:
 
 Official SDKs are available for:
 
-- JavaScript/TypeScript
-- Python
-- Java
-- C#
+- **Model Context Protocol (MCP) SDKs**
+
+  - JavaScript/TypeScript (`@modelcontextprotocol/sdk`)
+  - Python (`mcp`)
+
+- **Cortex Platform SDKs**
+  - JavaScript/TypeScript
+  - Python
+  - Java
+  - C#
 
 See the [SDK Documentation](02-SDK_Documentation.md) for details.
 
