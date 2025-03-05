@@ -19,7 +19,8 @@ They are counting on you, so be creative, work hard, and find ways to be success
   ```
 
 - **Mermaid Diagrams:**
-  To render flowcharts or process maps, wrap your content in triple backticks with `mermaid` as the language.
+  To render flowcharts or process maps, wrap your content in triple backticks with `mermaid` as the
+  language.  Our renderer does not support parentheses, but does support `<br/>` for line breaks.
   *Example:*
   ```mermaid
   graph TD;
