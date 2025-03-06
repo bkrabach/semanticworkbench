@@ -156,7 +156,7 @@ graph LR
 
 ## 4. Domain Expert Entities
 
-At the heart of the Cortex Platform’s modular design is the concept of Domain Expert Entities—specialized, autonomous modules that bring deep expertise in a specific field. Just as a business might hire external consultants or specialized firms to handle focused tasks, Cortex leverages these expert entities to offload complex, domain-specific work from the central core. This architecture ensures that the Cortex Core can remain agile and focused on high-level orchestration, while the domain experts deliver deep, specialized intelligence where it’s most needed.
+At the heart of the Cortex Platform's modular design is the concept of Domain Expert Entities—specialized, autonomous modules that bring deep expertise in a specific field. Just as a business might hire external consultants or specialized firms to handle focused tasks, Cortex leverages these expert entities to offload complex, domain-specific work from the central core. This architecture ensures that the Cortex Core can remain agile and focused on high-level orchestration, while the domain experts deliver deep, specialized intelligence where it's most needed.
 
 ### The Role of Domain Experts
 
@@ -167,6 +167,9 @@ Domain expert entities function as self-contained specialists that:
 
 - **Plan and Execute Autonomously:**  
   These entities decompose complex requests into a structured, step-by-step plan. The planning function involves analysis, task decomposition, and the formulation of an execution strategy tailored to the domain. By managing their plans internally, these experts reduce the need for micromanagement by the central core.
+
+- **Engage Users Through Guided Conversations When Necessary:**  
+  When faced with ambiguity or critical decision points, domain experts can initiate a guided conversation flow through the Cortex Core. Rather than proceeding with incomplete information or making assumptions, the expert formulates precise questions that the core can present to the user through the most appropriate modality. This ensures that user input is sought only when truly valuable, preserving both autonomy and accuracy.
 
 - **Spawn Subprocesses When Necessary:**  
   Complex or multifaceted tasks may require parallel lines of work. Domain experts can dynamically spawn subprocesses to tackle individual subtasks concurrently—similar to how a specialized team would operate—ensuring faster and more robust outcomes.
@@ -183,7 +186,7 @@ Domain expert entities function as self-contained specialists that:
 ### Benefits of the Domain Expert Approach
 
 - **Flexibility and Modularity:**  
-  Domain experts are designed to be easily added, replaced, or upgraded. Whether implementing our default “first-party” solutions—such as a Code Assistant or Deep Research module—or integrating third-party/community-driven offerings, the system’s modular interfaces ensure compatibility without disrupting the overall architecture.
+  Domain experts are designed to be easily added, replaced, or upgraded. Whether implementing our default "first-party" solutions—such as a Code Assistant or Deep Research module—or integrating third-party/community-driven offerings, the system's modular interfaces ensure compatibility without disrupting the overall architecture.
 
 - **Improved Efficiency:**  
   By delegating deep, specialized tasks to autonomous experts, Cortex offloads intensive cognitive work from the central core. This division of labor results in faster, more precise execution and enables the core to concentrate on coordination and big-picture decision-making.
@@ -191,7 +194,10 @@ Domain expert entities function as self-contained specialists that:
 - **Enhanced User Experience:**  
   With domain experts handling specialty tasks, the Cortex Platform offers users a seamless, high-level experience. Whether the user is asking for complex code generation, deep data analysis, or detailed research synthesis, the system delivers expert-level outputs without requiring the user to switch contexts or interact with multiple systems.
 
-A key strength of the Cortex architecture is its ability to invite community-driven contributions. For example, consider a cooking and recipe domain expert created by a partner. This expert could autonomously recommend meal ideas based on a user’s ingredient list, dietary preferences, and cooking skill level. Such a plug-and-play solution seamlessly integrates into the Cortex ecosystem, drawing from existing user context like calendar events (e.g., dinner party schedules) or shopping lists stored in connected integrations—all without requiring modifications to the Cortex Core.
+- **Balanced Autonomy and Collaboration:**  
+  The Guided Conversation capability strikes an optimal balance between autonomous operation and thoughtful user engagement. By seeking input only at meaningful decision points, domain experts maintain their efficiency while ensuring solutions remain aligned with user expectations and requirements.
+
+A key strength of the Cortex architecture is its ability to invite community-driven contributions. For example, consider a cooking and recipe domain expert created by a partner. This expert could autonomously recommend meal ideas based on a user's ingredient list, dietary preferences, and cooking skill level. Such a plug-and-play solution seamlessly integrates into the Cortex ecosystem, drawing from existing user context like calendar events (e.g., dinner party schedules) or shopping lists stored in connected integrations—all without requiring modifications to the Cortex Core.
 
 ### Integration with the Central Core
 

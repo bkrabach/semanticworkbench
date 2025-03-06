@@ -366,21 +366,23 @@ Domain Expert Entities are autonomous, specialized modules that empower the Cort
 #### Fundamental Concepts
 
 - **Autonomous Operation:**  
-  Each Domain Expert Entity is designed to function independently. When the Cortex Core identifies a task that requires specialized handling—such as code optimization, complex data analysis, or deep research—it delegates the task to the appropriate expert. Once engaged, the expert operates with minimal oversight, following a plan–execute–review cycle to complete its assignment.
+  Each Domain Expert Entity is designed to function independently. When the Cortex Core identifies a task that requires specialized handling—such as code optimization, complex data analysis, or deep research—it delegates the task to the appropriate expert. Once engaged, the expert operates with appropriate autonomy, following a plan–execute–review cycle to complete its assignment.
 
 - **Structured Planning and Execution:**  
   Domain experts receive high-level directives from the Cortex Core and autonomously decompose these into actionable subtasks. They incorporate:
 
   - **Task Decomposition:** Breaking down complex challenges into manageable steps.
   - **Subprocess Spawning:** Initiating parallel or sequential subprocesses when required by the task.
+  - **User Interaction Requests:** Identifying when additional user input is needed and coordinating with the Cortex Core to facilitate guided conversations.
   - **Iterative Refinement:** Evaluating intermediate outcomes and systematically refining their approaches until the result meets predefined quality thresholds.
 
 - **Standardized Interface Contracts:**  
-  Each expert adheres to a common integration interface that defines how it receives requests and returns results. This standardization ensures that whether an expert is a first‑party offering (like Code Assistant or Deep Research) or a third‑party module contributed by the community, it will operate seamlessly within the overall Cortex ecosystem.  
+  Each expert adheres to a common integration interface that defines how it receives requests, handles intermediate interactions, and returns results. This standardization ensures that whether an expert is a first‑party offering (like Code Assistant or Deep Research) or a third‑party module contributed by the community, it will operate seamlessly within the overall Cortex ecosystem.  
   The interface typically includes:
 
   - **Request Reception Interface:** A mechanism for accepting high‑level tasks, including relevant context and parameters.
   - **Execution and Synthesis Interface:** A workflow for processing the task—potentially spawning additional subprocesses—while continuously monitoring and refining its output.
+  - **User Interaction Interface:** A protocol for requesting additional information or clarification from the user via the Cortex Core.
   - **Result Delivery Interface:** A consistent method for returning a synthesized, actionable result to the Cortex Core, often accompanied by evaluative annotations or confidence levels.
 
   The standardized interface not only simplifies integration with the Cortex Core but also empowers third-party developers and community members to create and contribute new Domain Expert Entities. This approach ensures that the ecosystem can continuously evolve with innovative, specialized solutions.
@@ -391,6 +393,15 @@ Domain Expert Entities are autonomous, specialized modules that empower the Cort
   Domain Expert Entities are designed to complement the Cortex Core by handling tasks that require deep subject matter expertise. This may include tasks such as debugging complex code, generating detailed research syntheses, or providing specialized recommendations.  
   While examples like Code Assistant and Deep Research represent initial applications of this paradigm, the framework is universally applicable across diverse domains.
 
+- **Interactive Guidance When Needed:**  
+  Despite their autonomous operation, Domain Expert Entities are equipped with the capability to identify scenarios where additional user input would significantly enhance the quality or relevance of outcomes. In these cases, the entity utilizes the Guided Conversation protocol to:
+
+  - Request precise information from the user through the Cortex Core.
+  - Frame the request with sufficient context to make the interaction efficient.
+  - Resume autonomous execution once the required input is received.
+
+  This capability ensures that experts maintain their efficiency while avoiding incorrect assumptions or proceeding with incomplete information when critical junctures are reached.
+
 - **Self-Evaluation and Feedback:**  
   Each expert incorporates self-assessment routines to evaluate the quality of its work. If the output fails to meet the expected quality threshold, the expert iteratively adjusts its planning and execution process, or—if necessary—escalates the issue back to the Cortex Core for further guidance.
 
@@ -400,17 +411,52 @@ Domain Expert Entities are autonomous, specialized modules that empower the Cort
 - **Contextual Integration:**  
   Although Domain Expert Entities operate autonomously, they remain tightly integrated with the Cortex Core. They receive detailed contextual input—derived from the unified memory system—and their outputs are fed back into the broader context available to other components. This ensures cohesive operation across the platform, even when multiple experts are engaged simultaneously.
 
+#### User Interaction Protocol
+
+A critical aspect of Domain Expert Entity operation is their ability to request user input when needed, without compromising their overall autonomy. This is implemented through the **Guided Conversation Protocol**:
+
+1. **Identification of Information Needs:**  
+   When an expert determines that additional user input is required (e.g., clarifying requirements, choosing between alternatives, or providing domain knowledge), it formulates a precise interaction request.
+
+2. **Request Routing:**  
+   The expert sends a structured ASK_USER request to the Cortex Core, containing:
+
+   - The specific information needed
+   - Relevant context that explains why the information is required
+   - Optional formatting guidance (e.g., multiple choice, free text, etc.)
+   - Priority level (urgent vs. can be deferred)
+
+3. **Core Mediation:**  
+   The Cortex Core evaluates the request and determines:
+
+   - The optimal timing for presenting the request to the user
+   - The most appropriate modality for the interaction (chat, voice, etc.)
+   - Whether the information might already exist in memory or could be provided by another entity
+
+4. **User Engagement:**  
+   The Core presents the request to the user through the selected modality, potentially enriching it with additional context from the unified memory system to make the interaction more efficient.
+
+5. **Response Handling:**  
+   Once the user provides the requested information, the Cortex Core routes it back to the originating Domain Expert Entity, which then resumes its autonomous processing.
+
+6. **Execution Continuation:**  
+   The expert incorporates the new information into its planning and execution process, potentially adjusting its approach based on the user's input.
+
+This protocol ensures that Domain Expert Entities maintain their autonomy for most operations while having a clear pathway to engage users when human input would significantly improve outcomes. The Guided Conversation approach minimizes interruptions by ensuring that user interactions are meaningful, contextually relevant, and properly timed.
+
 #### Conceptual Workflow
 
-A high-level view of a Domain Expert Entity’s operation within the Cortex Platform might involve the following sequence:
+A high-level view of a Domain Expert Entity's operation within the Cortex Platform might involve the following sequence:
 
 1. **Task Reception:** The Cortex Core identifies a specialized task and forwards the high-level request, together with contextual data.
 2. **Autonomous Decomposition:** Upon receipt, the expert decomposes the task into subtasks and initiates its execution plan.
 3. **Self-Monitoring and Iteration:** The expert processes the task, evaluates intermediate outputs against quality benchmarks, and performs iterative refinement as needed.
+   - If a critical information gap is identified, the expert initiates the Guided Conversation Protocol to request user input.
+   - Processing continues once the required information is received.
 4. **Result Synthesis:** Once a satisfactory result is obtained, the expert returns the synthesized output, along with any evaluative notes, to the Cortex Core.
 5. **Integration:** The Cortex Core integrates the feedback, updating the overall context and moving forward with user interaction or further routing as necessary.
 
-Domain Expert Entities are integral to the Cortex Platform’s strategy of distributed intelligence. They empower the system to leverage specialized knowledge in a modular, autonomous manner, ensuring that complex tasks are executed with expert precision while maintaining a flexible, scalable architecture. This approach not only enhances current capabilities but also lays the groundwork for seamless integration of future innovations and community contributions.
+Domain Expert Entities are integral to the Cortex Platform's strategy of distributed intelligence. They empower the system to leverage specialized knowledge in a modular, autonomous manner, ensuring that complex tasks are executed with expert precision while maintaining a flexible, scalable architecture. This approach not only enhances current capabilities but also lays the groundwork for seamless integration of future innovations and community contributions.
 
 ### 4.5 Input/Output Modalities
 
@@ -473,7 +519,7 @@ The modality layer is engineered to adapt based on real-time context, user prefe
 
 The Input/Output Modalities component of the Cortex Platform encapsulates the interfaces through which users interact with the system. By leveraging adaptive, context-aware interactions and delivering a seamless, unified user experience across diverse platforms, the modality layer ensures that Cortex empowers users with effortless collaboration and engagement across all touchpoints.
 
-### Updated Section 4.6: Integration Layer
+### 4.6: Integration Layer
 
 #### Key Responsibilities
 
