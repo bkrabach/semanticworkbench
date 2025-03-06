@@ -443,7 +443,7 @@ The following internal interfaces will be implemented for communication between 
   - Execute tools and process results
   - Handle tool execution lifecycles
 
-## 5. Implementation Approach
+## 6. Implementation Approach
 
 The implementation will be divided into the following phases, organized for a single-day coding spike. Each phase has specific deliverables and outcomes to ensure we maintain focus and make steady progress throughout the day.
 
@@ -605,7 +605,7 @@ The implementation will be divided into the following phases, organized for a si
 - List of known issues and future enhancements
 - Ready for demonstration to stakeholders
 
-## 6. Technology Stack
+## 7. Technology Stack
 
 - **Backend Framework**: FastAPI with Pydantic
 - **Database**: SQLite (for simplicity in the PoC)
@@ -619,7 +619,7 @@ The implementation will be divided into the following phases, organized for a si
 
 > Note: While this PoC will use LiteLLM's direct API integration, future implementations might consider using LiteLLM proxy for more advanced features like routing, fallbacks, and caching.
 
-## 7. Key Implementation Details
+## 8. Key Implementation Details
 
 ### User Isolation
 
@@ -648,7 +648,7 @@ The MCP Client Manager will:
 2. Allow the conversation handler to execute tools as needed
 3. Handle the serialization and deserialization of tool inputs and outputs
 
-## 8. Testing Strategy
+## 9. Testing Strategy
 
 Given the time constraints of a 1-day spike, testing will focus on core functionality:
 
@@ -656,7 +656,7 @@ Given the time constraints of a 1-day spike, testing will focus on core function
 2. **Integration Tests**: Simple tests to verify that components can communicate with each other
 3. **Manual Testing**: Ad-hoc testing of the API endpoints and SSE functionality
 
-## 9. Demo Scenario
+## 10. Demo Scenario
 
 At the end of the day, the PoC should be able to demonstrate:
 
@@ -667,7 +667,7 @@ At the end of the day, the PoC should be able to demonstrate:
 
 A simple demo script will be prepared to walk through these capabilities.
 
-## 10. Next Steps and Future Enhancements
+## 11. Next Steps and Future Enhancements
 
 After the 1-day spike, the following enhancements can be considered:
 
@@ -678,7 +678,7 @@ After the 1-day spike, the following enhancements can be considered:
 5. Performance optimizations for scaling
 6. Additional input/output modalities beyond chat
 
-## 11. Risks and Mitigations
+## 12. Risks and Mitigations
 
 | Risk                               | Impact | Mitigation                                                    |
 | ---------------------------------- | ------ | ------------------------------------------------------------- |
@@ -687,21 +687,380 @@ After the 1-day spike, the following enhancements can be considered:
 | Time constraints                   | High   | Focus on core functionality first, add features incrementally |
 | Data consistency across components | Medium | Use simple transactional operations where possible            |
 
-## 12. Conclusion
+## 13. Conclusion
 
 This implementation plan outlines a focused approach to building a minimal viable Cortex Core PoC within a 1-day coding spike. By concentrating on the core routing functionality, basic conversation handling, and MCP tool integration, the PoC will provide a foundation that others can build upon to implement the full vision of the Cortex Platform.
 
 The modularity of the design ensures that components can be enhanced or replaced independently as the system evolves, aligning with the long-term vision of a flexible, adaptive AI ecosystem.
 
-## 13. Change Log
+## 14. Implementation Details Addendum
+
+This section provides additional implementation details that are important to consider before starting the coding process. These specifications will help ensure a smoother implementation by clarifying key interfaces and design decisions.
+
+### 14.1 Component Interface Definitions
+
+#### 14.1.1 Message Router Interface
+
+```python
+# Message Router Core Interface
+class MessageRouter:
+    async def route_message(self, message: Message) -> Message:
+        """
+        Routes a message to the appropriate handler and returns the response.
+
+        Args:
+            message: The message to route
+
+        Returns:
+            The response message from the handler
+        """
+        pass
+
+    async def register_handler(self, message_type: str, handler_func: Callable):
+        """
+        Registers a handler function for a specific message type.
+
+        Args:
+            message_type: The type of message to handle
+            handler_func: The function to call when this type of message is received
+        """
+        pass
+```
+
+#### 14.1.2 Conversation Handler Interface
+
+```python
+# Conversation Handler Core Interface
+class ConversationHandler:
+    async def handle_message(self, conversation_id: str, message: Message) -> Message:
+        """
+        Processes a user message in the context of a conversation and generates a response.
+
+        Args:
+            conversation_id: The ID of the conversation
+            message: The user message to process
+
+        Returns:
+            The assistant's response message
+        """
+        pass
+
+    async def execute_tool(self, tool_execution: ToolExecution) -> Dict[str, Any]:
+        """
+        Executes a tool and processes the result.
+
+        Args:
+            tool_execution: The tool execution details
+
+        Returns:
+            The result of the tool execution
+        """
+        pass
+```
+
+#### 14.1.3 Memory System Adapter Interface
+
+```python
+# Memory System Adapter Interface
+class MemorySystemAdapter:
+    async def store_memory(self, memory_entry: MemoryEntry) -> str:
+        """
+        Stores a memory entry in the memory system.
+
+        Args:
+            memory_entry: The memory entry to store
+
+        Returns:
+            The ID of the stored memory entry
+        """
+        pass
+
+    async def retrieve_memories(
+        self,
+        user_id: str,
+        conversation_id: str,
+        query: Optional[str] = None,
+        limit: int = 10
+    ) -> List[MemoryEntry]:
+        """
+        Retrieves relevant memories for a conversation.
+
+        Args:
+            user_id: The ID of the user
+            conversation_id: The ID of the conversation
+            query: Optional query to filter memories
+            limit: Maximum number of memories to retrieve
+
+        Returns:
+            List of relevant memory entries
+        """
+        pass
+```
+
+#### 14.1.4 MCP Client Manager Interface
+
+```python
+# MCP Client Manager Interface
+class MCPClientManager:
+    async def discover_tools(self, server_url: str) -> List[MCPTool]:
+        """
+        Discovers tools provided by an MCP server.
+
+        Args:
+            server_url: The URL of the MCP server
+
+        Returns:
+            List of discovered tools
+        """
+        pass
+
+    async def execute_tool(
+        self,
+        server_id: str,
+        tool_id: str,
+        inputs: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Executes a tool on an MCP server.
+
+        Args:
+            server_id: The ID of the MCP server
+            tool_id: The ID of the tool to execute
+            inputs: The inputs for the tool
+
+        Returns:
+            The outputs from the tool execution
+        """
+        pass
+```
+
+#### 14.1.5 SSE Manager Interface
+
+```python
+# SSE Manager Interface
+class SSEManager:
+    async def register_connection(self, connection: SSEConnection) -> None:
+        """
+        Registers a new SSE connection.
+
+        Args:
+            connection: The SSE connection to register
+        """
+        pass
+
+    async def send_event(
+        self,
+        user_id: str,
+        conversation_id: Optional[str],
+        event_type: str,
+        data: Dict[str, Any]
+    ) -> None:
+        """
+        Sends an event to all connected clients for a user/conversation.
+
+        Args:
+            user_id: The ID of the user
+            conversation_id: Optional ID of the conversation
+            event_type: The type of event
+            data: The event data
+        """
+        pass
+```
+
+### 14.2 Memory System Implementation Details
+
+For the PoC, we'll implement a simple in-memory storage system with the following characteristics:
+
+1. **Data Structure**: An in-memory dictionary with the following structure:
+
+   ```python
+   memory_store = {
+       "user_id1": {
+           "conversation_id1": [MemoryEntry1, MemoryEntry2, ...],
+           "conversation_id2": [MemoryEntry1, MemoryEntry2, ...],
+       },
+       "user_id2": {
+           "conversation_id3": [MemoryEntry1, MemoryEntry2, ...],
+       }
+   }
+   ```
+
+2. **Memory Retrieval Strategy**:
+
+   - For simplicity, we'll implement a basic time-based retrieval strategy that returns the most recent N memories
+   - We'll include placeholder code for more sophisticated retrieval (e.g., keyword matching, embedding-based similarity)
+
+3. **External Memory Integration**:
+   - We'll define a clear interface for connecting to an external memory system
+   - The interface will use REST API calls with standardized request/response formats
+   - We'll implement feature detection to use the external system when available and fall back to in-memory otherwise
+
+### 14.3 MCP Client Implementation Details
+
+The MCP Client Manager will implement the following:
+
+1. **Server Discovery and Connection**:
+
+   - Configuration-based server discovery (servers defined in a config file)
+   - Connection pooling to manage multiple concurrent connections
+   - Automatic reconnection logic with exponential backoff
+
+2. **Tool Registration Process**:
+
+   - On startup, query all configured servers for available tools
+   - Parse tool schemas and register them in the internal tool registry
+   - Periodically refresh tool registrations to handle new or removed tools
+
+3. **Tool Execution**:
+
+   - Implement standardized serialization for tool inputs based on parameter types
+   - Handle tool execution timeouts and failures with proper error reporting
+   - Implement result deserialization with schema validation
+
+4. **Mock MCP Server**:
+   - Include a simple mock MCP server implementation for testing
+   - The mock server will provide basic tools like calculator, weather lookup, etc.
+   - This ensures the PoC can function without external dependencies
+
+### 14.4 Authentication and Error Handling
+
+#### 14.4.1 Authentication Implementation
+
+For the PoC, we'll implement a simplified authentication flow:
+
+1. **Session Token Validation**:
+
+   - Use a simple JWT-based token for authentication
+   - Include user ID and basic claims in the token
+   - Implement token expiration and refresh logic
+
+2. **AAD Integration** (simplified for PoC):
+
+   - Support basic validation of AAD tokens
+   - Extract essential user information (object ID, tenant ID, name, email)
+   - Map external identities to internal user IDs
+
+3. **Session Middleware**:
+   - Implement FastAPI middleware for token extraction and validation
+   - Create a dependency injection pattern for authenticated user access
+   - Provide appropriate HTTP responses for authentication failures
+
+#### 14.4.2 Error Handling Strategy
+
+We'll implement a consistent error handling approach:
+
+1. **Exception Hierarchy**:
+
+   ```python
+   # Base exception classes
+   class CortexError(Exception):
+       """Base class for all Cortex Core exceptions."""
+       pass
+
+   class AuthenticationError(CortexError):
+       """Raised when authentication fails."""
+       pass
+
+   class AuthorizationError(CortexError):
+       """Raised when a user is not authorized to perform an action."""
+       pass
+
+   class ResourceNotFoundError(CortexError):
+       """Raised when a requested resource is not found."""
+       pass
+
+   class MCPError(CortexError):
+       """Raised when there's an error with MCP operations."""
+       pass
+
+   class MemorySystemError(CortexError):
+       """Raised when there's an error with the memory system."""
+       pass
+
+   class LLMError(CortexError):
+       """Raised when there's an error with LLM operations."""
+       pass
+   ```
+
+2. **Error Response Format**:
+
+   - All API error responses will follow this structure:
+
+   ```json
+   {
+     "error": {
+       "code": "error_code",
+       "message": "Human-readable error message",
+       "details": {
+         "additional": "error details"
+       }
+     }
+   }
+   ```
+
+3. **Logging Strategy**:
+   - Implement structured logging using Python's logging module
+   - Define log levels (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+   - Include correlation IDs in logs for request tracking
+   - Log all exceptions with appropriate context
+
+### 14.5 SSE Implementation Details
+
+The SSE implementation will use FastAPI's streaming response features:
+
+1. **Connection Management**:
+
+   - Track active connections in an in-memory store with user and conversation association
+   - Implement connection timeout with periodic keep-alive messages
+   - Handle client disconnection gracefully
+
+2. **Event Broadcasting**:
+
+   - Implement a pub/sub pattern for event distribution
+   - Filter events based on user ID and conversation ID
+   - Queue events for clients that are temporarily disconnected
+
+3. **Event Format**:
+
+   ```
+   event: message_created
+   data: {"message": {...}}
+   id: 1
+
+   event: tool_execution_started
+   data: {"tool_execution": {...}}
+   id: 2
+   ```
+
+4. **Connection Lifecycle**:
+   - Handle initial connection with authentication
+   - Send a connection_established event with initial state
+   - Implement periodic ping events to keep the connection alive
+   - Gracefully handle disconnection and cleanup
+
+### 14.6 Implementation Priority Guidelines
+
+For this 1-day spike, prioritize the following implementation order:
+
+1. Core message flow (API → Router → Conversation Handler)
+2. Basic LLM integration with LiteLLM
+3. Simple in-memory storage for conversations and memory
+4. SSE implementation for real-time updates
+5. MCP client for tool execution
+6. Authentication and user management
+
+This prioritization ensures that we have a working end-to-end flow early in the development process, which can then be enhanced with additional functionality like tool use and memory integration.
+
+## 15. Change Log
 
 This section tracks significant changes made to the implementation plan during our planning sessions:
 
-| Date       | Change                                                       | Reason                                                |
-| ---------- | ------------------------------------------------------------ | ----------------------------------------------------- |
-| 2025-03-06 | Initial document creation                                    | Document the initial Cortex Core PoC plan             |
-| 2025-03-06 | Updated authentication to use a more flexible account system | Support multiple auth methods beyond AAD              |
-| 2025-03-06 | Streamlined API endpoints section                            | Focus only on public APIs needed for frontend clients |
-| 2025-03-06 | Added Internal Service Interfaces section                    | Document backend service communications separately    |
-| 2025-03-06 | Removed specific clock times from implementation schedule    | Use only durations to provide more flexibility        |
-| 2025-03-06 | Added Change Log section                                     | Track modifications to prevent accidental reverts     |
+| Date       | Change                                                       | Reason                                                                       |
+| ---------- | ------------------------------------------------------------ | ---------------------------------------------------------------------------- |
+| 2025-03-06 | Initial document creation                                    | Document the initial Cortex Core PoC plan                                    |
+| 2025-03-06 | Updated authentication to use a more flexible account system | Support multiple auth methods beyond AAD                                     |
+| 2025-03-06 | Streamlined API endpoints section                            | Focus only on public APIs needed for frontend clients                        |
+| 2025-03-06 | Added Internal Service Interfaces section                    | Document backend service communications separately                           |
+| 2025-03-06 | Removed specific clock times from implementation schedule    | Use only durations to provide more flexibility                               |
+| 2025-03-06 | Added Change Log section                                     | Track modifications to prevent accidental reverts                            |
+| 2025-03-06 | Added Implementation Details Addendum                        | Provide more specifics on component interfaces and implementation approaches |
