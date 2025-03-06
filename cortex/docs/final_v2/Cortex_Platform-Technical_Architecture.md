@@ -380,10 +380,10 @@ Domain Expert Entities are autonomous, specialized modules that empower the Cort
   Each expert adheres to a common integration interface that defines how it receives requests, handles intermediate interactions, and returns results. This standardization ensures that whether an expert is a first‑party offering (like Code Assistant or Deep Research) or a third‑party module contributed by the community, it will operate seamlessly within the overall Cortex ecosystem.  
   The interface typically includes:
 
-  - **Request Reception Interface:** A mechanism for accepting high‑level tasks, including relevant context and parameters.
+  - **Request Reception Interface:** A mechanism for accepting high‑level tasks, which can be expressed in natural language, structured parameter formats, or hybrid combinations as appropriate to the task.
   - **Execution and Synthesis Interface:** A workflow for processing the task—potentially spawning additional subprocesses—while continuously monitoring and refining its output.
-  - **User Interaction Interface:** A protocol for requesting additional information or clarification from the user via the Cortex Core.
-  - **Result Delivery Interface:** A consistent method for returning a synthesized, actionable result to the Cortex Core, often accompanied by evaluative annotations or confidence levels.
+  - **User Interaction Interface:** A protocol for requesting additional information or clarification from the user via the Cortex Core, supporting both free-form questions and highly structured data collection.
+  - **Result Delivery Interface:** A consistent method for returning a synthesized, actionable result to the Cortex Core. Results can be formatted as natural language responses, structured data objects, or combinations of both, often accompanied by evaluative annotations or confidence levels.
 
   The standardized interface not only simplifies integration with the Cortex Core but also empowers third-party developers and community members to create and contribute new Domain Expert Entities. This approach ensures that the ecosystem can continuously evolve with innovative, specialized solutions.
 
@@ -411,7 +411,26 @@ Domain Expert Entities are autonomous, specialized modules that empower the Cort
 - **Contextual Integration:**  
   Although Domain Expert Entities operate autonomously, they remain tightly integrated with the Cortex Core. They receive detailed contextual input—derived from the unified memory system—and their outputs are fed back into the broader context available to other components. This ensures cohesive operation across the platform, even when multiple experts are engaged simultaneously.
 
-#### User Interaction Protocol
+#### Communication and Interaction Protocols
+
+Domain Expert Entities interact with the Cortex Core and other system components through flexible communication protocols that accommodate various levels of structure and expressiveness.
+
+##### Communication Protocol
+
+Communication between the Cortex Core and domain experts leverages a spectrum of formats:
+
+1. **Structured Parameter Exchange:**  
+   For precise, programmatic interactions, domain experts can exchange strongly typed, schema-defined parameter objects with the core. This approach offers computational efficiency and formal validation, making it ideal for routine operations with well-defined interfaces.
+
+2. **Natural Language Communication:**  
+   When handling novel or complex requests that are difficult to formalize, natural language provides the flexibility needed to express nuanced instructions or detailed analysis. This approach leverages the inherent expressiveness of language while sacrificing some computational efficiency.
+
+3. **Hybrid Communication:**  
+   Many interactions combine structured parameters with natural language elements—for instance, passing formatted data objects alongside explanatory text, or embedding structured fields within otherwise natural requests. This balanced approach maintains both precision and expressiveness.
+
+The communication protocol dynamically selects the most appropriate format based on the task requirements, optimization priorities, and integration patterns.
+
+##### User Interaction Protocol
 
 A critical aspect of Domain Expert Entity operation is their ability to request user input when needed, without compromising their overall autonomy. This is implemented through the **Guided Conversation Protocol**:
 
@@ -421,9 +440,9 @@ A critical aspect of Domain Expert Entity operation is their ability to request 
 2. **Request Routing:**  
    The expert sends a structured ASK_USER request to the Cortex Core, containing:
 
-   - The specific information needed
+   - The specific information needed (which can be structured as schema-validated fields, free-form questions, or a combination)
    - Relevant context that explains why the information is required
-   - Optional formatting guidance (e.g., multiple choice, free text, etc.)
+   - Optional formatting guidance (e.g., multiple choice, free text, numeric range, etc.)
    - Priority level (urgent vs. can be deferred)
 
 3. **Core Mediation:**  

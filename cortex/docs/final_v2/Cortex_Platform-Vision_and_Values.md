@@ -201,9 +201,17 @@ A key strength of the Cortex architecture is its ability to invite community-dri
 
 ### Integration with the Central Core
 
-While these entities operate with considerable independence, they remain tightly integrated with the Cortex Core. The core delegates high-level requests to the experts via well-defined interfaces, supplying the necessary context and parameters for execution. Once the task is completed, the expert returns a structured result—including its evaluative remarks and recommendations—which the core then integrates into the broader conversation or workflow.
+While these entities operate with considerable independence, they remain tightly integrated with the Cortex Core through flexible, adaptive communication channels. The integration between the core and domain experts supports multiple communication paradigms:
 
-This separation of concerns—where the core handles orchestration and context management while the domain experts focus on deep, task-specific intelligence—ensures a robust, scalable, and adaptable system design.
+- **Structured Data Exchange:** For efficiency and precision, domain experts can communicate with the core using strongly-typed, parameter-based interfaces with defined schemas.
+
+- **Natural Language Communication:** When tasks involve nuanced reasoning or complex context, natural language provides the expressiveness needed to convey rich information.
+
+- **Hybrid Approaches:** Many interactions benefit from a combination of structured parameters and natural language elements, selecting the optimal format based on the specific needs of each exchange.
+
+The core delegates high-level requests to the experts via these well-defined but flexible interfaces, supplying the necessary context and parameters for execution. Once the task is completed, the expert returns its results—which may include structured data, natural language explanations, and evaluative remarks—which the core then integrates into the broader conversation or workflow.
+
+This separation of concerns—where the core handles orchestration and context management while the domain experts focus on deep, task-specific intelligence—coupled with flexible communication protocols, ensures a robust, scalable, and adaptable system design that can evolve alongside both user needs and technological capabilities.
 
 ## 5. Integration via MCP & Future Flexibility
 
