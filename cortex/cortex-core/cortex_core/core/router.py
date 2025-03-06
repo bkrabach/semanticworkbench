@@ -372,8 +372,8 @@ class MessageRouter:
         """
         try:
             # Import here to avoid circular imports
-            from app.models.schemas import Message, MessageRole
-            from app.db.models import Message as MessageDB
+            from cortex_core.models.schemas import Message, MessageRole
+            from cortex_core.db.models import Message as MessageDB
             
             # Create message
             message_db = MessageDB(
@@ -431,8 +431,8 @@ class MessageRouter:
         """
         try:
             # Import here to avoid circular imports
-            from app.models.schemas import Message, MessageRole
-            from app.db.models import Message as MessageDB
+            from cortex_core.models.schemas import Message, MessageRole
+            from cortex_core.db.models import Message as MessageDB
             
             # Create message
             message_db = MessageDB(
@@ -486,8 +486,8 @@ class MessageRouter:
         """
         try:
             # Import here to avoid circular imports
-            from app.models.schemas import Message, MessageRole
-            from app.db.models import Message as MessageDB
+            from cortex_core.models.schemas import Message, MessageRole
+            from cortex_core.db.models import Message as MessageDB
             
             # Create combined metadata
             combined_metadata = {"tool_name": tool_name}
@@ -549,7 +549,7 @@ class MessageRouter:
         """
         try:
             # Import here to avoid circular imports
-            from app.db.models import Message as MessageDB
+            from cortex_core.db.models import Message as MessageDB
             
             # Get message
             message_db = db.query(MessageDB).filter_by(id=message_id).first()
@@ -607,7 +607,7 @@ class MessageRouter:
         """
         try:
             # Import here to avoid circular imports
-            from app.db.models import Message as MessageDB
+            from cortex_core.db.models import Message as MessageDB
             from sqlalchemy import desc
             
             # Build query

@@ -5,13 +5,13 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from sse_starlette.sse import EventSourceResponse
 
-from app.models.schemas import (
+from cortex_core.models.schemas import (
     User, Conversation, Message, MessageRole, Session as UserSession
 )
-from app.core.auth import user_session_manager
-from app.core.conversation import conversation_handler
-from app.core.sse import sse_manager
-from app.db.database import get_db
+from cortex_core.core.auth import user_session_manager
+from cortex_core.core.conversation import conversation_handler
+from cortex_core.core.sse import sse_manager
+from cortex_core.db.database import get_db
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -121,7 +121,7 @@ async def list_conversations(
     Returns:
         A dictionary with the list of conversations and total count
     """
-    from app.db.models import Conversation as DBConversation
+    from cortex_core.db.models import Conversation as DBConversation
     from sqlalchemy import desc, asc
     
     try:
@@ -269,7 +269,7 @@ async def delete_conversation(
     Returns:
         A dictionary with the success status
     """
-    from app.db.models import Conversation as DBConversation
+    from cortex_core.db.models import Conversation as DBConversation
     
     try:
         # Verify the conversation exists and belongs to the user
@@ -326,7 +326,7 @@ async def list_messages(
     Returns:
         A dictionary with the list of messages and total count
     """
-    from app.db.models import Message as DBMessage, Conversation as DBConversation
+    from cortex_core.db.models import Message as DBMessage, Conversation as DBConversation
     from sqlalchemy import desc, asc
     
     try:
@@ -412,7 +412,7 @@ async def create_message(
     Returns:
         A dictionary with the created message
     """
-    from app.db.models import Conversation as DBConversation
+    from cortex_core.db.models import Conversation as DBConversation
     
     try:
         # Verify the conversation exists and belongs to the user
@@ -452,7 +452,7 @@ async def create_message(
         def process_message():
             try:
                 # Get a new database session for the background task
-                from app.db.database import SessionLocal
+                from cortex_core.db.database import SessionLocal
                 db_bg = SessionLocal()
                 try:
                     # Process the message with the conversation handler
@@ -497,7 +497,7 @@ async def sse_endpoint(
     Returns:
         An EventSourceResponse for the SSE stream
     """
-    from app.db.models import Conversation as DBConversation
+    from cortex_core.db.models import Conversation as DBConversation
     
     try:
         # Verify the conversation exists and belongs to the user

@@ -6,7 +6,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 
-from app.core.config import get_settings
+from cortex_core.core.config import get_settings
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -23,7 +23,7 @@ engine = create_engine(
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 # Get the base class from models
-from app.db.models import Base
+from cortex_core.db.models import Base
 
 def get_db() -> Generator[Session, None, None]:
     """
@@ -69,11 +69,11 @@ def _setup_initial_data() -> None:
         
         try:
             # Import here to avoid circular imports
-            from app.core.auth import auth_manager
+            from cortex_core.core.auth import auth_manager
             
             # Create demo user if in demo mode
             if settings.DEMO_MODE:
-                from app.models.schemas import User
+                from cortex_core.models.schemas import User
                 import asyncio
                 
                 # Run async function in a synchronous context
@@ -82,7 +82,7 @@ def _setup_initial_data() -> None:
             
             # Create default MCP servers
             if settings.DEFAULT_MCP_SERVERS:
-                from app.db.models import MCPServer as MCPServerDB
+                from cortex_core.db.models import MCPServer as MCPServerDB
                 
                 for server_info in settings.DEFAULT_MCP_SERVERS:
                     # Check if server already exists

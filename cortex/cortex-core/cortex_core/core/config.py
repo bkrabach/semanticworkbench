@@ -147,7 +147,7 @@ def setup_logging():
     # Set specific logger levels
     if settings.ENV == "development":
         # Set lower level for our app loggers
-        logging.getLogger("app").setLevel(log_level)
+        logging.getLogger("cortex_core").setLevel(log_level)
         
         # Set higher level for noisy libraries
         logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)

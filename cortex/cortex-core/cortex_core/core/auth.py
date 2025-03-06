@@ -16,9 +16,9 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pydantic import BaseModel, ValidationError
 
-from app.core.config import get_settings
-from app.core.router import message_router
-from app.models.schemas import User, Session, LoginAccount, AccountType, AADAccount
+from cortex_core.core.config import get_settings
+from cortex_core.core.router import message_router
+from cortex_core.models.schemas import User, Session, LoginAccount, AccountType, AADAccount
 
 # Setup logging
 logger = logging.getLogger(__name__)

@@ -10,9 +10,9 @@ import weakref
 import traceback
 from pydantic import ValidationError
 
-from app.core.config import get_settings
-from app.core.router import message_router
-from app.models.schemas import MemoryEntry
+from cortex_core.core.config import get_settings
+from cortex_core.core.router import message_router
+from cortex_core.models.schemas import MemoryEntry
 
 # Setup logging
 logger = logging.getLogger(__name__)

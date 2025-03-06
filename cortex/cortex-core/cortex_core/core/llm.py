@@ -13,8 +13,8 @@ import tiktoken
 import litellm
 from litellm import completion, acompletion
 
-from app.core.config import get_settings
-from app.core.router import message_router
+from cortex_core.core.config import get_settings
+from cortex_core.core.router import message_router
 
 # Setup logging
 logger = logging.getLogger(__name__)

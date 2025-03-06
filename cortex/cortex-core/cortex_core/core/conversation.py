@@ -8,22 +8,22 @@ import uuid
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, and_
 
-from app.models.schemas import (
-    Message, 
+from cortex_core.models.schemas import (
+    Message,
     MessageRole,
     Conversation as ConversationSchema,
     ToolExecution,
     ToolExecutionStatus
 )
-from app.db.models import (
+from cortex_core.db.models import (
     Message as MessageDB,
     Conversation as ConversationDB
 )
-from app.core.config import get_settings
-from app.core.llm import llm_client
-from app.core.memory import memory_adapter
-from app.core.mcp_client import mcp_client
-from app.core.router import message_router
+from cortex_core.core.config import get_settings
+from cortex_core.core.llm import llm_client
+from cortex_core.core.memory import memory_adapter
+from cortex_core.core.mcp_client import mcp_client
+from cortex_core.core.router import message_router
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -633,7 +633,7 @@ When you don't know something, be honest about your limitations.
                     args = {}
                 
                 # Find matching tool
-                tools = await mcp_client_manager.list_tools()
+                tools = await mcp_client.list_tools()
                 matching_tools = [t for t in tools if t.name == tool_name]
                 
                 if not matching_tools:
@@ -649,7 +649,7 @@ When you don't know something, be honest about your limitations.
                 tool = matching_tools[0]
                 
                 # Execute tool
-                execution = await mcp_client_manager.execute_tool(
+                execution = await mcp_client.execute_tool(
                     db,
                     tool.id,
                     conversation_id,
@@ -673,7 +673,7 @@ When you don't know something, be honest about your limitations.
                 
                 while wait_time < max_wait:
                     # Check execution status
-                    current_execution = await mcp_client_manager.get_execution(db, execution.id)
+                    current_execution = await mcp_client.get_execution(db, execution.id)
                     
                     if not current_execution:
                         break

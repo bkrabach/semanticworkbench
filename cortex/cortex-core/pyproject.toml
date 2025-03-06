@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "cortex-core"
+name = "cortex_core"
 version = "0.1.0"
 description = "Cortex Core - An AI routing and conversation platform"
 readme = "README.md"
@@ -54,7 +54,7 @@ dev = [
 "Bug Tracker" = "https://github.com/example/cortex-core/issues"
 
 [tool.hatch.build.targets.wheel]
-packages = ["app"]
+packages = ["cortex_core"]
 
 [tool.black]
 line-length = 88
@@ -75,6 +75,6 @@ disallow_incomplete_defs = true
 
 [tool.pytest.ini_options]
 minversion = "7.0"
-addopts = "--cov=app --cov-report=term-missing"
+addopts = "--cov=cortex_core --cov-report=term-missing"
 testpaths = ["tests"]
 asyncio_mode = "auto"

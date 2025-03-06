@@ -5,15 +5,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
-from app.api.endpoints import router as api_router
-from app.core.config import get_settings
-from app.db.database import engine, Base, get_db
-from app.core.mcp_client import mcp_client
-from app.core.conversation import conversation_handler
-from app.core.memory import memory_adapter
-from app.core.auth import user_session_manager
-from app.core.sse import sse_manager
-from app.core.router import message_router
+from cortex_core.api.endpoints import router as api_router
+from cortex_core.core.config import get_settings
+from cortex_core.db.database import engine, Base, get_db
+from cortex_core.core.mcp_client import mcp_client
+from cortex_core.core.conversation import conversation_handler
+from cortex_core.core.memory import memory_adapter
+from cortex_core.core.auth import user_session_manager
+from cortex_core.core.sse import sse_manager
+from cortex_core.core.router import message_router
 
 # Setup logging
 logging.basicConfig(
@@ -127,7 +127,7 @@ async def root():
 # Run the application
 if __name__ == "__main__":
     uvicorn.run(
-        "app.main:app",
+        "cortex_core.main:app",
         host=settings.HOST,
         port=settings.PORT,
         reload=settings.DEBUG,

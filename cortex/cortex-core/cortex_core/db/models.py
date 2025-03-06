@@ -7,7 +7,7 @@ from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, JSON, Text
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.declarative import declarative_base
 
-from app.models.schemas import (
+from cortex_core.models.schemas import (
     User as UserSchema,
     LoginAccount as LoginAccountSchema,
     AADAccount as AADAccountSchema,

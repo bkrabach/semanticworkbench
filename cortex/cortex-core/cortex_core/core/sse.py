@@ -12,9 +12,9 @@ from fastapi import Request
 from sse_starlette.sse import EventSourceResponse
 from starlette.concurrency import run_in_threadpool
 
-from app.core.config import get_settings
-from app.core.router import message_router
-from app.models.schemas import SSEConnection
+from cortex_core.core.config import get_settings
+from cortex_core.core.router import message_router
+from cortex_core.models.schemas import SSEConnection
 
 # Setup logging
 logger = logging.getLogger(__name__)

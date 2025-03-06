@@ -17,7 +17,7 @@ Cortex Core serves as a central hub for AI interactions, providing:
 Cortex Core follows a modular design with clear component separation:
 
 ```
-app/
+cortex_core/
 ├── api/              # FastAPI routes and endpoints
 ├── core/             # Core components
 │   ├── auth.py       # Authentication and session management
@@ -33,7 +33,8 @@ app/
 │   └── models.py     # SQLAlchemy models
 ├── models/           # Pydantic models
 │   └── schemas.py    # Data schemas
-└── utils/            # Utility functions
+├── utils/            # Utility functions
+└── main.py           # Application entry point
 ```
 
 ## Installation
@@ -79,10 +80,10 @@ AUTH_SECRET_KEY=generate_a_secure_random_key
 
 ```bash
 # Run the development server
-uv run uvicorn app.main:app --reload
+uv run uvicorn cortex_core.main:app --reload
 
 # Or use the built-in command
-uv run python -m app
+uv run python -m cortex_core
 ```
 
 The API will be available at http://127.0.0.1:8000 and the interactive documentation at http://127.0.0.1:8000/docs.
@@ -112,7 +113,7 @@ uv run mypy
 uv run pytest
 
 # Run with coverage report
-uv run pytest --cov=app --cov-report=term-missing
+uv run pytest --cov=cortex_core --cov-report=term-missing
 ```
 
 ## API Endpoints
@@ -142,12 +143,12 @@ uv run pytest --cov=app --cov-report=term-missing
 Cortex Core integrates with MCP servers for tool execution. To register a new MCP server:
 
 ```python
-from app.models.schemas import MCPServer
+from cortex_core.models.schemas import MCPServer
 server = MCPServer(
     name="Example MCP Server",
     url="http://localhost:8001"
 )
-await mcp_client_manager.register_server(server)
+await mcp_client.register_server(server)
 ```
 
 ## License

@@ -10,9 +10,9 @@ import weakref
 import traceback
 import os
 
-from app.core.config import get_settings
-from app.core.router import message_router
-from app.models.schemas import MCPServer, MCPTool, MCPToolParameter, ToolExecution, ToolExecutionStatus
+from cortex_core.core.config import get_settings
+from cortex_core.core.router import message_router
+from cortex_core.models.schemas import MCPServer, MCPTool, MCPToolParameter, ToolExecution, ToolExecutionStatus
 
 # We'll use a simplified MCP client implementation for the PoC
 # In a real implementation, this would use the FastMCP client library
