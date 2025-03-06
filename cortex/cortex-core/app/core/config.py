@@ -1,7 +1,8 @@
 import os
 from functools import lru_cache
 from typing import Dict, List, Any, Optional, Union
-from pydantic import BaseSettings, Field, validator
+from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     """Application settings."""
@@ -19,7 +20,7 @@ class Settings(BaseSettings):
     DATABASE_URL: str = Field(default="sqlite:///./cortex.db")
     
     # LLM configuration
-    DEFAULT_LLM_MODEL: str = Field(default="gpt-4o")
+    DEFAULT_MODEL: str = Field(default="gpt-4o")
     FALLBACK_LLM_MODEL: str = Field(default="gpt-3.5-turbo")
     OPENAI_API_KEY: Optional[str] = Field(default=None)
     ANTHROPIC_API_KEY: Optional[str] = Field(default=None)
@@ -68,25 +69,25 @@ You strive to respond to users with thoughtful, factual, and concise responses.
     # Logging settings
     LOG_LEVEL: str = Field(default="INFO")
     
-    class Config:
-        """Pydantic config."""
-        env_file = ".env"
-        case_sensitive = True
+    model_config = {
+        "env_file": ".env",
+        "case_sensitive": True
+    }
     
-    @validator("DEFAULT_MCP_SERVERS", pre=True)
+    @field_validator("DEFAULT_MCP_SERVERS", mode="before")
     def parse_mcp_servers(cls, v):
         """Parse MCP servers from environment variable."""
         if isinstance(v, str):
             try:
                 return [
-                    {"name": server.split(":")[0], "url": server.split(":")[1]} 
+                    {"name": server.split(":")[0], "url": server.split(":")[1]}
                     for server in v.split(",") if ":" in server
                 ]
             except Exception:
                 return []
         return v
     
-    @validator("LOG_LEVEL")
+    @field_validator("LOG_LEVEL")
     def validate_log_level(cls, v):
         """Validate log level."""
         valid_levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]

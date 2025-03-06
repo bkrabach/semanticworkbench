@@ -67,7 +67,7 @@ class LoginAccount(Base):
     type = Column(String, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     is_primary = Column(Boolean, default=False)
-    metadata = Column(JSON, default=dict)
+    meta_data = Column(JSON, default=dict)
     
     # AAD specific fields
     object_id = Column(String, nullable=True)
@@ -86,7 +86,7 @@ class LoginAccount(Base):
                 type=AccountType.AAD,
                 created_at=self.created_at,
                 is_primary=self.is_primary,
-                metadata=self.metadata,
+                metadata=self.meta_data,
                 object_id=self.object_id,
                 tenant_id=self.tenant_id,
                 email=self.email,
@@ -110,7 +110,7 @@ class Session(Base):
     user_id = Column(String, ForeignKey("users.id"))
     created_at = Column(DateTime, default=datetime.utcnow)
     last_active = Column(DateTime, default=datetime.utcnow)
-    metadata = Column(JSON, default=dict)
+    meta_data = Column(JSON, default=dict)
     
     # Relationships
     user = relationship("User", back_populates="sessions")
@@ -134,7 +134,7 @@ class Conversation(Base):
     title = Column(String, default="New Conversation")
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    metadata = Column(JSON, default=dict)
+    meta_data = Column(JSON, default=dict)
     
     # Relationships
     user = relationship("User", back_populates="conversations")
@@ -168,7 +168,7 @@ class Message(Base):
     role = Column(Enum(*[role.value for role in MessageRole], name="message_role"), nullable=False)
     content = Column(Text, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
-    metadata = Column(JSON, default=dict)
+    meta_data = Column(JSON, default=dict)
     tool_calls = Column(JSON, default=list)
     is_complete = Column(Boolean, default=True)
     
@@ -199,7 +199,7 @@ class MemoryEntry(Base):
     content = Column(Text, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     type = Column(String, default="conversation")
-    metadata = Column(JSON, default=dict)
+    meta_data = Column(JSON, default=dict)
     
     # Relationships
     conversation = relationship("Conversation", back_populates="memory_entries")
@@ -335,7 +335,7 @@ class SSEConnection(Base):
     conversation_id = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     last_active = Column(DateTime, default=datetime.utcnow)
-    metadata = Column(JSON, default=dict)
+    meta_data = Column(JSON, default=dict)
     
     def to_schema(self) -> SSEConnectionSchema:
         """Convert to Pydantic schema."""

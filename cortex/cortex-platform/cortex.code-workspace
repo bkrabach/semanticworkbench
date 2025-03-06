@@ -6,12 +6,20 @@
   },
   "folders": [
     {
-      "name": "cortex",
+      "name": "cortex-chat",
+      "path": "../cortex-chat"
+    },
+    {
+      "name": "cortex-core",
+      "path": "../cortex-core"
+    },
+    {
+      "name": "cortex-platform",
       "path": "."
     },
     {
       "name": "semanticworkbench",
-      "path": ".."
+      "path": "../.."
     }
   ],
   "settings": {

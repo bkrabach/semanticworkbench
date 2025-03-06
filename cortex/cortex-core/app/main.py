@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.api.endpoints import router as api_router
 from app.core.config import get_settings
 from app.db.database import engine, Base, get_db
-from app.core.mcp_client import mcp_client_manager
+from app.core.mcp_client import mcp_client
 from app.core.conversation import conversation_handler
 from app.core.memory import memory_adapter
 from app.core.auth import user_session_manager
@@ -70,21 +70,11 @@ async def startup_event():
     await memory_adapter.initialize()
     logger.info("Memory Adapter initialized")
     
-    # Initialize MCP client manager and register demo servers
-    await mcp_client_manager.initialize()
+    # Initialize MCP client manager
+    await mcp_client.initialize()
     logger.info("MCP Client Manager initialized")
     
-    # Register demo MCP server for testing
-    from app.models.schemas import MCPServer
-    demo_server = MCPServer(
-        name="Demo MCP Server",
-        url="http://localhost:8001",  # Replace with actual MCP server URL
-    )
-    await mcp_client_manager.register_server(demo_server)
-    logger.info(f"Registered demo MCP server: {demo_server.name}")
-    
-    # Initialize user session manager
-    await user_session_manager.initialize()
+    # User Session Manager is initialized when imported
     logger.info("User Session Manager initialized")
     
     # Initialize conversation handler
@@ -112,7 +102,7 @@ async def shutdown_event():
     await user_session_manager.cleanup()
     
     logger.info("Cleaning up MCP Client Manager")
-    await mcp_client_manager.close()
+    await mcp_client.cleanup()
     
     logger.info("Cleaning up Memory Adapter")
     await memory_adapter.cleanup()

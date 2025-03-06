@@ -14,11 +14,18 @@
     "gantt",
     "geospatial",
     "Hackathons",
+    "isort",
+    "levelname",
     "Metacognition",
     "modelcontextprotocol",
     "Multimodal",
+    "mypy",
     "Passwordless",
+    "Pydantic",
+    "pytest",
     "Siri",
-    "touchpoints"
+    "touchpoints",
+    "uvicorn",
+    "venv"
   ]
 }

@@ -22,7 +22,7 @@ from app.db.models import (
 from app.core.config import get_settings
 from app.core.llm import llm_client
 from app.core.memory import memory_adapter
-from app.core.mcp_client import mcp_client_manager
+from app.core.mcp_client import mcp_client
 from app.core.router import message_router
 
 # Setup logging

@@ -40,9 +40,9 @@ class LoginAccount(BaseModel):
     is_primary: bool = False
     metadata: Dict[str, Any] = Field(default_factory=dict)
     
-    class Config:
-        """Pydantic config."""
-        orm_mode = True
+    model_config = {
+        "from_attributes": True
+    }
 
 # Microsoft AAD specific account
 class AADAccount(LoginAccount):
@@ -62,9 +62,9 @@ class User(BaseModel):
     accounts: List[LoginAccount] = Field(default_factory=list)  # Associated login accounts
     primary_account_id: Optional[str] = None  # Reference to primary account
     
-    class Config:
-        """Pydantic config."""
-        orm_mode = True
+    model_config = {
+        "from_attributes": True
+    }
 
 class Session(BaseModel):
     """Session model."""
@@ -74,9 +74,9 @@ class Session(BaseModel):
     last_active: datetime = Field(default_factory=datetime.utcnow)
     metadata: Dict[str, Any] = Field(default_factory=dict)
     
-    class Config:
-        """Pydantic config."""
-        orm_mode = True
+    model_config = {
+        "from_attributes": True
+    }
 
 class Message(BaseModel):
     """Message in a conversation."""
@@ -93,9 +93,9 @@ class Message(BaseModel):
     # For message chunking/streaming
     is_complete: bool = True
     
-    class Config:
-        """Pydantic config."""
-        orm_mode = True
+    model_config = {
+        "from_attributes": True
+    }
 
 class Conversation(BaseModel):
     """Conversation model."""
@@ -110,9 +110,9 @@ class Conversation(BaseModel):
     # This is just for API responses
     messages: List[Message] = Field(default_factory=list)
     
-    class Config:
-        """Pydantic config."""
-        orm_mode = True
+    model_config = {
+        "from_attributes": True
+    }
 
 class MemoryEntry(BaseModel):
     """Memory entry model."""
@@ -124,9 +124,9 @@ class MemoryEntry(BaseModel):
     type: str = "conversation"  # Type of memory entry (conversation, fact, etc.)
     metadata: Dict[str, Any] = Field(default_factory=dict)
     
-    class Config:
-        """Pydantic config."""
-        orm_mode = True
+    model_config = {
+        "from_attributes": True
+    }
 
 class MCPToolParameter(BaseModel):
     """Parameter for an MCP tool."""
@@ -136,9 +136,9 @@ class MCPToolParameter(BaseModel):
     required: bool = False
     default: Optional[Any] = None
     
-    class Config:
-        """Pydantic config."""
-        orm_mode = True
+    model_config = {
+        "from_attributes": True
+    }
 
 class MCPTool(BaseModel):
     """MCP tool model."""
@@ -148,9 +148,9 @@ class MCPTool(BaseModel):
     description: str
     parameters: List[MCPToolParameter] = Field(default_factory=list)
     
-    class Config:
-        """Pydantic config."""
-        orm_mode = True
+    model_config = {
+        "from_attributes": True
+    }
 
 class MCPServer(BaseModel):
     """MCP server model."""
@@ -160,9 +160,9 @@ class MCPServer(BaseModel):
     status: str = "connected"
     tools: List[MCPTool] = Field(default_factory=list)
     
-    class Config:
-        """Pydantic config."""
-        orm_mode = True
+    model_config = {
+        "from_attributes": True
+    }
 
 class ToolExecution(BaseModel):
     """Tool execution model."""
@@ -178,9 +178,9 @@ class ToolExecution(BaseModel):
     outputs: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
     
-    class Config:
-        """Pydantic config."""
-        orm_mode = True
+    model_config = {
+        "from_attributes": True
+    }
 
 class SSEConnection(BaseModel):
     """SSE connection model."""
@@ -191,9 +191,9 @@ class SSEConnection(BaseModel):
     last_active: datetime = Field(default_factory=datetime.utcnow)
     metadata: Dict[str, Any] = Field(default_factory=dict)
     
-    class Config:
-        """Pydantic config."""
-        orm_mode = True
+    model_config = {
+        "from_attributes": True
+    }
 
 # API Request/Response Models
 class TokenRequest(BaseModel):
