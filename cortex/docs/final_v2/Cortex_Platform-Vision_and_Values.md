@@ -30,7 +30,9 @@ The Cortex Platform envisions a future where digital intelligence is not confine
 
 ### A Unified Intelligence Experience
 
-Imagine a system that understands your needs regardless of whether you're writing an email, debugging a critical piece of code, brainstorming a creative project, or managing a complex work schedule. Cortex brings together AI capabilities like unified memory, adaptive reasoning, and task orchestration to ensure every interaction reflects an accurate understanding of your past, present, and future needs. The system adapts to your workflow, regardless of whether you're writing, coding, brainstorming, or planning, maintaining context seamlessly across tasks.
+Imagine a system that understands your needs regardless of whether you're writing an email, debugging a critical piece of code, brainstorming a creative project, or managing a complex work schedule. Cortex brings together AI capabilities like unified memory, adaptive reasoning, and task orchestration to ensure every interaction reflects an accurate understanding of your past, present, and future needs.
+
+The system adapts to your workflow, seamlessly maintaining context across tasks, whether you're writing, coding, brainstorming, or planning. In addition to traditional interfaces like chat, voice, and canvas, the Cortex Platform integrates directly with native applications (such as Word, VSCode, and other productivity tools). This allows real-time synchronization of content and direct in-context editing. By bridging communication between the user and their preferred tools, Cortex ensures that every task is handled in the environment most natural to your way of working.
 
 ### Modularity and Autonomy at Its Core
 
@@ -40,7 +42,7 @@ The Cortex Core acts as the central orchestrator, ensuring that every action is 
 
 ### Empowering Enhanced User Experience
 
-The true value of Cortex lies in the transformative user experience it enables. By combining a robust, centralized intelligence with flexible, autonomous modules, the platform ensures that users enjoy a smooth and adaptive journey. For example, you might start a task via a simple chat interface, receive instant feedback through natural voice responses, and then transition effortlessly to a visual canvas for deeper analysis—all while the system retains full context. This integrated and contextually-aware experience means that tasks are not only completed faster but are also customized to be as intuitive and productive as possible.
+The true value of Cortex lies in the transformative user experience it enables. By combining a robust, centralized intelligence with flexible, autonomous modules, the platform ensures that users enjoy a smooth and adaptive journey. For example, you might start a task via a simple chat interface, receive instant feedback through natural voice responses, and then transition effortlessly to a visual canvas for deeper analysis, or make simultaneous revisions in a native application like Word while seeing real-time suggestions or status updates in the chat interface—all while the system retains full context. This adaptive behavior ensures a consistent interplay across modalities, empowering users to seamlessly collaborate between custom tools and industry-standard apps. This integrated and contextually-aware experience means that tasks are not only completed faster but are also customized to be as intuitive and productive as possible.
 
 ### Bringing It All Together
 
@@ -75,53 +77,67 @@ Below is a high-level diagram that visually represents the core components and t
 
 ```mermaid
 graph LR
-    %% Central Core
-    CortexCore[Cortex Core: Unified Memory, Task Orchestration, Autonomous Reasoning]
-    %% Memory and Cognition Systems
+    %% Cortex Core and Support Systems
+    CortexCore[Cortex Core: Unified Memory, Task Orchestration, Adaptive Reasoning]
     JAKE[JAKE - Memory]
-    Cognition[Cognition]
-    %% Inputs
+    Cognition[Cognition System]
+
+    %% Input Modalities
     ChatInput[Chat - Input]
     VoiceInput[Voice - Input]
     CanvasInput[Canvas - Input]
-    %% Outputs
+    AppsInput[Apps - Input]
+
+    %% Output Modalities
     ChatOutput[Chat - Output]
     VoiceOutput[Voice - Output]
     CanvasOutput[Canvas - Output]
     DashboardOutput[Dashboard - Output]
     NotificationOutput[Notification - Output]
-    %% Core Service Connections
+    AppsOutput[Apps - Output]
+
+    %% Domain Expert Entities
     CodeAssistant[Code Assistant]
     DeepResearch[Deep Research]
-    %% External Tools
-    VSCode[VS Code Extension - MCP Server]
-    M365Apps[M365 Apps - Word, PPT, Excel]
-    BrowserExt[Browser Extension - Playwright]
-    OtherTools[Other Tools - API Plugins, Custom Connectors]
-    %% Connections
-    %% Inputs -> Core
+
+    %% External Integrations
+    MCPIntegration[MCP Client/Server Integration]
+    VSCode[VS Code Extension]
+    M365Apps[M365 Apps]
+    BrowserExt[Browser Extension]
+    OtherTools[Other Tools]
+
+    %% Connections: Inputs to Cortex Core
     ChatInput --> CortexCore
     VoiceInput --> CortexCore
     CanvasInput --> CortexCore
-    %% Core -> Outputs
+    AppsInput --> CortexCore
+
+    %% Cortex Core to Outputs
     CortexCore --> ChatOutput
     CortexCore --> VoiceOutput
     CortexCore --> CanvasOutput
     CortexCore --> DashboardOutput
     CortexCore --> NotificationOutput
-    %% Core -> Core Systems
+    CortexCore --> AppsOutput
+
+    %% Cortex Core to Support Systems
     CortexCore --> JAKE
     CortexCore --> Cognition
-    %% Core -> Internal Services
+
+    %% Cortex Core to Domain Experts
     CortexCore --> CodeAssistant
     CortexCore --> DeepResearch
-    %% Internal Services Relationships
+
+    %% Domain Experts internal interactions
     CodeAssistant --> VSCode
     CodeAssistant --> DeepResearch
-    %% Core -> External Tools
-    CortexCore --> M365Apps
-    CortexCore --> BrowserExt
-    CortexCore --> OtherTools
+
+    %% Cortex Core to External Integrations
+    CortexCore --> MCPIntegration
+    MCPIntegration --> M365Apps
+    MCPIntegration --> BrowserExt
+    MCPIntegration --> OtherTools
 ```
 
 ### Benefits of a Modular, Adaptive Ecosystem
