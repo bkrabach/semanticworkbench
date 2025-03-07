@@ -452,7 +452,7 @@ The implementation will be divided into the following phases, organized for a si
 1. **Initialize Project Structure (30 min)**
 
    - Create a new FastAPI project with appropriate directory structure
-   - Set up dependency management with Poetry or pip requirements.txt
+   - Set up dependency management with UV and pyproject.toml
    - Initialize Git repository for version control
    - Create README with basic setup instructions
 
@@ -615,7 +615,7 @@ The implementation will be divided into the following phases, organized for a si
   - Future potential for other providers via LiteLLM
 - **Real-time Communication**: Server-Sent Events (SSE)
 - **MCP Client**: FastMCP client library
-- **Development Environment**: Python 3.9+, pip/poetry for dependency management
+- **Development Environment**: Python 3.9+, UV for dependency management
 
 > Note: While this PoC will use LiteLLM's direct API integration, future implementations might consider using LiteLLM proxy for more advanced features like routing, fallbacks, and caching.
 
