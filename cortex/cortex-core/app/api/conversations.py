@@ -8,9 +8,17 @@ from sqlalchemy.orm import Session
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 import asyncio
+from json import JSONEncoder
+
+# Custom JSON encoder to handle datetime objects
+class DateTimeEncoder(JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        return super().default(obj)
 
 from app.database.connection import get_db
 from app.database.models import User, Workspace, Conversation
@@ -50,6 +58,12 @@ class MessageResponse(BaseModel):
     role: str
     created_at_utc: datetime  # UTC timestamp for message creation
     metadata: Optional[Dict[str, Any]] = None
+    
+    class Config:
+        json_encoders = {
+            # Ensure datetime is serialized to ISO format
+            datetime: lambda dt: dt.isoformat()
+        }
 
 
 class ConversationResponse(BaseModel):
@@ -64,6 +78,10 @@ class ConversationResponse(BaseModel):
     
     class Config:
         from_attributes = True  # Allow model creation from ORM objects
+        json_encoders = {
+            # Ensure datetime is serialized to ISO format
+            datetime: lambda dt: dt.isoformat()
+        }
 
 
 @router.get("/workspaces/{workspace_id}/conversations", response_model=List[ConversationResponse])
@@ -100,7 +118,7 @@ async def list_conversations(
     conversations = db.query(Conversation).filter(
         Conversation.workspace_id == workspace_id
     ).order_by(
-        Conversation.last_active_at.desc()
+        Conversation.last_active_at_utc.desc()
     ).offset(offset).limit(limit).all()
     
     # Process each conversation to handle the JSON fields
@@ -114,8 +132,8 @@ async def list_conversations(
             "title": conversation.title,
             "modality": conversation.modality,
             "workspace_id": conversation.workspace_id,
-            "created_at": conversation.created_at,
-            "last_active_at": conversation.last_active_at,
+            "created_at": conversation.created_at_utc,
+            "last_active_at": conversation.last_active_at_utc,
             "metadata": metadata
         }
         processed_conversations.append(ConversationResponse.model_validate(conversation_dict))
@@ -153,8 +171,8 @@ async def create_conversation(
     if not workspace:
         raise HTTPException(status_code=404, detail="Workspace not found")
 
-    # Create new conversation
-    now = datetime.utcnow()
+    # Create new conversation with timezone-aware UTC datetime
+    now = datetime.now(timezone.utc)
     metadata = conversation.metadata or {}
 
     # Convert metadata to JSON string
@@ -165,8 +183,8 @@ async def create_conversation(
         workspace_id=workspace_id,
         title=conversation.title,
         modality=conversation.modality,
-        created_at=now,
-        last_active_at=now,
+        created_at_utc=now,
+        last_active_at_utc=now,
         entries="[]",
         meta_data=metadata_json
     )
@@ -175,8 +193,8 @@ async def create_conversation(
     db.commit()
     db.refresh(new_conversation)
 
-    # Update workspace last_active_at
-    workspace.last_active_at = now
+    # Update workspace last_active_at_utc
+    workspace.last_active_at_utc = now
     db.commit()
 
     # Send SSE event for the new conversation in the background
@@ -188,7 +206,7 @@ async def create_conversation(
             "id": new_conversation.id,
             "title": new_conversation.title,
             "modality": new_conversation.modality,
-            "created_at": new_conversation.created_at.isoformat()
+            "created_at_utc": new_conversation.created_at_utc.isoformat()
         }
     )
 
@@ -198,8 +216,8 @@ async def create_conversation(
         "title": new_conversation.title,
         "modality": new_conversation.modality,
         "workspace_id": new_conversation.workspace_id,
-        "created_at": new_conversation.created_at,
-        "last_active_at": new_conversation.last_active_at,
+        "created_at": new_conversation.created_at_utc,
+        "last_active_at": new_conversation.last_active_at_utc,
         "metadata": json.loads(new_conversation.meta_data) if new_conversation.meta_data else {}
     })
 
@@ -236,8 +254,8 @@ async def get_conversation(
         "title": conversation.title,
         "modality": conversation.modality,
         "workspace_id": conversation.workspace_id,
-        "created_at": conversation.created_at,
-        "last_active_at": conversation.last_active_at,
+        "created_at": conversation.created_at_utc,
+        "last_active_at": conversation.last_active_at_utc,
         "metadata": json.loads(conversation.meta_data) if conversation.meta_data else {}
     })
 
@@ -287,8 +305,8 @@ async def update_conversation(
         existing_metadata.update(update_data.metadata)
         conversation.meta_data = json.dumps(existing_metadata)
 
-    # Update last_active_at
-    conversation.last_active_at = datetime.utcnow()
+    # Update last_active_at_utc with timezone-aware UTC datetime
+    conversation.last_active_at_utc = datetime.now(timezone.utc)
 
     db.commit()
     db.refresh(conversation)
@@ -304,7 +322,7 @@ async def update_conversation(
         {
             "id": conversation.id,
             "title": conversation.title,
-            "last_active_at": conversation.last_active_at.isoformat(),
+            "last_active_at_utc": conversation.last_active_at_utc.isoformat(),
             "metadata": metadata
         }
     )
@@ -315,8 +333,8 @@ async def update_conversation(
         "title": conversation.title,
         "modality": conversation.modality,
         "workspace_id": conversation.workspace_id,
-        "created_at": conversation.created_at,
-        "last_active_at": conversation.last_active_at,
+        "created_at": conversation.created_at_utc,
+        "last_active_at": conversation.last_active_at_utc,
         "metadata": metadata
     })
 
@@ -412,12 +430,22 @@ async def get_conversation_messages(
     # Convert entries to response format
     messages = []
     for entry in paginated_entries:
+        # Get timestamp from created_at_utc field or use current UTC time
+        timestamp = entry.get("created_at_utc", datetime.now(timezone.utc))
+        
+        # Convert string timestamps to datetime objects if needed
+        if isinstance(timestamp, str):
+            try:
+                timestamp = datetime.fromisoformat(timestamp)
+            except ValueError:
+                # If parsing fails, use current timezone-aware UTC datetime
+                timestamp = datetime.now(timezone.utc)
+        
         messages.append(MessageResponse(
             id=entry.get("id", ""),
             content=entry.get("content", ""),
             role=entry.get("role", ""),
-            created_at=datetime.fromisoformat(
-                entry.get("timestamp", datetime.utcnow().isoformat())),
+            created_at_utc=timestamp,
             metadata=entry.get("metadata", {})
         ))
 
@@ -454,16 +482,16 @@ async def add_message(
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
-    # Create new message
+    # Create new message with timezone-aware UTC datetime
     message_id = str(uuid.uuid4())
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     # Create message entry
     new_entry = {
         "id": message_id,
         "content": message.content,
         "role": message.role,
-        "created_at_utc": now.isoformat(),
+        "created_at_utc": now,  # Store as datetime object
         "metadata": message.metadata or {}
     }
 
@@ -475,9 +503,9 @@ async def add_message(
 
     entries.append(new_entry)
 
-    # Update conversation
-    conversation.entries = json.dumps(entries)
-    conversation.last_active_at = now
+    # Update conversation - use custom encoder for datetime objects
+    conversation.entries = json.dumps(entries, cls=DateTimeEncoder)
+    conversation.last_active_at_utc = now
 
     db.commit()
 
@@ -490,7 +518,7 @@ async def add_message(
             "id": message_id,
             "content": message.content,
             "role": message.role,
-            "created_at_utc": now.isoformat(),
+            "created_at_utc": now.isoformat(),  # Convert to ISO string for transport
             "metadata": message.metadata or {}
         }
     )
@@ -504,18 +532,8 @@ async def add_message(
         metadata=message.metadata
     )
 
-    # If this is a user message, simulate assistant typing indicator
+    # If this is a user message, simulate assistant response
     if message.role == "user":
-        background_tasks.add_task(
-            send_event_to_conversation,
-            conversation_id,
-            "typing_indicator",
-            {
-                "isTyping": True,
-                "role": "assistant"
-            }
-        )
-
         # This would typically be handled by your LLM integration
         # For demo purposes, we'll simulate response generation in a background task
         background_tasks.add_task(
@@ -556,16 +574,16 @@ async def stream_message(
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
-    # Add user message to conversation
+    # Add user message to conversation with timezone-aware UTC datetime
     message_id = str(uuid.uuid4())
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     # Create message entry
     new_entry = {
         "id": message_id,
         "content": message.content,
         "role": message.role,
-        "created_at_utc": now.isoformat(),
+        "created_at_utc": now,  # Store as datetime object
         "metadata": message.metadata or {}
     }
 
@@ -577,9 +595,9 @@ async def stream_message(
 
     entries.append(new_entry)
 
-    # Update conversation
-    conversation.entries = json.dumps(entries)
-    conversation.last_active_at = now
+    # Update conversation - use custom encoder for datetime objects
+    conversation.entries = json.dumps(entries, cls=DateTimeEncoder)
+    conversation.last_active_at_utc = now
 
     db.commit()
 
@@ -596,15 +614,7 @@ async def stream_message(
         }
     ))
 
-    # Send typing indicator
-    asyncio.create_task(send_event_to_conversation(
-        conversation_id,
-        "typing_indicator",
-        {
-            "isTyping": True,
-            "role": "assistant"
-        }
-    ))
+    # We'll handle the typing indicator in the response generator
 
     # Stream the response
     async def response_generator():
@@ -612,6 +622,16 @@ async def stream_message(
         # For demo purposes, we'll simulate a streaming response
         assistant_message_id = str(uuid.uuid4())
         assistant_content = ""
+
+        # Send typing indicator
+        await send_event_to_conversation(
+            conversation_id,
+            "typing_indicator",
+            {
+                "isTyping": True,
+                "role": "assistant"
+            }
+        )
 
         # Simulate typing indicator
         yield f"data: {json.dumps({'choices': [{'delta': {'role': 'assistant'}}]})}\n\n"
@@ -631,7 +651,7 @@ async def stream_message(
             assistant_content += chunk + " "
             chunk_data = {
                 "id": assistant_message_id,
-                "created": int(datetime.utcnow().timestamp()),
+                "created": int(datetime.now(timezone.utc).timestamp()),
                 "model": "simulation",
                 "choices": [
                     {
@@ -647,7 +667,7 @@ async def stream_message(
         # Final chunk with stop reason
         final_data = {
             "id": assistant_message_id,
-            "created": int(datetime.utcnow().timestamp()),
+            "created": int(datetime.now(timezone.utc).timestamp()),
             "model": "simulation",
             "choices": [
                 {
@@ -672,20 +692,22 @@ async def stream_message(
                 except json.JSONDecodeError:
                     latest_entries = []
 
-                # Add assistant response
+                # Add assistant response with timezone-aware UTC datetime
+                now = datetime.now(timezone.utc)
                 assistant_entry = {
                     "id": assistant_message_id,
                     "content": assistant_content.strip(),
                     "role": "assistant",
-                    "created_at_utc": datetime.utcnow().isoformat(),
+                    "created_at_utc": now,  # Store as datetime object
                     "metadata": {}
                 }
 
                 latest_entries.append(assistant_entry)
-                latest_conversation.entries = json.dumps(latest_entries)
+                latest_conversation.entries = json.dumps(latest_entries, cls=DateTimeEncoder)
                 db.commit()
 
-                # Send message_received event
+                # Send message_received event with timezone-aware UTC datetime
+                now = datetime.now(timezone.utc)
                 await send_event_to_conversation(
                     conversation_id,
                     "message_received",
@@ -693,7 +715,7 @@ async def stream_message(
                         "id": assistant_message_id,
                         "content": assistant_content.strip(),
                         "role": "assistant",
-                        "created_at_utc": datetime.utcnow().isoformat()
+                        "created_at_utc": now.isoformat()  # Convert to ISO string for transport
                     }
                 )
 
@@ -751,8 +773,8 @@ async def simulate_assistant_response(conversation_id: str, user_message: str, d
     response_text = f"ECHO: {user_message}"
     logger.info(f"Generated echo response for conversation {conversation_id}: {response_text}")
     
-    # Use the client's current local time for display consistency
-    now = datetime.now().replace(tzinfo=None)
+    # Always use timezone-aware UTC datetime for consistency
+    now = datetime.now(timezone.utc)
 
     # Get the conversation
     conversation = db.query(Conversation).filter(
@@ -765,9 +787,9 @@ async def simulate_assistant_response(conversation_id: str, user_message: str, d
             f"Conversation {conversation_id} not found for assistant response")
         return
 
-    # Create message entry
+    # Create message entry with timezone-aware UTC datetime
     message_id = str(uuid.uuid4())
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     # Parse entries
     try:
@@ -780,15 +802,15 @@ async def simulate_assistant_response(conversation_id: str, user_message: str, d
         "id": message_id,
         "content": response_text,
         "role": "assistant",
-        "created_at_utc": now.isoformat(),
+        "created_at_utc": now,  # Store as datetime object
         "metadata": {}
     }
 
     entries.append(new_entry)
 
-    # Update conversation
-    conversation.entries = json.dumps(entries)
-    conversation.last_active_at = now
+    # Update conversation - use custom encoder for datetime objects
+    conversation.entries = json.dumps(entries, cls=DateTimeEncoder)
+    conversation.last_active_at_utc = now
 
     db.commit()
     logger.info(f"Saved assistant response to conversation {conversation_id}")
@@ -801,7 +823,7 @@ async def simulate_assistant_response(conversation_id: str, user_message: str, d
             "id": message_id,
             "content": response_text,
             "role": "assistant",
-            "created_at_utc": now.isoformat()
+            "created_at_utc": now.isoformat()  # Convert to ISO string for transport
         }
     )
     logger.info(f"Sent message_received event for conversation {conversation_id}")

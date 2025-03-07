@@ -507,7 +507,7 @@ async function streamChatResponse(workspaceId, conversationId, message) {
 
 ## Real-time Updates with SSE
 
-For real-time updates and events, use Server-Sent Events (SSE):
+For real-time updates and events, use Server-Sent Events (SSE). Note that all event timestamps from the server are provided in UTC and should be converted to local time for display:
 
 ```javascript
 class CortexEventSource {
@@ -970,10 +970,12 @@ function notifyUser(message) {
         }
 
         // Function to add a message to the chat
-        function addMessage(content, role) {
+        function addMessage(content, role, timestamp = "") {
           const messageElement = document.createElement("div");
           messageElement.className = `message ${role}`;
-          messageElement.textContent = content;
+          
+          // Add timestamp prefix if provided
+          messageElement.textContent = timestamp + content;
 
           // Insert before typing indicator
           messagesContainer.insertBefore(messageElement, typingIndicator);
@@ -1020,7 +1022,15 @@ function notifyUser(message) {
 
               // Add the assistant's message to the chat
               if (data.role === "assistant" && data.content) {
-                addMessage(data.content, "assistant");
+                // Convert UTC timestamp to local time for display if timestamp exists
+                let timestampDisplay = "";
+                if (data.created_at_utc) {
+                  const localTime = new Date(data.created_at_utc).toLocaleTimeString();
+                  timestampDisplay = `[${localTime}] `;
+                }
+                
+                // Add message with timestamp if available
+                addMessage(data.content, "assistant", timestampDisplay);
               }
             } catch (error) {
               console.error("Error handling message event:", error);
@@ -1083,6 +1093,14 @@ function setupConversationEvents(conversationId) {
     try {
       const message = JSON.parse(event.data);
       console.log("New message:", message);
+
+      // Process timestamp (all timestamps from server are in UTC)
+      if (message.created_at_utc) {
+        // Convert UTC timestamp to local time for display
+        const localTimeStr = new Date(message.created_at_utc).toLocaleString();
+        console.log(`Message received at ${localTimeStr} (local time)`);
+        message.localTime = localTimeStr;
+      }
 
       // Update UI with the new message
       updateChatUI(message);
@@ -1234,7 +1252,14 @@ See the [Advanced Integration Examples](./examples/multi-modal-interface.md) doc
    - Use HTTPS for all communications
    - Follow the principle of least privilege
 
-6. **Testing**
+6. **Timezone Handling**
+
+   - Always treat server timestamps as UTC (all API timestamps are provided in ISO 8601 format with UTC timezone)
+   - Convert UTC timestamps to local time on the client side for display
+   - Use timezone-aware date libraries (like date-fns, luxon, or moment-timezone) to handle conversions
+   - Consider user timezone preferences in your application settings
+
+7. **Testing**
    - Test across different browsers/devices
    - Implement unit tests for client logic
    - Test error scenarios and edge cases

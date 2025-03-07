@@ -3,9 +3,10 @@ from sqlalchemy.orm import Session
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, field_serializer, Field
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 from pydantic.json import pydantic_encoder
+from json import JSONEncoder
 
 from app.database.connection import get_db
 from app.database.models import User, Workspace
@@ -14,6 +15,13 @@ from app.utils.logger import logger
 from app.api.sse import send_event_to_user
 
 router = APIRouter()
+
+# Custom JSON encoder to handle datetime objects
+class DateTimeEncoder(JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        return super().default(obj)
 
 # Request and response models
 
@@ -34,13 +42,17 @@ class WorkspaceResponse(BaseModel):
     """Workspace response model"""
     id: str
     name: str
-    created_at: datetime
-    last_active_at: datetime
+    created_at_utc: datetime
+    last_active_at_utc: datetime
     config: Dict[str, Any] = Field(default_factory=dict)
     meta_data: Dict[str, Any] = Field(default_factory=dict)
     
     class Config:
         from_attributes = True  # Allow model creation from ORM objects
+        json_encoders = {
+            # Ensure datetime is serialized to ISO format
+            datetime: lambda dt: dt.isoformat()
+        }
 
 
 @router.get("/workspaces", response_model=Dict[str, List[WorkspaceResponse]])
@@ -52,7 +64,7 @@ async def list_workspaces(
     workspaces = db.query(Workspace).filter(
         Workspace.user_id == user.id
     ).order_by(
-        Workspace.last_active_at.desc()
+        Workspace.last_active_at_utc.desc()
     ).all()
     
     # Process each workspace to handle the JSON fields
@@ -62,8 +74,8 @@ async def list_workspaces(
         workspace_dict = {
             "id": workspace.id,
             "name": workspace.name,
-            "created_at": workspace.created_at,
-            "last_active_at": workspace.last_active_at,
+            "created_at_utc": workspace.created_at_utc,
+            "last_active_at_utc": workspace.last_active_at_utc,
             "config": json.loads(workspace.config) if workspace.config else {},
             "meta_data": json.loads(workspace.meta_data) if workspace.meta_data else {}
         }
@@ -80,7 +92,7 @@ async def create_workspace(
     db: Session = Depends(get_db)
 ):
     """Create a new workspace"""
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     config = workspace.config or {}
 
     # Convert config to JSON string
@@ -90,8 +102,8 @@ async def create_workspace(
         id=str(uuid.uuid4()),
         user_id=user.id,
         name=workspace.name,
-        created_at=now,
-        last_active_at=now,
+        created_at_utc=now,
+        last_active_at_utc=now,
         config=config_json,
         meta_data="{}"
     )
@@ -108,7 +120,7 @@ async def create_workspace(
         {
             "id": new_workspace.id,
             "name": new_workspace.name,
-            "created_at": new_workspace.created_at.isoformat()
+            "created_at_utc": new_workspace.created_at_utc.isoformat()
         }
     )
 
@@ -116,8 +128,8 @@ async def create_workspace(
     return WorkspaceResponse.model_validate({
         "id": new_workspace.id,
         "name": new_workspace.name,
-        "created_at": new_workspace.created_at,
-        "last_active_at": new_workspace.last_active_at,
+        "created_at_utc": new_workspace.created_at_utc,
+        "last_active_at_utc": new_workspace.last_active_at_utc,
         "config": json.loads(new_workspace.config) if new_workspace.config else {},
         "meta_data": json.loads(new_workspace.meta_data) if new_workspace.meta_data else {}
     })

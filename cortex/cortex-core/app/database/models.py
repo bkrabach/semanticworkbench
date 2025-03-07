@@ -14,7 +14,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 
 Base = declarative_base()
@@ -38,10 +38,10 @@ class User(Base):
     email = Column(String(255), unique=True, index=True)
     name = Column(String(255), nullable=True)
     password_hash = Column(String(255), nullable=True)
-    last_login_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow,
-                        onupdate=datetime.utcnow)
+    last_login_at_utc = Column(DateTime, nullable=True)
+    created_at_utc = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at_utc = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc))
 
     # Relationships
     sessions = relationship(
@@ -69,9 +69,9 @@ class Role(Base):
     id = Column(String(36), primary_key=True,
                 default=lambda: str(uuid.uuid4()))
     name = Column(String(50), unique=True, index=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow,
-                        onupdate=datetime.utcnow)
+    created_at_utc = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at_utc = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc))
 
     # Relationships
     users = relationship(
@@ -87,8 +87,8 @@ class Session(Base):
     id = Column(String(36), primary_key=True,
                 default=lambda: str(uuid.uuid4()))
     user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"))
-    created_at = Column(DateTime, default=datetime.utcnow)
-    last_active_at = Column(DateTime, default=datetime.utcnow)
+    created_at_utc = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    last_active_at_utc = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     active_workspace_id = Column(String(36), nullable=False)
     config = Column(Text, default="{}")  # Stored as JSON string
     meta_data = Column(Text, default="{}")  # Stored as JSON string
@@ -107,8 +107,8 @@ class ApiKey(Base):
     key = Column(String(255), unique=True, index=True)
     user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"))
     scopes_json = Column(Text, default="[]")  # Stored as JSON array string
-    created_at = Column(DateTime, default=datetime.utcnow)
-    expires_at = Column(DateTime, nullable=True)
+    created_at_utc = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    expires_at_utc = Column(DateTime, nullable=True)
 
     # Relationships
     user = relationship("User", back_populates="api_keys")
@@ -123,8 +123,8 @@ class Workspace(Base):
                 default=lambda: str(uuid.uuid4()))
     user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"))
     name = Column(String(255), nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    last_active_at = Column(DateTime, default=datetime.utcnow)
+    created_at_utc = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    last_active_at_utc = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     config = Column(Text, default="{}")  # Stored as JSON string
     meta_data = Column(Text, default="{}")  # Stored as JSON string
 
@@ -153,9 +153,9 @@ class WorkspaceSharing(Base):
     user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"))
     # Stored as JSON array string
     permissions_json = Column(Text, default="[]")
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow,
-                        onupdate=datetime.utcnow)
+    created_at_utc = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at_utc = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc))
 
     # Relationships
     workspace = relationship("Workspace", back_populates="workspace_sharings")
@@ -180,8 +180,8 @@ class Conversation(Base):
     )
     modality = Column(String(50), nullable=False, index=True)
     title = Column(String(255), nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    last_active_at = Column(DateTime, default=datetime.utcnow)
+    created_at_utc = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    last_active_at_utc = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     entries = Column(Text, default="[]")  # Stored as JSON array string
     meta_data = Column(Text, default="{}")  # Stored as JSON string
 
@@ -202,8 +202,8 @@ class MemoryItem(Base):
     type = Column(String(50), nullable=False, index=True)
     content = Column(Text, nullable=False)  # Stored as JSON string
     meta_data = Column(Text, default="{}")  # Stored as JSON string
-    timestamp = Column(DateTime, default=datetime.utcnow, index=True)
-    expires_at = Column(DateTime, nullable=True)
+    timestamp_utc = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    expires_at_utc = Column(DateTime, nullable=True)
 
     # Relationships
     workspace = relationship("Workspace", back_populates="memory_items")
@@ -221,7 +221,7 @@ class Integration(Base):
     connection_details = Column(Text, nullable=False)  # Stored as JSON string
     # Stored as JSON array string
     capabilities_json = Column(Text, default="[]")
-    last_active = Column(DateTime, default=datetime.utcnow)
+    last_active_utc = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
 class DomainExpertTask(Base):
@@ -235,10 +235,10 @@ class DomainExpertTask(Base):
     task_details = Column(Text, nullable=False)  # Stored as JSON string
     status = Column(String(50), nullable=False, index=True)
     progress = Column(Integer, default=0)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow,
-                        onupdate=datetime.utcnow)
-    started_at = Column(DateTime, nullable=True)
-    completed_at = Column(DateTime, nullable=True)
+    created_at_utc = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at_utc = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc))
+    started_at_utc = Column(DateTime, nullable=True)
+    completed_at_utc = Column(DateTime, nullable=True)
     result = Column(Text, nullable=True)  # Stored as JSON string
     meta_data = Column(Text, default="{}")  # Stored as JSON string

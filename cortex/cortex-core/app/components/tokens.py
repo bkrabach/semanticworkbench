@@ -5,7 +5,7 @@ Handles JWT token generation, validation, and token data models
 
 from jose import jwt
 from typing import Optional, List
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pydantic import BaseModel
 
 from app.config import settings
@@ -35,9 +35,9 @@ def generate_jwt_token(
     to_encode = data.model_dump()
 
     if expires_delta:
-        expire = datetime.utcnow() + expires_delta
+        expire = datetime.now(timezone.utc) + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(
+        expire = datetime.now(timezone.utc) + timedelta(
             seconds=settings.security.token_expiry_seconds
         )
 

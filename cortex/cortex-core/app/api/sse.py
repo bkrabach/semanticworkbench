@@ -9,7 +9,8 @@ from typing import List, Dict, Any, AsyncGenerator, Optional
 import asyncio
 import json
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
+from json import JSONEncoder
 from fastapi import Query
 from app.components.security_manager import get_current_user_or_none
 from app.components.tokens import verify_jwt_token
@@ -22,6 +23,13 @@ from app.database.models import User, Workspace, Conversation
 from app.utils.logger import logger
 
 router = APIRouter()
+
+# Custom JSON encoder to handle datetime objects
+class DateTimeEncoder(JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        return super().default(obj)
 
 # In-memory store for active SSE connections
 active_connections: Dict[str, List[Dict[str, Any]]] = {
@@ -46,7 +54,7 @@ async def send_heartbeats(queue: asyncio.Queue):
     while True:
         await asyncio.sleep(30)
         await queue.put(
-            {"event": "heartbeat", "data": {"timestamp": datetime.utcnow().isoformat()}}
+            {"event": "heartbeat", "data": {"timestamp_utc": datetime.now(timezone.utc).isoformat()}}
         )
 
 

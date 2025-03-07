@@ -876,8 +876,8 @@
                     if (data.metadata) {
                         currentConversation.metadata = data.metadata;
                     }
-                    if (data.last_active_at) {
-                        currentConversation.last_active_at = data.last_active_at;
+                    if (data.last_active_at_utc) {
+                        currentConversation.last_active_at_utc = data.last_active_at_utc;
                     }
                     
                     // Update conversation list
@@ -966,22 +966,23 @@
                     // JavaScript Date automatically handles the timezone conversion
                     date = new Date(message.created_at_utc);
                 }
-                // Fallback for backward compatibility during transition
-                else if (message.created_at) {
-                    date = new Date(message.created_at);
-                }
-                // Fallback case
+                // Default to current date if no timestamp provided
                 else {
-                    console.log("Message missing timestamp:", message);
                     date = new Date(); 
                 }
                 
-                // Format in 12-hour time with AM/PM
-                const formattedTime = date.toLocaleTimeString([], { 
-                    hour: '2-digit', 
-                    minute: '2-digit',
-                    hour12: true // Force 12-hour time with AM/PM
-                });
+                // Use our helper function to ensure consistency
+                let formattedTime;
+                
+                // Format the time using created_at_utc or use the date object if needed
+                formattedTime = message.created_at_utc ? 
+                    formatUTCToLocalTime(message.created_at_utc) : 
+                    date.toLocaleTimeString([], { 
+                        hour: '2-digit', 
+                        minute: '2-digit',
+                        hour12: true,
+                        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+                    });
                 
                 // Add message content
                 div.innerHTML = `
@@ -1005,6 +1006,22 @@
             
             // If content is an object, stringify it
             return JSON.stringify(content, null, 2);
+        }
+        
+        // Helper function to ensure consistent UTC to local time conversion
+        function formatUTCToLocalTime(utcTimestamp) {
+            // Create a date object from the UTC timestamp
+            const date = new Date(utcTimestamp);
+            
+            // Format it in local time
+            const localTime = date.toLocaleTimeString([], {
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: true,
+                timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+            });
+            
+            return localTime;
         }
         
         function showLogin() {

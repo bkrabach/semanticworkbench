@@ -8,8 +8,9 @@ from app.components.auth_schemes import oauth2_scheme, oauth2_scheme_optional
 from pydantic import BaseModel, Field
 from typing import Optional, List, Any, Dict
 from sqlalchemy.orm import Session
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import uuid
+from json import JSONEncoder
 
 from app.database.connection import get_db
 from app.database.models import User, ApiKey
@@ -24,6 +25,12 @@ router = APIRouter()
 # Initialize security manager
 security_manager = SecurityManager()
 
+# Custom JSON encoder to handle datetime objects
+class DateTimeEncoder(JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        return super().default(obj)
 
 # Request and response models
 class UserCredentials(BaseModel):
@@ -41,8 +48,14 @@ class AuthResponse(BaseModel):
     success: bool
     user_id: Optional[str] = None
     token: Optional[str] = None
-    expires_at: Optional[datetime] = None
+    expires_at_utc: Optional[datetime] = None
     error: Optional[str] = None
+    
+    class Config:
+        json_encoders = {
+            # Ensure datetime is serialized to ISO format
+            datetime: lambda dt: dt.isoformat()
+        }
 
 
 class ApiKeyRequest(BaseModel):
@@ -56,7 +69,13 @@ class ApiKeyResponse(BaseModel):
     """API key response model"""
 
     key: str
-    expires_at: Optional[datetime] = None
+    expires_at_utc: Optional[datetime] = None
+    
+    class Config:
+        json_encoders = {
+            # Ensure datetime is serialized to ISO format
+            datetime: lambda dt: dt.isoformat()
+        }
 
 
 # Authentication dependency
@@ -129,8 +148,8 @@ async def login(credentials: UserCredentials, db: Session = Depends(get_db)):
                     email=credentials.identifier,
                     name="Test User",
                     password_hash=password_hash,
-                    created_at=datetime.utcnow(),
-                    updated_at=datetime.utcnow(),
+                    created_at_utc=datetime.now(timezone.utc),
+                    updated_at_utc=datetime.now(timezone.utc),
                 )
                 db.add(user)
 
@@ -142,13 +161,13 @@ async def login(credentials: UserCredentials, db: Session = Depends(get_db)):
 
                 # Create default workspace for test user
                 from app.database.models import Workspace
-                now = datetime.utcnow()
+                now = datetime.now(timezone.utc)
                 default_workspace = Workspace(
                     id=str(uuid.uuid4()),
                     name="My Workspace",
                     user_id=user.id,
-                    created_at=now,
-                    last_active_at=now,
+                    created_at_utc=now,
+                    last_active_at_utc=now,
                     config="{}",
                     meta_data="{}"
                 )

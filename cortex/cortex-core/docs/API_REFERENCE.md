@@ -2,6 +2,8 @@
 
 This document details the API endpoints available in Cortex Core.
 
+> **Note on Timestamps**: All timestamps in API responses are provided in ISO 8601 format with UTC timezone (indicated by the 'Z' suffix, e.g., `2023-01-15T12:00:00Z`). Timestamps are consistently provided with the `*_utc` suffix (e.g., `created_at_utc`) to clearly indicate their timezone. Client applications should convert these UTC timestamps to local time for display.
+
 ## Authentication API
 
 ### Login
@@ -27,7 +29,7 @@ Authenticate a user and create a session token.
   "success": true,
   "user_id": "user-uuid",
   "token": "jwt-token",
-  "expires_at": "2023-12-31T23:59:59Z"
+  "expires_at": "2023-12-31T23:59:59Z"  // ISO 8601 format with 'Z' indicating UTC timezone
 }
 ```
 
@@ -50,7 +52,7 @@ Refresh an authentication token.
 {
   "success": true,
   "token": "new-jwt-token",
-  "expires_at": "2023-12-31T23:59:59Z"
+  "expires_at": "2023-12-31T23:59:59Z"  // ISO 8601 format with 'Z' indicating UTC timezone
 }
 ```
 
@@ -97,7 +99,7 @@ Generate an API key for programmatic access.
 ```json
 {
   "key": "api-key",
-  "expires_at": "2023-12-31T23:59:59Z"
+  "expires_at": "2023-12-31T23:59:59Z"  // ISO 8601 format with 'Z' indicating UTC timezone
 }
 ```
 
@@ -124,8 +126,8 @@ List workspaces for the current user.
     {
       "id": "workspace-uuid",
       "name": "Project X",
-      "created_at": "2023-01-01T00:00:00Z",
-      "last_active_at": "2023-01-10T15:30:00Z"
+      "created_at_utc": "2023-01-01T00:00:00Z",
+      "last_active_at_utc": "2023-01-10T15:30:00Z"
     }
   ]
 }
@@ -160,7 +162,7 @@ Create a new workspace.
 {
   "id": "new-workspace-uuid",
   "name": "New Project",
-  "created_at": "2023-01-15T00:00:00Z"
+  "created_at_utc": "2023-01-15T00:00:00Z"
 }
 ```
 
@@ -187,8 +189,8 @@ Get details of a specific workspace.
 {
   "id": "workspace-uuid",
   "name": "Project X",
-  "created_at": "2023-01-01T00:00:00Z",
-  "last_active_at": "2023-01-10T15:30:00Z",
+  "created_at_utc": "2023-01-01T00:00:00Z",
+  "last_active_at_utc": "2023-01-10T15:30:00Z",
   "config": {
     "default_modality": "chat"
   },
@@ -230,7 +232,7 @@ Update a workspace.
 {
   "id": "workspace-uuid",
   "name": "Updated Project Name",
-  "updated_at": "2023-01-16T12:00:00Z"
+  "updated_at_utc": "2023-01-16T12:00:00Z"
 }
 ```
 
@@ -288,8 +290,8 @@ List conversations in a workspace.
       "id": "conversation-uuid",
       "title": "Chat with AI",
       "modality": "chat",
-      "created_at": "2023-01-15T10:00:00Z",
-      "last_active_at": "2023-01-15T11:30:00Z"
+      "created_at_utc": "2023-01-15T10:00:00Z",
+      "last_active_at_utc": "2023-01-15T11:30:00Z"
     }
   ]
 }
@@ -328,7 +330,7 @@ Create a new conversation.
   "id": "new-conversation-uuid",
   "title": "New Discussion",
   "modality": "chat",
-  "created_at": "2023-01-15T12:00:00Z"
+  "created_at_utc": "2023-01-15T12:00:00Z"
 }
 ```
 
@@ -357,8 +359,8 @@ Get details of a specific conversation.
   "id": "conversation-uuid",
   "title": "Chat with AI",
   "modality": "chat",
-  "created_at": "2023-01-15T10:00:00Z",
-  "last_active_at": "2023-01-15T11:30:00Z",
+  "created_at_utc": "2023-01-15T10:00:00Z",
+  "last_active_at_utc": "2023-01-15T11:30:00Z",
   "workspace_id": "workspace-uuid",
   "meta_data": {}
 }
@@ -398,7 +400,7 @@ Add a message to a conversation.
   "id": "message-uuid",
   "content": "Hello, how can you help me today?",
   "role": "user",
-  "created_at": "2023-01-15T12:05:00Z"
+  "created_at_utc": "2023-01-15T12:05:00Z"  // ISO 8601 format with 'Z' indicating UTC timezone
 }
 ```
 
@@ -493,13 +495,13 @@ Get messages in a conversation.
       "id": "message-uuid-1",
       "content": "Hello, how can you help me today?",
       "role": "user",
-      "created_at": "2023-01-15T12:05:00Z"
+      "created_at_utc": "2023-01-15T12:05:00Z"
     },
     {
       "id": "message-uuid-2",
       "content": "I'm here to assist you with any questions or tasks you have. What would you like to work on today?",
       "role": "assistant",
-      "created_at": "2023-01-15T12:05:05Z"
+      "created_at_utc": "2023-01-15T12:05:05Z"
     }
   ]
 }
@@ -531,7 +533,7 @@ Example event:
 
 ```
 event: connect
-data: {"connected": true, "timestamp": "2023-01-15T12:00:00Z"}
+data: {"connected": true, "timestamp_utc": "2023-01-15T12:00:00Z"}
 
 ```
 
@@ -577,10 +579,10 @@ Example events:
 
 ```
 event: connect
-data: {"connected": true, "timestamp": "2023-01-15T12:00:00Z"}
+data: {"connected": true, "timestamp_utc": "2023-01-15T12:00:00Z"}
 
 event: conversation_created
-data: {"id": "conversation-uuid", "title": "New Chat", "modality": "chat", "created_at": "2023-01-15T12:00:00Z"}
+data: {"id": "conversation-uuid", "title": "New Chat", "modality": "chat", "created_at_utc": "2023-01-15T12:00:00Z"}
 
 ```
 
@@ -608,13 +610,13 @@ Example events:
 
 ```
 event: connect
-data: {"connected": true, "timestamp": "2023-01-15T12:00:00Z"}
+data: {"connected": true, "timestamp_utc": "2023-01-15T12:00:00Z"}
 
 event: typing_indicator
 data: {"isTyping": true, "role": "assistant"}
 
 event: message_received
-data: {"id": "message-uuid", "content": "Hello there!", "role": "assistant", "timestamp": "2023-01-15T12:00:05Z"}
+data: {"id": "message-uuid", "content": "Hello there!", "role": "assistant", "created_at_utc": "2023-01-15T12:00:05Z"}
 
 ```
 
