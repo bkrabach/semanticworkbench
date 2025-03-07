@@ -29,6 +29,10 @@
 * Styling: Fluent UI components and styling system
 * Types: Define strong TypeScript interfaces/types
 
+## Documentation
+* Markdown filenames: Use ALL_CAPS with UNDERSCORES (e.g., `PLATFORM_OVERVIEW.md`, `CODEBASE_STRUCTURE.md`)
+* Documentation goes in relevant docs/ directories
+
 ## Tools
 * Python: Uses uv for environment/dependency management
 * Linting/Formatting: black, isort, flake8 (Python), ESLint (TypeScript)

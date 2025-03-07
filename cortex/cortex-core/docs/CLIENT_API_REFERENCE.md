@@ -213,4 +213,4 @@ For Python clients:
 5. Test error handling by sending malformed requests
 6. Verify reconnection works if the SSE connection is dropped
 
-For comprehensive client implementation examples, see [client-integration-guide.md](client-integration-guide.md).
+For comprehensive client implementation examples, see [CLIENT_INTEGRATION_GUIDE.md](CLIENT_INTEGRATION_GUIDE.md).

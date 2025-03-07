@@ -381,8 +381,8 @@ window.addEventListener("beforeunload", () => {
 
 After getting this basic example working, you can:
 
-1. Explore the full [Client Integration Guide](client-integration-guide.md) for more advanced features
-2. Refer to the [API Reference](client-api-reference.md) for detailed endpoint documentation
+1. Explore the full [Client Integration Guide](CLIENT_INTEGRATION_GUIDE.md) for more advanced features
+2. Refer to the [API Reference](CLIENT_API_REFERENCE.md) for detailed endpoint documentation
 3. Implement additional features like:
    - Conversation history and management
    - User authentication flow

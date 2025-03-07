@@ -7,13 +7,13 @@ This documentation provides developers with the necessary information to build c
 This documentation set contains the following resources:
 
 1. [Quick Start Guide](#quick-start-guide)
-2. [Client Integration Guide](#client-integration-guide)
+2. [Client Integration Guide](#CLIENT_INTEGRATION_GUIDE)
 3. [API Reference](#api-reference)
 4. [Examples](#examples)
 
 ## Quick Start Guide
 
-The [Quick Start Guide](client-quickstart.md) provides a minimal working example to get you started quickly. It includes:
+The [Quick Start Guide](CLIENT_QUICKSTART.md) provides a minimal working example to get you started quickly. It includes:
 
 - A simple HTML/JavaScript client implementation
 - Basic authentication setup
@@ -24,7 +24,7 @@ This guide is perfect for developers who want to quickly get a functional client
 
 ## Client Integration Guide
 
-The [Client Integration Guide](client-integration-guide.md) offers comprehensive documentation for building robust client applications. It covers:
+The [Client Integration Guide](CLIENT_INTEGRATION_GUIDE.md) offers comprehensive documentation for building robust client applications. It covers:
 
 - Authentication and session management
 - Conversation operations (creating, listing, retrieving, deleting)
@@ -37,7 +37,7 @@ This guide is ideal for developers building production-ready applications that n
 
 ## API Reference
 
-The [API Reference](client-api-reference.md) provides a concise technical reference for:
+The [API Reference](CLIENT_API_REFERENCE.md) provides a concise technical reference for:
 
 - All API endpoints with request/response formats
 - Data models and schemas
@@ -53,7 +53,7 @@ The documentation includes several complete example implementations:
 
 ### JavaScript/TypeScript Client
 
-A complete JavaScript/TypeScript client implementation can be found in the [Client Integration Guide](client-integration-guide.md#client-implementation-examples). This example includes:
+A complete JavaScript/TypeScript client implementation can be found in the [Client Integration Guide](CLIENT_INTEGRATION_GUIDE.md#client-implementation-examples). This example includes:
 
 - Authentication and session management
 - Conversation and message operations
@@ -62,7 +62,7 @@ A complete JavaScript/TypeScript client implementation can be found in the [Clie
 
 ### Python Client
 
-A complete Python client implementation can be found in the [Client Integration Guide](client-integration-guide.md#client-implementation-examples). This example includes:
+A complete Python client implementation can be found in the [Client Integration Guide](CLIENT_INTEGRATION_GUIDE.md#client-implementation-examples). This example includes:
 
 - Authentication and session management
 - Conversation and message operations
@@ -71,7 +71,7 @@ A complete Python client implementation can be found in the [Client Integration 
 
 ### HTML/JavaScript Web Client
 
-A simple but complete web client implementation can be found in the [Quick Start Guide](client-quickstart.md). This example includes:
+A simple but complete web client implementation can be found in the [Quick Start Guide](CLIENT_QUICKSTART.md). This example includes:
 
 - A chat interface
 - Authentication setup
