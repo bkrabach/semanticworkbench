@@ -1,0 +1,25 @@
+{
+  "cSpell.words": [
+    "aiosqlite",
+    "asyncio",
+    "asyncpg",
+    "autoflush",
+    "datefmt",
+    "dateutil",
+    "dbname",
+    "dotenv",
+    "excepthook",
+    "fastapi",
+    "fernet",
+    "flushall",
+    "gettz",
+    "httpx",
+    "incrby",
+    "isort",
+    "levelname",
+    "localtime",
+    "MSAL",
+    "qualname",
+    "repr"
+  ]
+}
