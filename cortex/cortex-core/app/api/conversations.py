@@ -25,6 +25,7 @@ from app.database.models import User, Workspace, Conversation
 from app.api.auth import get_current_user
 from app.utils.logger import logger
 from app.api.sse import send_event_to_conversation, send_event_to_workspace
+from app.components.simple_cortex_router import SimpleCortexRouter, DateTimeEncoder
 
 router = APIRouter()
 
@@ -616,124 +617,22 @@ async def stream_message(
 
     # We'll handle the typing indicator in the response generator
 
-    # Stream the response
-    async def response_generator():
-        # This would typically be handled by your LLM integration
-        # For demo purposes, we'll simulate a streaming response
-        assistant_message_id = str(uuid.uuid4())
-        assistant_content = ""
-
-        # Send typing indicator
-        await send_event_to_conversation(
-            conversation_id,
-            "typing_indicator",
-            {
-                "isTyping": True,
-                "role": "assistant"
-            }
-        )
-
-        # Simulate typing indicator
-        yield f"data: {json.dumps({'choices': [{'delta': {'role': 'assistant'}}]})}\n\n"
-
-        # Generate a simple echo response
-        response_text = f"ECHO: {message.content}"
-        logger.info(f"Streaming echo response for conversation {conversation_id}")
+    # Initialize the router and get a streaming response generator
+    router = SimpleCortexRouter()
+    response_generator_fn, _, _ = await router.stream_message(
+        conversation_id=conversation_id,
+        user_message=message.content,
+        user_metadata=message.metadata,
+        db=db
+    )
+    
+    if not response_generator_fn:
+        # If we couldn't get a response generator, return an error
+        raise HTTPException(status_code=404, detail="Conversation not found or processing error")
         
-        # Wait 5 seconds to simulate processing time
-        await asyncio.sleep(5)
-
-        for chunk in response_text.split():
-            # Wait a bit to simulate thinking/typing
-            await asyncio.sleep(0.1)
-
-            # Send the chunk
-            assistant_content += chunk + " "
-            chunk_data = {
-                "id": assistant_message_id,
-                "created": int(datetime.now(timezone.utc).timestamp()),
-                "model": "simulation",
-                "choices": [
-                    {
-                        "delta": {
-                            "content": chunk + " "
-                        },
-                        "index": 0
-                    }
-                ]
-            }
-            yield f"data: {json.dumps(chunk_data)}\n\n"
-
-        # Final chunk with stop reason
-        final_data = {
-            "id": assistant_message_id,
-            "created": int(datetime.now(timezone.utc).timestamp()),
-            "model": "simulation",
-            "choices": [
-                {
-                    "delta": {},
-                    "finish_reason": "stop",
-                    "index": 0
-                }
-            ]
-        }
-        yield f"data: {json.dumps(final_data)}\n\n"
-
-        # Save the assistant's message to the conversation
-        # This would typically be done after full completion in a production system
-        try:
-            latest_conversation = db.query(Conversation).filter(
-                Conversation.id == conversation_id
-            ).first()
-
-            if latest_conversation:
-                try:
-                    latest_entries = json.loads(latest_conversation.entries)
-                except json.JSONDecodeError:
-                    latest_entries = []
-
-                # Add assistant response with timezone-aware UTC datetime
-                now = datetime.now(timezone.utc)
-                assistant_entry = {
-                    "id": assistant_message_id,
-                    "content": assistant_content.strip(),
-                    "role": "assistant",
-                    "created_at_utc": now,  # Store as datetime object
-                    "metadata": {}
-                }
-
-                latest_entries.append(assistant_entry)
-                latest_conversation.entries = json.dumps(latest_entries, cls=DateTimeEncoder)
-                db.commit()
-
-                # Send message_received event with timezone-aware UTC datetime
-                now = datetime.now(timezone.utc)
-                await send_event_to_conversation(
-                    conversation_id,
-                    "message_received",
-                    {
-                        "id": assistant_message_id,
-                        "content": assistant_content.strip(),
-                        "role": "assistant",
-                        "created_at_utc": now.isoformat()  # Convert to ISO string for transport
-                    }
-                )
-
-                # Turn off typing indicator
-                await send_event_to_conversation(
-                    conversation_id,
-                    "typing_indicator",
-                    {
-                        "isTyping": False,
-                        "role": "assistant"
-                    }
-                )
-
-        except Exception as e:
-            logger.error(f"Error saving assistant response: {e}")
-
+    # Use the generator from the router directly
     return StreamingResponse(
-        response_generator(),
+        response_generator_fn(),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -747,97 +646,24 @@ async def stream_message(
 
 async def simulate_assistant_response(conversation_id: str, user_message: str, db: Session):
     """
-    Simulate an assistant response (for demo purposes only)
-    In a real implementation, this would call your LLM service
-
+    Send a message to the Cortex Router for processing
+    
     Args:
         conversation_id: Conversation ID
         user_message: Message from user
         db: Database session
     """
-    # Make sure typing indicator is shown
-    await send_event_to_conversation(
-        conversation_id,
-        "typing_indicator",
-        {
-            "isTyping": True,
-            "role": "assistant"
-        }
+    # Initialize the router
+    router = SimpleCortexRouter()
+    
+    # Hand off the message to the router for full processing
+    await router.process_message(
+        conversation_id=conversation_id,
+        user_message=user_message,
+        db=db
     )
     
-    # Wait 5 seconds to simulate processing time
-    logger.info(f"Waiting 5 seconds before sending echo response for conversation {conversation_id}")
-    await asyncio.sleep(5)
-
-    # Generate an echo response
-    response_text = f"ECHO: {user_message}"
-    logger.info(f"Generated echo response for conversation {conversation_id}: {response_text}")
-    
-    # Always use timezone-aware UTC datetime for consistency
-    now = datetime.now(timezone.utc)
-
-    # Get the conversation
-    conversation = db.query(Conversation).filter(
-        Conversation.id == conversation_id
-    ).first()
-
-    if not conversation:
-        # Conversation might have been deleted
-        logger.warning(
-            f"Conversation {conversation_id} not found for assistant response")
-        return
-
-    # Create message entry with timezone-aware UTC datetime
-    message_id = str(uuid.uuid4())
-    now = datetime.now(timezone.utc)
-
-    # Parse entries
-    try:
-        entries = json.loads(conversation.entries)
-    except json.JSONDecodeError:
-        entries = []
-
-    # Add new entry
-    new_entry = {
-        "id": message_id,
-        "content": response_text,
-        "role": "assistant",
-        "created_at_utc": now,  # Store as datetime object
-        "metadata": {}
-    }
-
-    entries.append(new_entry)
-
-    # Update conversation - use custom encoder for datetime objects
-    conversation.entries = json.dumps(entries, cls=DateTimeEncoder)
-    conversation.last_active_at_utc = now
-
-    db.commit()
-    logger.info(f"Saved assistant response to conversation {conversation_id}")
-
-    # Send message received event
-    await send_event_to_conversation(
-        conversation_id,
-        "message_received",
-        {
-            "id": message_id,
-            "content": response_text,
-            "role": "assistant",
-            "created_at_utc": now.isoformat()  # Convert to ISO string for transport
-        }
-    )
-    logger.info(f"Sent message_received event for conversation {conversation_id}")
-
-    # Turn off typing indicator
-    await send_event_to_conversation(
-        conversation_id,
-        "typing_indicator",
-        {
-            "isTyping": False,
-            "role": "assistant"
-        }
-    )
-    logger.info(f"Turned off typing indicator for conversation {conversation_id}")
+    logger.info(f"Message passed to Cortex Router for conversation {conversation_id}")
 
 
 def generate_demo_response(user_message: str) -> str:

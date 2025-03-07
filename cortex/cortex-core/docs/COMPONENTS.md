@@ -6,6 +6,7 @@ This document details the core components and interfaces of the Cortex Core syst
 
 - [Session Manager](#session-manager)
 - [Dispatcher](#dispatcher)
+- [Cortex Router](#cortex-router)
 - [Context Manager](#context-manager)
 - [Integration Hub](#integration-hub)
 - [Workspace Manager](#workspace-manager)
@@ -92,6 +93,62 @@ async def dispatch_middleware(request: Request, call_next):
     response = await call_next(request)
     return response
 ```
+
+## Cortex Router
+
+The Cortex Router is responsible for determining how to handle incoming messages from various input channels.
+
+### Responsibilities
+
+- Analyze incoming messages to determine the appropriate action
+- Provide immediate feedback about processing status
+- Prioritize messages based on content and context
+- Decide whether to respond directly, retrieve memory, or delegate to a specialized system
+- Coordinate between conversational flows and more complex processing paths
+
+### Implementation Details
+
+```python
+class RouterRequest(BaseModel):
+    """Input request to be routed"""
+    content: str
+    conversation_id: str
+    workspace_id: str
+    metadata: Optional[Dict[str, Any]] = None
+    timestamp: datetime
+
+class RoutingDecision(BaseModel):
+    """Routing decision made by the router"""
+    action_type: str  # "respond", "process", "retrieve_memory", "delegate", "ignore"
+    priority: int = 1  # 1 (lowest) to 5 (highest)
+    target_system: Optional[str] = None
+    status_message: Optional[str] = None
+    metadata: Dict[str, Any] = {}
+
+class CortexRouterInterface(ABC):
+    """Interface for the Cortex Router"""
+    
+    @abstractmethod
+    async def route(self, request: RouterRequest) -> RoutingDecision:
+        """Determine how to route an incoming message"""
+        pass
+    
+    @abstractmethod
+    async def process_feedback(self, request_id: str, success: bool, metadata: Dict[str, Any]) -> None:
+        """Process feedback about a previous routing decision"""
+        pass
+```
+
+### Integration
+
+The Cortex Router is integrated into the conversation flow, intercepting messages before they reach their final destination:
+
+1. User sends a message through a conversation endpoint
+2. Message is passed to the Router for analysis
+3. Router determines the appropriate action and priority
+4. Status updates are sent to the user while processing
+5. The appropriate system handles the message based on the routing decision
+6. Results are returned to the user through the original conversation channel
 
 ## Context Manager
 
