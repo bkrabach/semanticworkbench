@@ -4,87 +4,21 @@ Handles authentication, authorization, and encryption
 """
 
 import json
-import jwt
-from typing import Optional, Dict, List, Any, Union
-from datetime import datetime, timedelta
-import secrets
 import hashlib
-from pydantic import BaseModel
+from typing import Optional, Dict, List, Any, Union
+from datetime import datetime
+import secrets
 from cryptography.fernet import Fernet
 import base64
 from fastapi import Depends
 from sqlalchemy.orm import Session
-from fastapi.security import OAuth2PasswordBearer
 from app.database.connection import get_db
 from app.database.models import User
-from app.api.auth import oauth2_scheme_optional
+from app.components.tokens import TokenData, verify_jwt_token
+from app.components.auth_schemes import oauth2_scheme_optional
 
 from app.config import settings
 from app.utils.logger import logger
-
-
-class TokenData(BaseModel):
-    """JWT token data"""
-
-    user_id: str
-    scopes: List[str] = []
-
-
-def generate_jwt_token(
-    data: TokenData, expires_delta: Optional[timedelta] = None
-) -> str:
-    """
-    Generate a JWT token
-
-    Args:
-        data: Token data
-        expires_delta: Token expiry time
-
-    Returns:
-        JWT token
-    """
-    to_encode = data.model_dump()
-
-    if expires_delta:
-        expire = datetime.utcnow() + expires_delta
-    else:
-        expire = datetime.utcnow() + timedelta(
-            seconds=settings.security.token_expiry_seconds
-        )
-
-    to_encode.update({"exp": expire})
-
-    return jwt.encode(to_encode, settings.security.jwt_secret, algorithm="HS256")
-
-
-def verify_jwt_token(token: str) -> Optional[TokenData]:
-    """
-    Verify a JWT token
-
-    Args:
-        token: JWT token
-
-    Returns:
-        Token data if valid, None otherwise
-    """
-    try:
-        payload = jwt.decode(
-            token, settings.security.jwt_secret, algorithms=["HS256"])
-
-        user_id = payload.get("user_id")
-        if user_id is None:
-            return None
-
-        scopes = payload.get("scopes", [])
-
-        return TokenData(user_id=user_id, scopes=scopes)
-
-    except jwt.ExpiredSignatureError:
-        logger.warning("Token has expired")
-        return None
-    except jwt.InvalidTokenError:
-        logger.warning("Invalid token")
-        return None
 
 
 def get_password_hash(password: str) -> str:

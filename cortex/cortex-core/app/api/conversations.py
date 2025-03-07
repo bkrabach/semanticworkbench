@@ -13,8 +13,8 @@ import json
 import asyncio
 
 from app.database.connection import get_db
-from app.database.models import User, Workspace, Conversation, ConversationEntry
-from app.components.security_manager import get_current_user
+from app.database.models import User, Workspace, Conversation
+from app.api.auth import get_current_user
 from app.utils.logger import logger
 from app.api.sse import send_event_to_conversation, send_event_to_workspace
 

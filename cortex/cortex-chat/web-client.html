@@ -155,10 +155,42 @@
             padding: 0.3rem 0.5rem;
         }
         
-        .integrations {
-            margin-top: 1rem;
-            border-top: 1px solid #ddd;
-            padding-top: 1rem;
+        .typing-indicator {
+            display: none;
+            margin-bottom: 1rem;
+            padding: 0.5rem;
+            border-radius: 4px;
+            background-color: #f1f0f0;
+            align-self: flex-start;
+            margin-right: 20%;
+            font-style: italic;
+        }
+        
+        .dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: #888;
+            animation: wave 1.3s linear infinite;
+            margin-right: 3px;
+        }
+        
+        .dot:nth-child(2) {
+            animation-delay: -1.1s;
+        }
+        
+        .dot:nth-child(3) {
+            animation-delay: -0.9s;
+        }
+        
+        @keyframes wave {
+            0%, 60%, 100% {
+                transform: initial;
+            }
+            30% {
+                transform: translateY(-5px);
+            }
         }
     </style>
 </head>
@@ -207,15 +239,6 @@
                     <ul id="conversation-list" class="conversation-list">
                         <!-- Conversations will be added here -->
                     </ul>
-                    
-                    <div class="integrations">
-                        <div class="section-title">
-                            <h3>MCP Integrations</h3>
-                        </div>
-                        <ul id="integration-list" class="conversation-list">
-                            <!-- Integrations will be added here -->
-                        </ul>
-                    </div>
                 </div>
                 
                 <div class="content">
@@ -224,6 +247,12 @@
                         <div class="message system-message">
                             Select or create a conversation to start chatting!
                         </div>
+                    </div>
+                    
+                    <div id="typing-indicator" class="typing-indicator">
+                        <span class="dot"></span>
+                        <span class="dot"></span>
+                        <span class="dot"></span>
                     </div>
                     
                     <div class="input-area">
@@ -235,11 +264,9 @@
         </div>
     </div>
     
-    <script src="https://cdn.socket.io/4.6.0/socket.io.min.js"></script>
     <script>
-        // API and Socket.IO configuration
-        const API_URL = 'http://127.0.0.1:8000';
-        let socket;
+        // API configuration
+        const API_URL = 'http://localhost:4000'; // Update to match your Cortex Core server
         
         // State
         let authToken = null;
@@ -248,7 +275,7 @@
         let currentWorkspace = null;
         let conversations = [];
         let currentConversation = null;
-        let integrations = [];
+        let eventSources = {}; // To store active SSE connections
         
         // Elements
         const loginSection = document.getElementById('login-section');
@@ -264,10 +291,10 @@
         const newWorkspaceBtn = document.getElementById('new-workspace-btn');
         const conversationList = document.getElementById('conversation-list');
         const newConversationBtn = document.getElementById('new-conversation-btn');
-        const integrationList = document.getElementById('integration-list');
         const messagesContainer = document.getElementById('messages');
         const messageInput = document.getElementById('message-input');
         const sendBtn = document.getElementById('send-btn');
+        const typingIndicator = document.getElementById('typing-indicator');
         
         // Event Listeners
         loginBtn.addEventListener('click', login);
@@ -297,7 +324,6 @@
                     };
                     showApp();
                     await loadWorkspaces();
-                    await loadIntegrations();
                 } catch (error) {
                     console.error('Failed to validate token:', error);
                     logout();
@@ -336,7 +362,7 @@
                 const data = await response.json();
                 authToken = data.token;
                 currentUser = {
-                    id: data.userId,
+                    id: data.user_id,
                     email: email
                 };
                 
@@ -347,7 +373,6 @@
                 
                 showApp();
                 await loadWorkspaces();
-                await loadIntegrations();
             } catch (error) {
                 loginError.textContent = error.message || 'Failed to login';
                 console.error('Login error:', error);
@@ -355,6 +380,14 @@
         }
         
         function logout() {
+            // Close all SSE connections
+            for (const key in eventSources) {
+                if (eventSources[key]) {
+                    eventSources[key].close();
+                }
+            }
+            eventSources = {};
+            
             // Clear state
             authToken = null;
             currentUser = null;
@@ -362,17 +395,11 @@
             currentWorkspace = null;
             conversations = [];
             currentConversation = null;
-            integrations = [];
             
             // Clear localStorage
             localStorage.removeItem('authToken');
             localStorage.removeItem('userId');
             localStorage.removeItem('userEmail');
-            
-            // Disconnect socket
-            if (socket) {
-                socket.disconnect();
-            }
             
             // Show login page
             showLogin();
@@ -391,7 +418,7 @@
                 }
                 
                 const data = await response.json();
-                workspaces = data.workspaces;
+                workspaces = data.workspaces || [];
                 
                 // Update UI
                 renderWorkspaces();
@@ -401,30 +428,11 @@
                     workspaceSelect.value = workspaces[0].id;
                     handleWorkspaceChange();
                 }
+                
+                // Connect to global events
+                connectToGlobalEvents();
             } catch (error) {
                 console.error('Error loading workspaces:', error);
-            }
-        }
-        
-        async function loadIntegrations() {
-            try {
-                const response = await fetch(`${API_URL}/integrations`, {
-                    headers: {
-                        'Authorization': `Bearer ${authToken}`
-                    }
-                });
-                
-                if (!response.ok) {
-                    throw new Error('Failed to fetch integrations');
-                }
-                
-                const data = await response.json();
-                integrations = data.integrations;
-                
-                // Update UI
-                renderIntegrations();
-            } catch (error) {
-                console.error('Error loading integrations:', error);
             }
         }
         
@@ -442,7 +450,7 @@
                     body: JSON.stringify({ 
                         name,
                         config: {
-                            defaultModality: 'chat',
+                            default_modality: 'chat',
                             sharingEnabled: false,
                             retentionDays: 90
                         }
@@ -453,14 +461,14 @@
                     throw new Error('Failed to create workspace');
                 }
                 
-                const data = await response.json();
-                workspaces.push(data.workspace);
+                const newWorkspace = await response.json();
+                workspaces.push(newWorkspace);
                 
                 // Update UI
                 renderWorkspaces();
                 
                 // Select new workspace
-                workspaceSelect.value = data.workspace.id;
+                workspaceSelect.value = newWorkspace.id;
                 handleWorkspaceChange();
             } catch (error) {
                 console.error('Error creating workspace:', error);
@@ -479,6 +487,9 @@
             
             currentWorkspace = workspaces.find(w => w.id === workspaceId);
             await loadConversations(workspaceId);
+            
+            // Connect to workspace events
+            connectToWorkspaceEvents(workspaceId);
         }
         
         async function loadConversations(workspaceId) {
@@ -494,7 +505,7 @@
                 }
                 
                 const data = await response.json();
-                conversations = data.conversations;
+                conversations = data.conversations || [];
                 
                 // Update UI
                 renderConversations();
@@ -534,14 +545,14 @@
                     throw new Error('Failed to create conversation');
                 }
                 
-                const data = await response.json();
-                conversations.push(data.conversation);
+                const newConversation = await response.json();
+                conversations.push(newConversation);
                 
                 // Update UI
                 renderConversations();
                 
                 // Select new conversation
-                selectConversation(data.conversation.id);
+                selectConversation(newConversation.id);
             } catch (error) {
                 console.error('Error creating conversation:', error);
                 alert('Failed to create conversation');
@@ -561,7 +572,7 @@
                 }
                 
                 const data = await response.json();
-                currentConversation = data.conversation;
+                currentConversation = data;
                 
                 // Update UI
                 const items = conversationList.querySelectorAll('.conversation-item');
@@ -573,22 +584,35 @@
                     }
                 });
                 
-                renderMessages();
+                // Load messages
+                await loadMessages(conversationId);
                 
-                // Join conversation room for real-time updates
-                if (socket) {
-                    // Leave previous conversation room if any
-                    if (socket.currentConversation) {
-                        socket.emit('leave-conversation', socket.currentConversation);
-                    }
-                    
-                    socket.emit('join-conversation', conversationId);
-                    socket.currentConversation = conversationId;
-                } else {
-                    connectToSocket();
-                }
+                // Connect to conversation events
+                connectToConversationEvents(conversationId);
             } catch (error) {
                 console.error('Error selecting conversation:', error);
+            }
+        }
+        
+        async function loadMessages(conversationId) {
+            try {
+                const response = await fetch(`${API_URL}/conversations/${conversationId}/messages`, {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Failed to fetch messages');
+                }
+                
+                const data = await response.json();
+                currentConversation.messages = data.messages || [];
+                
+                // Render messages
+                renderMessages();
+            } catch (error) {
+                console.error('Error loading messages:', error);
             }
         }
         
@@ -597,6 +621,27 @@
             if (!content || !currentConversation) return;
             
             try {
+                // Clear input
+                messageInput.value = '';
+                
+                // Add message to UI immediately for better user experience
+                const userMessage = {
+                    id: `temp-${Date.now()}`,
+                    content: content,
+                    role: 'user',
+                    created_at: new Date().toISOString()
+                };
+                
+                // Add to local messages array
+                if (!currentConversation.messages) {
+                    currentConversation.messages = [];
+                }
+                currentConversation.messages.push(userMessage);
+                
+                // Render messages
+                renderMessages();
+                
+                // Send to server
                 const response = await fetch(`${API_URL}/conversations/${currentConversation.id}/messages`, {
                     method: 'POST',
                     headers: {
@@ -604,8 +649,8 @@
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        content,
-                        type: 'user'
+                        content: content,
+                        role: 'user'
                     })
                 });
                 
@@ -613,28 +658,10 @@
                     throw new Error('Failed to send message');
                 }
                 
-                // Clear input
-                messageInput.value = '';
+                // The assistant response will come via SSE
                 
-                // The message will be added via socket.io
-                // but for immediate feedback, let's add it now
-                const entry = {
-                    id: Date.now().toString(),
-                    type: 'user',
-                    content,
-                    timestamp: new Date().toISOString()
-                };
-                
-                currentConversation.entries.push(entry);
-                renderMessages();
-                
-                // Show loading indicator for assistant response
-                const loadingMessage = document.createElement('div');
-                loadingMessage.className = 'message assistant-message';
-                loadingMessage.innerHTML = '<div class="message-content">Processing...</div>';
-                loadingMessage.id = 'loading-message';
-                messagesContainer.appendChild(loadingMessage);
-                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+                // Show typing indicator
+                showTypingIndicator();
                 
             } catch (error) {
                 console.error('Error sending message:', error);
@@ -642,46 +669,205 @@
             }
         }
         
-        function connectToSocket() {
-            socket = io(API_URL, {
-                auth: {
-                    token: authToken
+        // Server-Sent Events (SSE) functions
+        
+        function connectToGlobalEvents() {
+            // Close existing connection if any
+            if (eventSources.global) {
+                eventSources.global.close();
+            }
+            
+            // Create new EventSource connection
+            const url = new URL(`${API_URL}/events`);
+            url.searchParams.append('token', authToken);
+            
+            const eventSource = new EventSource(url.toString());
+            
+            eventSource.onopen = () => {
+                console.log('Connected to global events');
+            };
+            
+            eventSource.onerror = (error) => {
+                console.error('Global events error:', error);
+                eventSource.close();
+                
+                // Try to reconnect after delay
+                setTimeout(() => connectToGlobalEvents(), 5000);
+            };
+            
+            // Listen for events
+            eventSource.addEventListener('connect', (event) => {
+                console.log('Global events connected:', JSON.parse(event.data));
+            });
+            
+            eventSource.addEventListener('notification', (event) => {
+                const data = JSON.parse(event.data);
+                console.log('Global notification:', data);
+                // Handle notifications here
+            });
+            
+            // Store connection
+            eventSources.global = eventSource;
+        }
+        
+        function connectToWorkspaceEvents(workspaceId) {
+            // Close existing connection if any
+            if (eventSources.workspace) {
+                eventSources.workspace.close();
+            }
+            
+            // Create new EventSource connection
+            const url = new URL(`${API_URL}/workspaces/${workspaceId}/events`);
+            url.searchParams.append('token', authToken);
+            
+            const eventSource = new EventSource(url.toString());
+            
+            eventSource.onopen = () => {
+                console.log(`Connected to workspace ${workspaceId} events`);
+            };
+            
+            eventSource.onerror = (error) => {
+                console.error(`Workspace ${workspaceId} events error:`, error);
+                eventSource.close();
+                
+                // Only try to reconnect if this is still the current workspace
+                if (currentWorkspace && currentWorkspace.id === workspaceId) {
+                    setTimeout(() => connectToWorkspaceEvents(workspaceId), 5000);
+                }
+            };
+            
+            // Listen for events
+            eventSource.addEventListener('connect', (event) => {
+                console.log(`Workspace ${workspaceId} events connected:`, JSON.parse(event.data));
+            });
+            
+            eventSource.addEventListener('conversation_created', (event) => {
+                const newConversation = JSON.parse(event.data);
+                console.log('New conversation created:', newConversation);
+                
+                // Add to conversations list if not already present
+                if (!conversations.some(c => c.id === newConversation.id)) {
+                    conversations.push(newConversation);
+                    renderConversations();
                 }
             });
             
-            socket.on('connect', () => {
-                console.log('Connected to socket');
+            eventSource.addEventListener('conversation_deleted', (event) => {
+                const data = JSON.parse(event.data);
+                console.log('Conversation deleted:', data);
                 
-                // Join current conversation room if any
-                if (currentConversation) {
-                    socket.emit('join-conversation', currentConversation.id);
-                    socket.currentConversation = currentConversation.id;
-                }
-            });
-            
-            socket.on('message', (message) => {
-                console.log('Received message:', message);
+                // Remove from conversations list
+                conversations = conversations.filter(c => c.id !== data.id);
+                renderConversations();
                 
-                // Remove loading message if it exists
-                const loadingMessage = document.getElementById('loading-message');
-                if (loadingMessage) {
-                    loadingMessage.remove();
-                }
-                
-                // Add message to current conversation if it matches
-                if (currentConversation && socket.currentConversation === currentConversation.id) {
-                    currentConversation.entries.push(message);
+                // If current conversation was deleted, clear it
+                if (currentConversation && currentConversation.id === data.id) {
+                    currentConversation = null;
                     renderMessages();
                 }
             });
             
-            socket.on('disconnect', () => {
-                console.log('Disconnected from socket');
+            // Store connection
+            eventSources.workspace = eventSource;
+        }
+        
+        function connectToConversationEvents(conversationId) {
+            // Close existing connection if any
+            if (eventSources.conversation) {
+                eventSources.conversation.close();
+            }
+            
+            // Create new EventSource connection
+            const url = new URL(`${API_URL}/conversations/${conversationId}/events`);
+            url.searchParams.append('token', authToken);
+            
+            const eventSource = new EventSource(url.toString());
+            
+            eventSource.onopen = () => {
+                console.log(`Connected to conversation ${conversationId} events`);
+            };
+            
+            eventSource.onerror = (error) => {
+                console.error(`Conversation ${conversationId} events error:`, error);
+                eventSource.close();
+                
+                // Only try to reconnect if this is still the current conversation
+                if (currentConversation && currentConversation.id === conversationId) {
+                    setTimeout(() => connectToConversationEvents(conversationId), 5000);
+                }
+            };
+            
+            // Listen for events
+            eventSource.addEventListener('connect', (event) => {
+                console.log(`Conversation ${conversationId} events connected:`, JSON.parse(event.data));
             });
             
-            socket.on('error', (error) => {
-                console.error('Socket error:', error);
+            eventSource.addEventListener('message_received', (event) => {
+                const message = JSON.parse(event.data);
+                console.log('New message received:', message);
+                
+                // Only process if this is the current conversation
+                if (currentConversation && currentConversation.id === conversationId) {
+                    // Add message to conversation if not already present
+                    if (!currentConversation.messages.some(m => m.id === message.id)) {
+                        currentConversation.messages.push(message);
+                        renderMessages();
+                    }
+                    
+                    // Hide typing indicator if this is an assistant message
+                    if (message.role === 'assistant') {
+                        hideTypingIndicator();
+                    }
+                }
             });
+            
+            eventSource.addEventListener('typing_indicator', (event) => {
+                const data = JSON.parse(event.data);
+                console.log('Typing indicator:', data);
+                
+                // Only process if this is the current conversation
+                if (currentConversation && currentConversation.id === conversationId) {
+                    if (data.isTyping) {
+                        showTypingIndicator();
+                    } else {
+                        hideTypingIndicator();
+                    }
+                }
+            });
+            
+            eventSource.addEventListener('conversation_update', (event) => {
+                const data = JSON.parse(event.data);
+                console.log('Conversation updated:', data);
+                
+                // Update conversation data
+                if (currentConversation && currentConversation.id === conversationId) {
+                    // Update fields that were changed
+                    if (data.title) {
+                        currentConversation.title = data.title;
+                    }
+                    if (data.metadata) {
+                        currentConversation.metadata = data.metadata;
+                    }
+                    if (data.last_active_at) {
+                        currentConversation.last_active_at = data.last_active_at;
+                    }
+                    
+                    // Update conversation list
+                    renderConversations();
+                }
+            });
+            
+            // Store connection
+            eventSources.conversation = eventSource;
+        }
+        
+        function showTypingIndicator() {
+            typingIndicator.style.display = 'block';
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+        
+        function hideTypingIndicator() {
+            typingIndicator.style.display = 'none';
         }
         
         function renderWorkspaces() {
@@ -719,39 +905,11 @@
             });
         }
         
-        function renderIntegrations() {
-            // Clear list
-            integrationList.innerHTML = '';
-            
-            // Add integration items
-            integrations.forEach(integration => {
-                const li = document.createElement('li');
-                li.className = 'conversation-item';
-                li.dataset.id = integration.id;
-                li.innerHTML = `
-                    <strong>${integration.name}</strong> (${integration.type})
-                    <div>Status: <span style="color: ${integration.status === 'connected' ? 'green' : 'red'}">
-                        ${integration.status}
-                    </span></div>
-                `;
-                
-                integrationList.appendChild(li);
-            });
-            
-            // Show message if no integrations
-            if (integrations.length === 0) {
-                const li = document.createElement('li');
-                li.className = 'conversation-item';
-                li.textContent = 'No integrations found';
-                integrationList.appendChild(li);
-            }
-        }
-        
         function renderMessages() {
             // Clear messages
             messagesContainer.innerHTML = '';
             
-            if (!currentConversation) {
+            if (!currentConversation || !currentConversation.messages) {
                 const div = document.createElement('div');
                 div.className = 'message system-message';
                 div.textContent = 'Select or create a conversation to start chatting!';
@@ -760,17 +918,17 @@
             }
             
             // Add messages
-            currentConversation.entries.forEach(entry => {
+            currentConversation.messages.forEach(message => {
                 const div = document.createElement('div');
-                div.className = `message ${entry.type}-message`;
+                div.className = `message ${message.role}-message`;
                 
                 // Format timestamp
-                const date = new Date(entry.timestamp);
+                const date = new Date(message.created_at);
                 const formattedTime = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                 
                 // Add message content
                 div.innerHTML = `
-                    <div class="message-content">${formatMessageContent(entry.content)}</div>
+                    <div class="message-content">${formatMessageContent(message.content)}</div>
                     <div class="message-time">${formattedTime}</div>
                 `;
                 
@@ -807,9 +965,6 @@
             if (currentUser) {
                 usernameEl.textContent = currentUser.email;
             }
-            
-            // Connect to socket
-            connectToSocket();
         }
     </script>
 </body>

@@ -8,7 +8,7 @@ import json
 
 from app.database.connection import get_db
 from app.database.models import User, Workspace
-from app.components.security_manager import get_current_user
+from app.api.auth import get_current_user
 from app.utils.logger import logger
 from app.api.sse import send_event_to_user
 

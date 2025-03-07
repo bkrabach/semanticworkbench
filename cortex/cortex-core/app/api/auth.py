@@ -3,7 +3,8 @@ Authentication API endpoints for Cortex Core
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from fastapi.security import OAuth2PasswordRequestForm
+from app.components.auth_schemes import oauth2_scheme, oauth2_scheme_optional
 from pydantic import BaseModel, Field
 from typing import Optional, List, Any, Dict
 from sqlalchemy.orm import Session
@@ -14,18 +15,11 @@ from app.database.connection import get_db
 from app.database.models import User, ApiKey
 from app.config import settings
 from app.utils.logger import logger
-from app.components.security_manager import (
-    SecurityManager,
-    TokenData,
-    generate_jwt_token,
-    verify_jwt_token,
-)
+from app.components.security_manager import SecurityManager
+from app.components.tokens import TokenData, generate_jwt_token, verify_jwt_token
 
 # Create router
 router = APIRouter()
-
-# OAuth2 password bearer token scheme
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
 # Initialize security manager
 security_manager = SecurityManager()
@@ -113,7 +107,8 @@ async def login(credentials: UserCredentials, db: Session = Depends(get_db)):
         # Authenticate based on credential type
         if credentials.type == "password":
             # Get user from database
-            user = db.query(User).filter(User.email == credentials.identifier).first()
+            user = db.query(User).filter(
+                User.email == credentials.identifier).first()
 
             # For development: auto-create test user if it doesn't exist
             if (
@@ -125,7 +120,8 @@ async def login(credentials: UserCredentials, db: Session = Depends(get_db)):
                 import hashlib
 
                 # Create password hash
-                password_hash = hashlib.sha256(credentials.secret.encode()).hexdigest()
+                password_hash = hashlib.sha256(
+                    credentials.secret.encode()).hexdigest()
 
                 # Create test user
                 user = User(
@@ -153,10 +149,12 @@ async def login(credentials: UserCredentials, db: Session = Depends(get_db)):
             # Verify password
             import hashlib
 
-            password_hash = hashlib.sha256(credentials.secret.encode()).hexdigest()
+            password_hash = hashlib.sha256(
+                credentials.secret.encode()).hexdigest()
 
             if password_hash != user.password_hash:
-                logger.warning(f"Invalid password for user: {credentials.identifier}")
+                logger.warning(
+                    f"Invalid password for user: {credentials.identifier}")
                 return AuthResponse(success=False, error="Invalid email or password")
 
             # Update last login time
@@ -188,7 +186,8 @@ async def login(credentials: UserCredentials, db: Session = Depends(get_db)):
         )
         token = generate_jwt_token(
             TokenData(user_id=user.id),
-            expires_delta=timedelta(seconds=settings.security.token_expiry_seconds),
+            expires_delta=timedelta(
+                seconds=settings.security.token_expiry_seconds),
         )
 
         logger.info(f"User {user.id} authenticated successfully")

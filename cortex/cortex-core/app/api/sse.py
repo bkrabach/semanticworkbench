@@ -11,13 +11,12 @@ import json
 import uuid
 from datetime import datetime
 from fastapi import Query
-from app.api.auth import get_current_user_or_none
-from app.api.auth import verify_jwt_token
+from app.components.security_manager import get_current_user_or_none
+from app.components.tokens import verify_jwt_token
 from app.api.auth import get_current_user
 
 from app.database.connection import get_db
 from app.database.models import User, Workspace, Conversation
-from app.api.auth import get_current_user
 from app.utils.logger import logger
 
 router = APIRouter()
@@ -274,7 +273,8 @@ async def global_events(
 async def user_events(
     user_id: str,
     request: Request,
-    current_user: User = Depends(get_current_user),
+    token: Optional[str] = Query(None),
+    current_user: Optional[User] = Depends(get_current_user_or_none),
     db: Session = Depends(get_db)
 ):
     """
@@ -283,12 +283,28 @@ async def user_events(
     Args:
         user_id: User ID to subscribe to
         request: FastAPI request object
+        token: Authentication token from query param
         current_user: Authenticated user
         db: Database session
 
     Returns:
         SSE stream for user events
     """
+    # If token is provided in query params, authenticate with it
+    if token and not current_user:
+        try:
+            token_data = verify_jwt_token(token)
+            if token_data:
+                # Get user from database
+                current_user = db.query(User).filter(
+                    User.id == token_data.user_id).first()
+        except Exception as e:
+            logger.error(
+                f"Failed to authenticate with token from query params: {e}")
+
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
     # Only allow users to subscribe to their own events
     if user_id != current_user.id:
         raise HTTPException(
@@ -318,7 +334,8 @@ async def user_events(
 async def workspace_events(
     workspace_id: str,
     request: Request,
-    user: User = Depends(get_current_user),
+    token: Optional[str] = Query(None),
+    user: Optional[User] = Depends(get_current_user_or_none),
     db: Session = Depends(get_db)
 ):
     """
@@ -327,12 +344,28 @@ async def workspace_events(
     Args:
         workspace_id: Workspace ID to subscribe to
         request: FastAPI request object
+        token: Authentication token from query param
         user: Authenticated user
         db: Database session
 
     Returns:
         SSE stream for workspace events
     """
+    # If token is provided in query params, authenticate with it
+    if token and not user:
+        try:
+            token_data = verify_jwt_token(token)
+            if token_data:
+                # Get user from database
+                user = db.query(User).filter(
+                    User.id == token_data.user_id).first()
+        except Exception as e:
+            logger.error(
+                f"Failed to authenticate with token from query params: {e}")
+
+    if not user:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
     # Verify workspace access
     workspace = db.query(Workspace).filter(
         Workspace.id == workspace_id,
@@ -366,7 +399,8 @@ async def workspace_events(
 async def conversation_events(
     conversation_id: str,
     request: Request,
-    user: User = Depends(get_current_user),
+    token: Optional[str] = Query(None),
+    user: Optional[User] = Depends(get_current_user_or_none),
     db: Session = Depends(get_db)
 ):
     """
@@ -375,12 +409,28 @@ async def conversation_events(
     Args:
         conversation_id: Conversation ID to subscribe to
         request: FastAPI request object
+        token: Authentication token from query param
         user: Authenticated user
         db: Database session
 
     Returns:
         SSE stream for conversation events
     """
+    # If token is provided in query params, authenticate with it
+    if token and not user:
+        try:
+            token_data = verify_jwt_token(token)
+            if token_data:
+                # Get user from database
+                user = db.query(User).filter(
+                    User.id == token_data.user_id).first()
+        except Exception as e:
+            logger.error(
+                f"Failed to authenticate with token from query params: {e}")
+
+    if not user:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
     # Verify conversation access
     conversation = db.query(Conversation).join(Workspace).filter(
         Conversation.id == conversation_id,
