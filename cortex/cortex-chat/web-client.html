@@ -1,0 +1,816 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cortex Client</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            color: #333;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        header {
+            background-color: #2c3e50;
+            color: white;
+            padding: 1rem;
+        }
+        
+        .main {
+            display: flex;
+            height: calc(100vh - 140px);
+        }
+        
+        .sidebar {
+            width: 250px;
+            background-color: #f5f5f5;
+            padding: 1rem;
+            overflow-y: auto;
+        }
+        
+        .content {
+            flex: 1;
+            padding: 1rem;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .conversation-list {
+            list-style: none;
+            padding: 0;
+        }
+        
+        .conversation-item {
+            padding: 0.5rem;
+            margin-bottom: 0.5rem;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        
+        .conversation-item:hover, .conversation-item.active {
+            background-color: #e0e0e0;
+        }
+        
+        .messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1rem;
+            background-color: #f9f9f9;
+            border-radius: 4px;
+            margin-bottom: 1rem;
+        }
+        
+        .message {
+            margin-bottom: 1rem;
+            padding: 0.5rem;
+            border-radius: 4px;
+        }
+        
+        .user-message {
+            background-color: #dcf8c6;
+            align-self: flex-end;
+            margin-left: 20%;
+        }
+        
+        .assistant-message {
+            background-color: #f1f0f0;
+            align-self: flex-start;
+            margin-right: 20%;
+        }
+        
+        .system-message {
+            background-color: #ffe4c4;
+            font-style: italic;
+        }
+        
+        .input-area {
+            display: flex;
+            gap: 1rem;
+        }
+        
+        input, button, textarea, select {
+            padding: 0.5rem;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+        }
+        
+        button {
+            background-color: #2c3e50;
+            color: white;
+            cursor: pointer;
+            border: none;
+        }
+        
+        button:hover {
+            background-color: #1a252f;
+        }
+        
+        textarea {
+            flex: 1;
+            resize: none;
+            height: 80px;
+        }
+        
+        .login-form {
+            max-width: 400px;
+            margin: 0 auto;
+            padding: 2rem;
+            background-color: #f5f5f5;
+            border-radius: 8px;
+        }
+        
+        .form-group {
+            margin-bottom: 1rem;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+        }
+        
+        .form-group input {
+            width: 100%;
+        }
+        
+        .hidden {
+            display: none;
+        }
+        
+        .section-title {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .btn-small {
+            font-size: 0.8rem;
+            padding: 0.3rem 0.5rem;
+        }
+        
+        .integrations {
+            margin-top: 1rem;
+            border-top: 1px solid #ddd;
+            padding-top: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1>Cortex Client</h1>
+            <div id="user-info" class="hidden">
+                Welcome, <span id="username">User</span> | <button id="logout-btn">Logout</button>
+            </div>
+        </div>
+    </header>
+    
+    <div class="container">
+        <!-- Login Form -->
+        <div id="login-section" class="login-form">
+            <h2>Login</h2>
+            <div class="form-group">
+                <label for="email">Email</label>
+                <input type="email" id="email" placeholder="Enter your email" value="test@example.com">
+            </div>
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" id="password" placeholder="Enter your password" value="password">
+            </div>
+            <button id="login-btn">Login</button>
+            <p id="login-error" style="color: red;"></p>
+        </div>
+        
+        <!-- Main Application -->
+        <div id="app-section" class="hidden">
+            <div class="main">
+                <div class="sidebar">
+                    <div class="section-title">
+                        <h2>Workspaces</h2>
+                        <button id="new-workspace-btn" class="btn-small">+ New</button>
+                    </div>
+                    <select id="workspace-select">
+                        <option value="">Select Workspace</option>
+                    </select>
+                    
+                    <div class="section-title">
+                        <h3>Conversations</h3>
+                        <button id="new-conversation-btn" class="btn-small">+ New</button>
+                    </div>
+                    <ul id="conversation-list" class="conversation-list">
+                        <!-- Conversations will be added here -->
+                    </ul>
+                    
+                    <div class="integrations">
+                        <div class="section-title">
+                            <h3>MCP Integrations</h3>
+                        </div>
+                        <ul id="integration-list" class="conversation-list">
+                            <!-- Integrations will be added here -->
+                        </ul>
+                    </div>
+                </div>
+                
+                <div class="content">
+                    <div id="messages" class="messages">
+                        <!-- Messages will be added here -->
+                        <div class="message system-message">
+                            Select or create a conversation to start chatting!
+                        </div>
+                    </div>
+                    
+                    <div class="input-area">
+                        <textarea id="message-input" placeholder="Type your message..."></textarea>
+                        <button id="send-btn">Send</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="https://cdn.socket.io/4.6.0/socket.io.min.js"></script>
+    <script>
+        // API and Socket.IO configuration
+        const API_URL = 'http://127.0.0.1:8000';
+        let socket;
+        
+        // State
+        let authToken = null;
+        let currentUser = null;
+        let workspaces = [];
+        let currentWorkspace = null;
+        let conversations = [];
+        let currentConversation = null;
+        let integrations = [];
+        
+        // Elements
+        const loginSection = document.getElementById('login-section');
+        const appSection = document.getElementById('app-section');
+        const userInfo = document.getElementById('user-info');
+        const usernameEl = document.getElementById('username');
+        const loginBtn = document.getElementById('login-btn');
+        const logoutBtn = document.getElementById('logout-btn');
+        const loginError = document.getElementById('login-error');
+        const emailInput = document.getElementById('email');
+        const passwordInput = document.getElementById('password');
+        const workspaceSelect = document.getElementById('workspace-select');
+        const newWorkspaceBtn = document.getElementById('new-workspace-btn');
+        const conversationList = document.getElementById('conversation-list');
+        const newConversationBtn = document.getElementById('new-conversation-btn');
+        const integrationList = document.getElementById('integration-list');
+        const messagesContainer = document.getElementById('messages');
+        const messageInput = document.getElementById('message-input');
+        const sendBtn = document.getElementById('send-btn');
+        
+        // Event Listeners
+        loginBtn.addEventListener('click', login);
+        logoutBtn.addEventListener('click', logout);
+        workspaceSelect.addEventListener('change', handleWorkspaceChange);
+        newWorkspaceBtn.addEventListener('click', createWorkspace);
+        newConversationBtn.addEventListener('click', createConversation);
+        sendBtn.addEventListener('click', sendMessage);
+        messageInput.addEventListener('keydown', e => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+        
+        // Check for existing auth token
+        init();
+        
+        async function init() {
+            const token = localStorage.getItem('authToken');
+            if (token) {
+                authToken = token;
+                try {
+                    currentUser = {
+                        id: localStorage.getItem('userId'),
+                        email: localStorage.getItem('userEmail')
+                    };
+                    showApp();
+                    await loadWorkspaces();
+                    await loadIntegrations();
+                } catch (error) {
+                    console.error('Failed to validate token:', error);
+                    logout();
+                }
+            } else {
+                showLogin();
+            }
+        }
+        
+        async function login() {
+            const email = emailInput.value.trim();
+            const password = passwordInput.value;
+            
+            if (!email || !password) {
+                loginError.textContent = 'Please enter email and password';
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_URL}/auth/login`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        type: 'password',
+                        identifier: email,
+                        secret: password
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Authentication failed');
+                }
+                
+                const data = await response.json();
+                authToken = data.token;
+                currentUser = {
+                    id: data.userId,
+                    email: email
+                };
+                
+                // Save to local storage
+                localStorage.setItem('authToken', authToken);
+                localStorage.setItem('userId', currentUser.id);
+                localStorage.setItem('userEmail', currentUser.email);
+                
+                showApp();
+                await loadWorkspaces();
+                await loadIntegrations();
+            } catch (error) {
+                loginError.textContent = error.message || 'Failed to login';
+                console.error('Login error:', error);
+            }
+        }
+        
+        function logout() {
+            // Clear state
+            authToken = null;
+            currentUser = null;
+            workspaces = [];
+            currentWorkspace = null;
+            conversations = [];
+            currentConversation = null;
+            integrations = [];
+            
+            // Clear localStorage
+            localStorage.removeItem('authToken');
+            localStorage.removeItem('userId');
+            localStorage.removeItem('userEmail');
+            
+            // Disconnect socket
+            if (socket) {
+                socket.disconnect();
+            }
+            
+            // Show login page
+            showLogin();
+        }
+        
+        async function loadWorkspaces() {
+            try {
+                const response = await fetch(`${API_URL}/workspaces`, {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Failed to fetch workspaces');
+                }
+                
+                const data = await response.json();
+                workspaces = data.workspaces;
+                
+                // Update UI
+                renderWorkspaces();
+                
+                // Load first workspace if exists
+                if (workspaces.length > 0) {
+                    workspaceSelect.value = workspaces[0].id;
+                    handleWorkspaceChange();
+                }
+            } catch (error) {
+                console.error('Error loading workspaces:', error);
+            }
+        }
+        
+        async function loadIntegrations() {
+            try {
+                const response = await fetch(`${API_URL}/integrations`, {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Failed to fetch integrations');
+                }
+                
+                const data = await response.json();
+                integrations = data.integrations;
+                
+                // Update UI
+                renderIntegrations();
+            } catch (error) {
+                console.error('Error loading integrations:', error);
+            }
+        }
+        
+        async function createWorkspace() {
+            const name = prompt('Enter workspace name:');
+            if (!name) return;
+            
+            try {
+                const response = await fetch(`${API_URL}/workspaces`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ 
+                        name,
+                        config: {
+                            defaultModality: 'chat',
+                            sharingEnabled: false,
+                            retentionDays: 90
+                        }
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Failed to create workspace');
+                }
+                
+                const data = await response.json();
+                workspaces.push(data.workspace);
+                
+                // Update UI
+                renderWorkspaces();
+                
+                // Select new workspace
+                workspaceSelect.value = data.workspace.id;
+                handleWorkspaceChange();
+            } catch (error) {
+                console.error('Error creating workspace:', error);
+                alert('Failed to create workspace');
+            }
+        }
+        
+        async function handleWorkspaceChange() {
+            const workspaceId = workspaceSelect.value;
+            if (!workspaceId) {
+                currentWorkspace = null;
+                conversations = [];
+                renderConversations();
+                return;
+            }
+            
+            currentWorkspace = workspaces.find(w => w.id === workspaceId);
+            await loadConversations(workspaceId);
+        }
+        
+        async function loadConversations(workspaceId) {
+            try {
+                const response = await fetch(`${API_URL}/workspaces/${workspaceId}/conversations`, {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Failed to fetch conversations');
+                }
+                
+                const data = await response.json();
+                conversations = data.conversations;
+                
+                // Update UI
+                renderConversations();
+                
+                // Load first conversation if exists
+                if (conversations.length > 0) {
+                    selectConversation(conversations[0].id);
+                } else {
+                    currentConversation = null;
+                    renderMessages();
+                }
+            } catch (error) {
+                console.error('Error loading conversations:', error);
+            }
+        }
+        
+        async function createConversation() {
+            if (!currentWorkspace) {
+                alert('Please select a workspace first');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_URL}/workspaces/${currentWorkspace.id}/conversations`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        modality: 'chat',
+                        title: `Chat ${new Date().toLocaleTimeString()}`
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Failed to create conversation');
+                }
+                
+                const data = await response.json();
+                conversations.push(data.conversation);
+                
+                // Update UI
+                renderConversations();
+                
+                // Select new conversation
+                selectConversation(data.conversation.id);
+            } catch (error) {
+                console.error('Error creating conversation:', error);
+                alert('Failed to create conversation');
+            }
+        }
+        
+        async function selectConversation(conversationId) {
+            try {
+                const response = await fetch(`${API_URL}/conversations/${conversationId}`, {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Failed to fetch conversation');
+                }
+                
+                const data = await response.json();
+                currentConversation = data.conversation;
+                
+                // Update UI
+                const items = conversationList.querySelectorAll('.conversation-item');
+                items.forEach(item => {
+                    if (item.dataset.id === conversationId) {
+                        item.classList.add('active');
+                    } else {
+                        item.classList.remove('active');
+                    }
+                });
+                
+                renderMessages();
+                
+                // Join conversation room for real-time updates
+                if (socket) {
+                    // Leave previous conversation room if any
+                    if (socket.currentConversation) {
+                        socket.emit('leave-conversation', socket.currentConversation);
+                    }
+                    
+                    socket.emit('join-conversation', conversationId);
+                    socket.currentConversation = conversationId;
+                } else {
+                    connectToSocket();
+                }
+            } catch (error) {
+                console.error('Error selecting conversation:', error);
+            }
+        }
+        
+        async function sendMessage() {
+            const content = messageInput.value.trim();
+            if (!content || !currentConversation) return;
+            
+            try {
+                const response = await fetch(`${API_URL}/conversations/${currentConversation.id}/messages`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        content,
+                        type: 'user'
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Failed to send message');
+                }
+                
+                // Clear input
+                messageInput.value = '';
+                
+                // The message will be added via socket.io
+                // but for immediate feedback, let's add it now
+                const entry = {
+                    id: Date.now().toString(),
+                    type: 'user',
+                    content,
+                    timestamp: new Date().toISOString()
+                };
+                
+                currentConversation.entries.push(entry);
+                renderMessages();
+                
+                // Show loading indicator for assistant response
+                const loadingMessage = document.createElement('div');
+                loadingMessage.className = 'message assistant-message';
+                loadingMessage.innerHTML = '<div class="message-content">Processing...</div>';
+                loadingMessage.id = 'loading-message';
+                messagesContainer.appendChild(loadingMessage);
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+                
+            } catch (error) {
+                console.error('Error sending message:', error);
+                alert('Failed to send message');
+            }
+        }
+        
+        function connectToSocket() {
+            socket = io(API_URL, {
+                auth: {
+                    token: authToken
+                }
+            });
+            
+            socket.on('connect', () => {
+                console.log('Connected to socket');
+                
+                // Join current conversation room if any
+                if (currentConversation) {
+                    socket.emit('join-conversation', currentConversation.id);
+                    socket.currentConversation = currentConversation.id;
+                }
+            });
+            
+            socket.on('message', (message) => {
+                console.log('Received message:', message);
+                
+                // Remove loading message if it exists
+                const loadingMessage = document.getElementById('loading-message');
+                if (loadingMessage) {
+                    loadingMessage.remove();
+                }
+                
+                // Add message to current conversation if it matches
+                if (currentConversation && socket.currentConversation === currentConversation.id) {
+                    currentConversation.entries.push(message);
+                    renderMessages();
+                }
+            });
+            
+            socket.on('disconnect', () => {
+                console.log('Disconnected from socket');
+            });
+            
+            socket.on('error', (error) => {
+                console.error('Socket error:', error);
+            });
+        }
+        
+        function renderWorkspaces() {
+            // Clear options except the first one
+            while (workspaceSelect.options.length > 1) {
+                workspaceSelect.remove(1);
+            }
+            
+            // Add workspace options
+            workspaces.forEach(workspace => {
+                const option = document.createElement('option');
+                option.value = workspace.id;
+                option.textContent = workspace.name;
+                workspaceSelect.appendChild(option);
+            });
+        }
+        
+        function renderConversations() {
+            // Clear list
+            conversationList.innerHTML = '';
+            
+            // Add conversation items
+            conversations.forEach(conversation => {
+                const li = document.createElement('li');
+                li.className = 'conversation-item';
+                li.dataset.id = conversation.id;
+                li.textContent = conversation.title;
+                li.addEventListener('click', () => selectConversation(conversation.id));
+                
+                if (currentConversation && conversation.id === currentConversation.id) {
+                    li.classList.add('active');
+                }
+                
+                conversationList.appendChild(li);
+            });
+        }
+        
+        function renderIntegrations() {
+            // Clear list
+            integrationList.innerHTML = '';
+            
+            // Add integration items
+            integrations.forEach(integration => {
+                const li = document.createElement('li');
+                li.className = 'conversation-item';
+                li.dataset.id = integration.id;
+                li.innerHTML = `
+                    <strong>${integration.name}</strong> (${integration.type})
+                    <div>Status: <span style="color: ${integration.status === 'connected' ? 'green' : 'red'}">
+                        ${integration.status}
+                    </span></div>
+                `;
+                
+                integrationList.appendChild(li);
+            });
+            
+            // Show message if no integrations
+            if (integrations.length === 0) {
+                const li = document.createElement('li');
+                li.className = 'conversation-item';
+                li.textContent = 'No integrations found';
+                integrationList.appendChild(li);
+            }
+        }
+        
+        function renderMessages() {
+            // Clear messages
+            messagesContainer.innerHTML = '';
+            
+            if (!currentConversation) {
+                const div = document.createElement('div');
+                div.className = 'message system-message';
+                div.textContent = 'Select or create a conversation to start chatting!';
+                messagesContainer.appendChild(div);
+                return;
+            }
+            
+            // Add messages
+            currentConversation.entries.forEach(entry => {
+                const div = document.createElement('div');
+                div.className = `message ${entry.type}-message`;
+                
+                // Format timestamp
+                const date = new Date(entry.timestamp);
+                const formattedTime = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                
+                // Add message content
+                div.innerHTML = `
+                    <div class="message-content">${formatMessageContent(entry.content)}</div>
+                    <div class="message-time">${formattedTime}</div>
+                `;
+                
+                messagesContainer.appendChild(div);
+            });
+            
+            // Scroll to bottom
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+        
+        function formatMessageContent(content) {
+            // If content is a string, return it
+            if (typeof content === 'string') {
+                // Basic formatting for code blocks
+                return content.replace(/```([^`]+)```/g, '<pre><code>$1</code></pre>');
+            }
+            
+            // If content is an object, stringify it
+            return JSON.stringify(content, null, 2);
+        }
+        
+        function showLogin() {
+            loginSection.classList.remove('hidden');
+            appSection.classList.add('hidden');
+            userInfo.classList.add('hidden');
+        }
+        
+        function showApp() {
+            loginSection.classList.add('hidden');
+            appSection.classList.remove('hidden');
+            userInfo.classList.remove('hidden');
+            
+            // Set username
+            if (currentUser) {
+                usernameEl.textContent = currentUser.email;
+            }
+            
+            // Connect to socket
+            connectToSocket();
+        }
+    </script>
+</body>
+</html>

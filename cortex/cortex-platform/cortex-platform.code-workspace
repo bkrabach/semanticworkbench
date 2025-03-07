@@ -1,6 +1,10 @@
 {
   "folders": [
     {
+      "name": "cortex-chat",
+      "path": "../cortex-chat"
+    },
+    {
       "name": "cortex-core",
       "path": "../cortex-core"
     },

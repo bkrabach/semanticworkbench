@@ -33,13 +33,15 @@ class User(Base):
 
     __tablename__ = "users"
 
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = Column(String(36), primary_key=True,
+                default=lambda: str(uuid.uuid4()))
     email = Column(String(255), unique=True, index=True)
     name = Column(String(255), nullable=True)
     password_hash = Column(String(255), nullable=True)
     last_login_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow,
+                        onupdate=datetime.utcnow)
 
     # Relationships
     sessions = relationship(
@@ -64,10 +66,12 @@ class Role(Base):
 
     __tablename__ = "roles"
 
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = Column(String(36), primary_key=True,
+                default=lambda: str(uuid.uuid4()))
     name = Column(String(50), unique=True, index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow,
+                        onupdate=datetime.utcnow)
 
     # Relationships
     users = relationship(
@@ -80,13 +84,14 @@ class Session(Base):
 
     __tablename__ = "sessions"
 
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = Column(String(36), primary_key=True,
+                default=lambda: str(uuid.uuid4()))
     user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"))
     created_at = Column(DateTime, default=datetime.utcnow)
     last_active_at = Column(DateTime, default=datetime.utcnow)
     active_workspace_id = Column(String(36), nullable=False)
     config = Column(Text, default="{}")  # Stored as JSON string
-    metadata = Column(Text, default="{}")  # Stored as JSON string
+    meta_data = Column(Text, default="{}")  # Stored as JSON string
 
     # Relationships
     user = relationship("User", back_populates="sessions")
@@ -97,7 +102,8 @@ class ApiKey(Base):
 
     __tablename__ = "api_keys"
 
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = Column(String(36), primary_key=True,
+                default=lambda: str(uuid.uuid4()))
     key = Column(String(255), unique=True, index=True)
     user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"))
     scopes_json = Column(Text, default="[]")  # Stored as JSON array string
@@ -113,13 +119,14 @@ class Workspace(Base):
 
     __tablename__ = "workspaces"
 
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = Column(String(36), primary_key=True,
+                default=lambda: str(uuid.uuid4()))
     user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"))
     name = Column(String(255), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     last_active_at = Column(DateTime, default=datetime.utcnow)
     config = Column(Text, default="{}")  # Stored as JSON string
-    metadata = Column(Text, default="{}")  # Stored as JSON string
+    meta_data = Column(Text, default="{}")  # Stored as JSON string
 
     # Relationships
     user = relationship("User", back_populates="workspaces")
@@ -139,12 +146,16 @@ class WorkspaceSharing(Base):
 
     __tablename__ = "workspace_sharings"
 
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    workspace_id = Column(String(36), ForeignKey("workspaces.id", ondelete="CASCADE"))
+    id = Column(String(36), primary_key=True,
+                default=lambda: str(uuid.uuid4()))
+    workspace_id = Column(String(36), ForeignKey(
+        "workspaces.id", ondelete="CASCADE"))
     user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"))
-    permissions_json = Column(Text, default="[]")  # Stored as JSON array string
+    # Stored as JSON array string
+    permissions_json = Column(Text, default="[]")
     created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow,
+                        onupdate=datetime.utcnow)
 
     # Relationships
     workspace = relationship("Workspace", back_populates="workspace_sharings")
@@ -162,7 +173,8 @@ class Conversation(Base):
 
     __tablename__ = "conversations"
 
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = Column(String(36), primary_key=True,
+                default=lambda: str(uuid.uuid4()))
     workspace_id = Column(
         String(36), ForeignKey("workspaces.id", ondelete="CASCADE"), index=True
     )
@@ -171,7 +183,7 @@ class Conversation(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     last_active_at = Column(DateTime, default=datetime.utcnow)
     entries = Column(Text, default="[]")  # Stored as JSON array string
-    metadata = Column(Text, default="{}")  # Stored as JSON string
+    meta_data = Column(Text, default="{}")  # Stored as JSON string
 
     # Relationships
     workspace = relationship("Workspace", back_populates="conversations")
@@ -182,13 +194,14 @@ class MemoryItem(Base):
 
     __tablename__ = "memory_items"
 
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = Column(String(36), primary_key=True,
+                default=lambda: str(uuid.uuid4()))
     workspace_id = Column(
         String(36), ForeignKey("workspaces.id", ondelete="CASCADE"), index=True
     )
     type = Column(String(50), nullable=False, index=True)
     content = Column(Text, nullable=False)  # Stored as JSON string
-    metadata = Column(Text, default="{}")  # Stored as JSON string
+    meta_data = Column(Text, default="{}")  # Stored as JSON string
     timestamp = Column(DateTime, default=datetime.utcnow, index=True)
     expires_at = Column(DateTime, nullable=True)
 
@@ -201,11 +214,13 @@ class Integration(Base):
 
     __tablename__ = "integrations"
 
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = Column(String(36), primary_key=True,
+                default=lambda: str(uuid.uuid4()))
     name = Column(String(255), nullable=False)
     type = Column(String(50), nullable=False)
     connection_details = Column(Text, nullable=False)  # Stored as JSON string
-    capabilities_json = Column(Text, default="[]")  # Stored as JSON array string
+    # Stored as JSON array string
+    capabilities_json = Column(Text, default="[]")
     last_active = Column(DateTime, default=datetime.utcnow)
 
 
@@ -214,14 +229,16 @@ class DomainExpertTask(Base):
 
     __tablename__ = "domain_expert_tasks"
 
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = Column(String(36), primary_key=True,
+                default=lambda: str(uuid.uuid4()))
     expert_type = Column(String(50), nullable=False, index=True)
     task_details = Column(Text, nullable=False)  # Stored as JSON string
     status = Column(String(50), nullable=False, index=True)
     progress = Column(Integer, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow,
+                        onupdate=datetime.utcnow)
     started_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
     result = Column(Text, nullable=True)  # Stored as JSON string
-    metadata = Column(Text, default="{}")  # Stored as JSON string
+    meta_data = Column(Text, default="{}")  # Stored as JSON string
