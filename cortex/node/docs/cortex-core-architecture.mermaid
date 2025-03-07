@@ -1,0 +1,122 @@
+flowchart TB
+    subgraph "Cortex Core"
+        SessionManager["Session Manager"]
+        Dispatcher["Dispatcher"]
+        ContextManager["Context Manager"]
+        IntegrationHub["Integration Hub"]
+        WorkspaceManager["Workspace Manager"]
+        SecurityManager["Security Manager"]
+    end
+
+    subgraph "External Interfaces"
+        ModalityInterface["Modality Interface"]
+        MemoryInterface["Memory System Interface"]
+        DomainExpertInterface["Domain Expert Interface"]
+        MCPInterface["MCP Integration Interface"]
+    end
+
+    subgraph "Storage"
+        DB[(Database)]
+        Cache[(Cache)]
+    end
+
+    subgraph "Input Modalities"
+        Chat[("Chat")]
+        Voice[("Voice")]
+        Canvas[("Canvas")]
+        Apps[("Apps")]
+    end
+
+    subgraph "Output Modalities"
+        ChatOut[("Chat")]
+        VoiceOut[("Voice")]
+        CanvasOut[("Canvas")]
+        Dashboard[("Dashboard")]
+        Notification[("Notification")]
+        AppsOut[("Apps")]
+    end
+
+    subgraph "Domain Experts"
+        CodeAssistant[("Code Assistant")]
+        DeepResearch[("Deep Research")]
+        FutureExperts[("Future Experts...")]
+    end
+
+    subgraph "External Integrations"
+        VSCode[("VS Code")]
+        M365[("Microsoft 365")]
+        BrowserExt[("Browser Extensions")]
+        OtherTools[("Other Tools")]
+    end
+
+    subgraph "Memory Systems"
+        Whiteboard[("Whiteboard (Initial)")]
+        JAKE[("JAKE (Future)")]
+    end
+
+    %% Core Component Interactions
+    SessionManager <--> Dispatcher
+    Dispatcher <--> ContextManager
+    Dispatcher <--> IntegrationHub
+    Dispatcher <--> WorkspaceManager
+    SecurityManager <--> SessionManager
+    SecurityManager <--> IntegrationHub
+    ContextManager <--> WorkspaceManager
+
+    %% External Interface Connections
+    ModalityInterface <--> Dispatcher
+    MemoryInterface <--> ContextManager
+    DomainExpertInterface <--> Dispatcher
+    MCPInterface <--> IntegrationHub
+
+    %% Storage Connections
+    SessionManager <--> DB
+    WorkspaceManager <--> DB
+    ContextManager <--> DB
+    ContextManager <--> Cache
+
+    %% Input Modality Connections
+    Chat --> ModalityInterface
+    Voice --> ModalityInterface
+    Canvas --> ModalityInterface
+    Apps --> ModalityInterface
+
+    %% Output Modality Connections
+    ModalityInterface --> ChatOut
+    ModalityInterface --> VoiceOut
+    ModalityInterface --> CanvasOut
+    ModalityInterface --> Dashboard
+    ModalityInterface --> Notification
+    ModalityInterface --> AppsOut
+
+    %% Domain Expert Connections
+    DomainExpertInterface <--> CodeAssistant
+    DomainExpertInterface <--> DeepResearch
+    DomainExpertInterface <--> FutureExperts
+
+    %% External Integration Connections
+    MCPInterface <--> VSCode
+    MCPInterface <--> M365
+    MCPInterface <--> BrowserExt
+    MCPInterface <--> OtherTools
+
+    %% Memory System Connections
+    MemoryInterface <--> Whiteboard
+    MemoryInterface <--> JAKE
+
+    %% Styling
+    classDef core fill:#f9f,stroke:#333,stroke-width:2px;
+    classDef interface fill:#bbf,stroke:#333,stroke-width:1px;
+    classDef storage fill:#fdb,stroke:#333,stroke-width:1px;
+    classDef modality fill:#dfd,stroke:#333,stroke-width:1px;
+    classDef expert fill:#fbb,stroke:#333,stroke-width:1px;
+    classDef integration fill:#ddd,stroke:#333,stroke-width:1px;
+    classDef memory fill:#bff,stroke:#333,stroke-width:1px;
+
+    class SessionManager,Dispatcher,ContextManager,IntegrationHub,WorkspaceManager,SecurityManager core;
+    class ModalityInterface,MemoryInterface,DomainExpertInterface,MCPInterface interface;
+    class DB,Cache storage;
+    class Chat,Voice,Canvas,Apps,ChatOut,VoiceOut,CanvasOut,Dashboard,Notification,AppsOut modality;
+    class CodeAssistant,DeepResearch,FutureExperts expert;
+    class VSCode,M365,BrowserExt,OtherTools integration;
+    class Whiteboard,JAKE memory;

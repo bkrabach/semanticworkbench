@@ -1,0 +1,6 @@
+# python gitignore
+.venv
+__pycache__
+*.egg-info/
+
+.env

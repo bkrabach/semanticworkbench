@@ -1,0 +1,142 @@
+// This is your Prisma schema file for Cortex Core
+// Learn more about Prisma here: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// User-related models
+model User {
+  id                String              @id @default(uuid())
+  email             String              @unique
+  name              String?
+  passwordHash      String?
+  lastLoginAt       DateTime?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  sessions          Session[]
+  workspaces        Workspace[]
+  apiKeys           ApiKey[]
+  workspaceSharing  WorkspaceSharing[]
+  roles             Role[]
+}
+
+model Role {
+  id         String   @id @default(uuid())
+  name       String
+  users      User[]
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([name])
+}
+
+model Session {
+  id                String      @id @default(uuid())
+  userId            String
+  user              User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt         DateTime    @default(now())
+  lastActiveAt      DateTime    @default(now())
+  activeWorkspaceId String
+  config            String      @default("{}")  // Stored as JSON string
+  metadata          String      @default("{}")  // Stored as JSON string
+}
+
+model ApiKey {
+  id         String    @id @default(uuid())
+  key        String    @unique
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scopesJson String    @default("[]")  // Stored as JSON array string
+  createdAt  DateTime  @default(now())
+  expiresAt  DateTime?
+}
+
+// Workspace-related models
+model Workspace {
+  id               String            @id @default(uuid())
+  userId           String
+  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name             String
+  createdAt        DateTime          @default(now())
+  lastActiveAt     DateTime          @default(now())
+  config           String            @default("{}")  // Stored as JSON string
+  metadata         String            @default("{}")  // Stored as JSON string
+  conversations    Conversation[]
+  memoryItems      MemoryItem[]
+  workspaceSharing WorkspaceSharing[]
+}
+
+model WorkspaceSharing {
+  id             String    @id @default(uuid())
+  workspaceId    String
+  workspace      Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  permissionsJson String    @default("[]")  // Stored as JSON array string
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@unique([workspaceId, userId])
+}
+
+model Conversation {
+  id            String   @id @default(uuid())
+  workspaceId   String
+  workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  modality      String
+  title         String
+  createdAt     DateTime @default(now())
+  lastActiveAt  DateTime @default(now())
+  entries       String   @default("[]")  // Stored as JSON array string
+  metadata      String   @default("{}")  // Stored as JSON string
+
+  @@index([workspaceId, modality])
+}
+
+// Memory-related models
+model MemoryItem {
+  id          String    @id @default(uuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  type        String
+  content     String    // Stored as JSON string
+  metadata    String    @default("{}")  // Stored as JSON string
+  timestamp   DateTime  @default(now())
+  expiresAt   DateTime?
+
+  @@index([workspaceId, type])
+  @@index([workspaceId, timestamp])
+}
+
+// Integration-related models
+model Integration {
+  id                String   @id @default(uuid())
+  name              String
+  type              String
+  connectionDetails String    // Stored as JSON string
+  capabilitiesJson  String   @default("[]")  // Stored as JSON array string
+  lastActive        DateTime @default(now())
+}
+
+// Domain Expert Task-related models
+model DomainExpertTask {
+  id          String    @id @default(uuid())
+  expertType  String
+  taskDetails String    // Stored as JSON string
+  status      String
+  progress    Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  startedAt   DateTime?
+  completedAt DateTime?
+  result      String?   // Stored as JSON string
+  metadata    String    @default("{}")  // Stored as JSON string
+
+  @@index([expertType, status])
+}

@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cortex Core - Web Client</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f7f7f7;
+        }
+        
+        h1, h2, h3 {
+            color: #2c3e50;
+        }
+        
+        .container {
+            display: flex;
+            gap: 20px;
+            height: calc(100vh - 100px);
+        }
+        
+        .chat-container {
+            flex: 2;
+            display: flex;
+            flex-direction: column;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            background-color: white;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        
+        .chat-header {
+            background-color: #3498db;
+            color: white;
+            padding: 15px;
+            font-weight: bold;
+            border-bottom: 1px solid #ddd;
+        }
+        
+        .chat-messages {
+            flex: 1;
+            padding: 15px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        
+        .message {
+            padding: 10px 15px;
+            border-radius: 18px;
+            max-width: 80%;
+            animation: fadeIn 0.3s;
+        }
+        
+        .user-message {
+            align-self: flex-end;
+            background-color: #3498db;
+            color: white;
+            border-bottom-right-radius: 5px;
+        }
+        
+        .assistant-message {
+            align-self: flex-start;
+            background-color: #f1f1f1;
+            border-bottom-left-radius: 5px;
+        }
+        
+        .message-time {
+            font-size: 0.7rem;
+            opacity: 0.7;
+            margin-top: 5px;
+            text-align: right;
+        }
+        
+        .chat-input {
+            display: flex;
+            padding: 15px;
+            border-top: 1px solid #ddd;
+            background-color: #f9f9f9;
+        }
+        
+        .chat-input input {
+            flex: 1;
+            padding: 10px 15px;
+            border: 1px solid #ddd;
+            border-radius: 20px;
+            outline: none;
+            font-size: 1rem;
+        }
+        
+        .chat-input button {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 20px;
+            padding: 10px 20px;
+            margin-left: 10px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background-color 0.2s;
+        }
+        
+        .chat-input button:hover {
+            background-color: #2980b9;
+        }
+        
+        .status-bar {
+            font-size: 0.9rem;
+            color: #666;
+            background-color: #f9f9f9;
+            padding: 5px 15px;
+            border-top: 1px solid #ddd;
+        }
+        
+        .control-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        
+        .panel {
+            background-color: white;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        
+        .panel-header {
+            background-color: #3498db;
+            color: white;
+            padding: 15px;
+            font-weight: bold;
+        }
+        
+        .panel-content {
+            padding: 15px;
+            overflow-y: auto;
+        }
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        
+        select, input, textarea {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 0.9rem;
+        }
+        
+        pre {
+            background-color: #f7f7f7;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+        
+        code {
+            font-family: 'Courier New', Courier, monospace;
+        }
+        
+        .loading {
+            display: none;
+            align-items: center;
+            gap: 10px;
+            font-style: italic;
+            color: #777;
+        }
+        
+        .loader {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3498db;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .button-row {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        
+        button {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 8px 12px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background-color 0.2s;
+        }
+        
+        button:hover {
+            background-color: #2980b9;
+        }
+        
+        button.secondary {
+            background-color: #95a5a6;
+        }
+        
+        button.secondary:hover {
+            background-color: #7f8c8d;
+        }
+        
+        button.danger {
+            background-color: #e74c3c;
+        }
+        
+        button.danger:hover {
+            background-color: #c0392b;
+        }
+    </style>
+</head>
+<body>
+    <h1>Cortex Core - Web Client</h1>
+    
+    <div class="container">
+        <div class="chat-container">
+            <div class="chat-header">
+                Chat
+            </div>
+            <div class="chat-messages" id="chatMessages"></div>
+            <div class="loading" id="loading">
+                <div class="loader"></div>
+                <span>Thinking...</span>
+            </div>
+            <div class="chat-input">
+                <input type="text" id="messageInput" placeholder="Type your message here..." autocomplete="off">
+                <button id="sendButton">Send</button>
+            </div>
+            <div class="status-bar" id="statusBar">
+                Ready
+            </div>
+        </div>
+        
+        <div class="control-panel">
+            <div class="panel">
+                <div class="panel-header">
+                    Session Information
+                </div>
+                <div class="panel-content">
+                    <div class="form-group">
+                        <label for="sessionId">Session ID</label>
+                        <input type="text" id="sessionId" readonly>
+                    </div>
+                    <div class="form-group">
+                        <label for="workspaceId">Workspace ID</label>
+                        <input type="text" id="workspaceId" readonly>
+                    </div>
+                    <div class="button-row">
+                        <button id="newSessionButton">New Session</button>
+                        <button id="clearMessagesButton" class="danger">Clear Messages</button>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="panel">
+                <div class="panel-header">
+                    API Response
+                </div>
+                <div class="panel-content">
+                    <pre><code id="apiResponse">No messages yet</code></pre>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Configuration
+        const API_URL = 'http://localhost:8000/api';
+        
+        // DOM Elements
+        const chatMessages = document.getElementById('chatMessages');
+        const messageInput = document.getElementById('messageInput');
+        const sendButton = document.getElementById('sendButton');
+        const sessionIdElement = document.getElementById('sessionId');
+        const workspaceIdElement = document.getElementById('workspaceId');
+        const apiResponseElement = document.getElementById('apiResponse');
+        const statusBar = document.getElementById('statusBar');
+        const loading = document.getElementById('loading');
+        const newSessionButton = document.getElementById('newSessionButton');
+        const clearMessagesButton = document.getElementById('clearMessagesButton');
+        
+        // Session state
+        let sessionId = localStorage.getItem('sessionId');
+        let workspaceId = localStorage.getItem('workspaceId');
+        
+        // Initialize session if needed
+        async function initializeSession() {
+            if (!sessionId || !workspaceId) {
+                try {
+                    statusBar.textContent = 'Creating new session...';
+                    const response = await fetch(`${API_URL}/auth/session`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        }
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error(`Failed to create session: ${response.statusText}`);
+                    }
+                    
+                    const data = await response.json();
+                    sessionId = data.session_id;
+                    workspaceId = data.workspace_id;
+                    
+                    // Save to localStorage
+                    localStorage.setItem('sessionId', sessionId);
+                    localStorage.setItem('workspaceId', workspaceId);
+                    
+                    // Update UI
+                    sessionIdElement.value = sessionId;
+                    workspaceIdElement.value = workspaceId;
+                    
+                    statusBar.textContent = 'New session created';
+                } catch (error) {
+                    console.error('Failed to initialize session:', error);
+                    statusBar.textContent = `Error: ${error.message}`;
+                    
+                    // Fallback to generated UUIDs if API call fails
+                    sessionId = generateUUID();
+                    workspaceId = generateUUID();
+                    sessionIdElement.value = sessionId;
+                    workspaceIdElement.value = workspaceId;
+                    localStorage.setItem('sessionId', sessionId);
+                    localStorage.setItem('workspaceId', workspaceId);
+                }
+            } else {
+                // Use existing session
+                sessionIdElement.value = sessionId;
+                workspaceIdElement.value = workspaceId;
+                statusBar.textContent = 'Using existing session';
+            }
+        }
+        
+        // Function to generate a UUID (fallback if API is unavailable)
+        function generateUUID() {
+            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                const r = Math.random() * 16 | 0;
+                const v = c === 'x' ? r : (r & 0x3 | 0x8);
+                return v.toString(16);
+            });
+        }
+        
+        // Function to send a message
+        async function sendMessage(content) {
+            try {
+                // Show loading indicator
+                loading.style.display = 'flex';
+                statusBar.textContent = 'Sending message...';
+                
+                // Add user message to UI
+                addMessage(content, 'user');
+                
+                // Clear input
+                messageInput.value = '';
+                
+                // Prepare request
+                const requestBody = {
+                    content: content,
+                    role: 'user',
+                    session_id: sessionId,
+                    workspace_id: workspaceId,
+                    metadata: {
+                        source: 'web_client',
+                        client_version: '1.0.0'
+                    }
+                };
+                
+                // Update API response display
+                apiResponseElement.textContent = JSON.stringify(requestBody, null, 2);
+                
+                // Send request
+                const response = await fetch(`${API_URL}/messages`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(requestBody)
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`API error: ${response.statusText}`);
+                }
+                
+                // Process response
+                const data = await response.json();
+                
+                // Update API response display
+                apiResponseElement.textContent = JSON.stringify(data, null, 2);
+                
+                // Add assistant message to UI
+                addMessage(data.content, 'assistant');
+                
+                // Update status
+                statusBar.textContent = 'Message received';
+            } catch (error) {
+                console.error('Error sending message:', error);
+                statusBar.textContent = `Error: ${error.message}`;
+                
+                // Add error message to chat
+                addMessage(`Error: ${error.message}`, 'assistant');
+            } finally {
+                // Hide loading indicator
+                loading.style.display = 'none';
+            }
+        }
+        
+        // Function to add a message to the chat
+        function addMessage(content, role) {
+            const messageElement = document.createElement('div');
+            messageElement.classList.add('message');
+            messageElement.classList.add(role === 'user' ? 'user-message' : 'assistant-message');
+            
+            const text = document.createElement('div');
+            text.textContent = content;
+            
+            const time = document.createElement('div');
+            time.classList.add('message-time');
+            time.textContent = new Date().toLocaleTimeString();
+            
+            messageElement.appendChild(text);
+            messageElement.appendChild(time);
+            
+            chatMessages.appendChild(messageElement);
+            
+            // Scroll to bottom
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+        
+        // Function to clear messages
+        async function clearMessages() {
+            try {
+                statusBar.textContent = 'Clearing messages...';
+                
+                // Clear UI
+                chatMessages.innerHTML = '';
+                
+                // Clear from API if available
+                if (sessionId && workspaceId) {
+                    try {
+                        const response = await fetch(`${API_URL}/messages?session_id=${sessionId}&workspace_id=${workspaceId}`, {
+                            method: 'DELETE'
+                        });
+                        
+                        if (!response.ok && response.status !== 404) {
+                            console.warn('Failed to clear messages from API:', response.statusText);
+                        }
+                    } catch (error) {
+                        console.warn('API call to clear messages failed:', error);
+                    }
+                }
+                
+                statusBar.textContent = 'Messages cleared';
+            } catch (error) {
+                console.error('Error clearing messages:', error);
+                statusBar.textContent = `Error: ${error.message}`;
+            }
+        }
+        
+        // Function to create a new session
+        function createNewSession() {
+            // Clear localStorage
+            localStorage.removeItem('sessionId');
+            localStorage.removeItem('workspaceId');
+            
+            // Reset variables
+            sessionId = null;
+            workspaceId = null;
+            
+            // Clear messages
+            chatMessages.innerHTML = '';
+            
+            // Initialize new session
+            initializeSession();
+        }
+        
+        // Event Listeners
+        sendButton.addEventListener('click', () => {
+            const message = messageInput.value.trim();
+            if (message) {
+                sendMessage(message);
+            }
+        });
+        
+        messageInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                const message = messageInput.value.trim();
+                if (message) {
+                    sendMessage(message);
+                }
+            }
+        });
+        
+        newSessionButton.addEventListener('click', createNewSession);
+        clearMessagesButton.addEventListener('click', clearMessages);
+        
+        // Initialize
+        initializeSession();
+    </script>
+</body>
+</html>

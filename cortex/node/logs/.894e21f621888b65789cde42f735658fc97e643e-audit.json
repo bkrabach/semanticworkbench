@@ -1,0 +1,15 @@
+{
+    "keep": {
+        "days": true,
+        "amount": 14
+    },
+    "auditLog": "C:\\Users\\brkrabac\\repos\\cortex-claude\\logs\\.894e21f621888b65789cde42f735658fc97e643e-audit.json",
+    "files": [
+        {
+            "date": 1741287965120,
+            "name": "C:\\Users\\brkrabac\\repos\\cortex-claude\\logs\\cortex-2025-03-06.log",
+            "hash": "dd1e25852e6869276ba52f537081277379b5fed9c5838c6a72cee2c445fac6c5"
+        }
+    ],
+    "hashType": "sha256"
+}
