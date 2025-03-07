@@ -609,7 +609,9 @@
                 const data = await response.json();
                 currentConversation.messages = data.messages || [];
                 
-                // Render messages
+                // No timestamp preprocessing needed - we'll use UTC timestamps as is
+                
+                // Render messages - timezone conversion happens during rendering
                 renderMessages();
             } catch (error) {
                 console.error('Error loading messages:', error);
@@ -629,7 +631,8 @@
                     id: `temp-${Date.now()}`,
                     content: content,
                     role: 'user',
-                    created_at: new Date().toISOString()
+                    // Always store timestamps in UTC ISO format
+                    created_at_utc: new Date().toISOString()
                 };
                 
                 // Add to local messages array
@@ -808,11 +811,36 @@
                 
                 // Only process if this is the current conversation
                 if (currentConversation && currentConversation.id === conversationId) {
-                    // Add message to conversation if not already present
-                    if (!currentConversation.messages.some(m => m.id === message.id)) {
-                        currentConversation.messages.push(message);
-                        renderMessages();
+                    // For all messages (both user and assistant), check if we need to replace a temporary message
+                    // or handle a message that's already been received
+                    
+                    // First check if we already have this exact message by ID
+                    const existingIndex = currentConversation.messages.findIndex(m => m.id === message.id);
+                    if (existingIndex !== -1) {
+                        // We already have this message, no need to add it again
+                        return;
                     }
+                    
+                    // For user messages, check if we have a temporary message to replace
+                    if (message.role === 'user') {
+                        // Find our optimistically added message with temp ID and matching content
+                        const tempIndex = currentConversation.messages.findIndex(m => 
+                            m.role === 'user' && 
+                            m.content === message.content &&
+                            m.id && m.id.startsWith('temp-')
+                        );
+                        
+                        if (tempIndex !== -1) {
+                            // Replace our temp message with the server version
+                            currentConversation.messages[tempIndex] = message;
+                            renderMessages();
+                            return; // We've updated the existing message, no need to add a new one
+                        }
+                    }
+                    
+                    // Add the message (we've already checked for duplicates above)
+                    currentConversation.messages.push(message);
+                    renderMessages();
                     
                     // Hide typing indicator if this is an assistant message
                     if (message.role === 'assistant') {
@@ -917,14 +945,43 @@
                 return;
             }
             
+            // No pre-processing needed - we'll convert UTC to local on display
+            
             // Add messages
             currentConversation.messages.forEach(message => {
                 const div = document.createElement('div');
                 div.className = `message ${message.role}-message`;
                 
-                // Format timestamp
-                const date = new Date(message.created_at);
-                const formattedTime = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                // Format timestamp - properly convert UTC to local
+                let date;
+                
+                // For optimistically added messages that haven't been processed by the server
+                if (message.id && message.id.startsWith('temp-')) {
+                    // For newly added messages, use current local time
+                    date = new Date();
+                }
+                // Standard case: properly parse UTC timestamp and display in local timezone
+                else if (message.created_at_utc) {
+                    // Parse ISO 8601 timestamp (UTC) and convert to local time
+                    // JavaScript Date automatically handles the timezone conversion
+                    date = new Date(message.created_at_utc);
+                }
+                // Fallback for backward compatibility during transition
+                else if (message.created_at) {
+                    date = new Date(message.created_at);
+                }
+                // Fallback case
+                else {
+                    console.log("Message missing timestamp:", message);
+                    date = new Date(); 
+                }
+                
+                // Format in 12-hour time with AM/PM
+                const formattedTime = date.toLocaleTimeString([], { 
+                    hour: '2-digit', 
+                    minute: '2-digit',
+                    hour12: true // Force 12-hour time with AM/PM
+                });
                 
                 // Add message content
                 div.innerHTML = `

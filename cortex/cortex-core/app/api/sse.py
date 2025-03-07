@@ -368,21 +368,63 @@ async def conversation_events(
     
     logger.info(f"Conversation SSE connection established: user={token_user_id}, conversation={conversation_id}")
     
+    # Create a queue for this connection
+    queue = asyncio.Queue()
+    connection_id = str(uuid.uuid4())
+    
+    # Initialize conversations dictionary if it doesn't exist
+    if conversation_id not in active_connections["conversations"]:
+        active_connections["conversations"][conversation_id] = []
+    
+    # Add this connection to the active connections for this conversation
+    connection_info = {
+        "id": connection_id,
+        "user_id": token_user_id,
+        "queue": queue,
+        "connected_at": datetime.utcnow().isoformat()
+    }
+    active_connections["conversations"][conversation_id].append(connection_info)
+    logger.info(f"Added SSE connection {connection_id} for conversation {conversation_id}")
+    
     # Define a simple generator function that doesn't use async generators
     async def sse_events():
-        # Initial connection message
-        connection_msg = f"event: connect\ndata: {json.dumps({'connected': True})}\n\n"
-        yield connection_msg
+        # Start heartbeat task
+        heartbeat_task = asyncio.create_task(send_heartbeats(queue))
         
-        # Simple heartbeat loop
-        i = 0
-        while i < 100:  # Limit to avoid infinite loops
-            await asyncio.sleep(10)
-            heartbeat_msg = f"event: heartbeat\ndata: {json.dumps({'timestamp': datetime.utcnow().isoformat()})}\n\n"
-            yield heartbeat_msg
-            i += 1
+        try:
+            # Initial connection message
+            connection_msg = f"event: connect\ndata: {json.dumps({'connected': True})}\n\n"
+            yield connection_msg
+            
+            # Send messages from the queue
+            while True:
+                try:
+                    # Wait for a message with a timeout
+                    event = await asyncio.wait_for(queue.get(), timeout=60)
+                    
+                    # Format SSE message
+                    event_type = event.get("event", "message")
+                    data = event.get("data", {})
+                    sse_msg = f"event: {event_type}\ndata: {json.dumps(data)}\n\n"
+                    
+                    yield sse_msg
+                    queue.task_done()
+                except asyncio.TimeoutError:
+                    # Send a heartbeat on timeout
+                    heartbeat_msg = f"event: heartbeat\ndata: {json.dumps({'timestamp': datetime.utcnow().isoformat()})}\n\n"
+                    yield heartbeat_msg
+        finally:
+            # Clean up
+            heartbeat_task.cancel()
+            # Remove connection from active connections
+            if conversation_id in active_connections["conversations"]:
+                active_connections["conversations"][conversation_id] = [
+                    conn for conn in active_connections["conversations"][conversation_id]
+                    if conn["id"] != connection_id
+                ]
+                logger.info(f"Removed SSE connection {connection_id} for conversation {conversation_id}")
     
-    # Return a simple streaming response without complex queue handling
+    # Return a streaming response with the event generator
     return StreamingResponse(
         sse_events(),
         media_type="text/event-stream",

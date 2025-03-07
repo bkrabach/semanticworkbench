@@ -30,3 +30,8 @@
 - SQLAlchemy ORM with PostgreSQL/SQLite
 - JWT-based authentication
 - Redis for caching
+
+## Development Notes
+
+- This is a new platform without existing users - no backward compatibility is needed
+- Prioritize clean implementation over compatibility with legacy systems

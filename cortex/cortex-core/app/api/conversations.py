@@ -48,7 +48,7 @@ class MessageResponse(BaseModel):
     id: str
     content: str
     role: str
-    created_at: datetime
+    created_at_utc: datetime  # UTC timestamp for message creation
     metadata: Optional[Dict[str, Any]] = None
 
 
@@ -463,7 +463,7 @@ async def add_message(
         "id": message_id,
         "content": message.content,
         "role": message.role,
-        "timestamp": now.isoformat(),
+        "created_at_utc": now.isoformat(),
         "metadata": message.metadata or {}
     }
 
@@ -490,7 +490,7 @@ async def add_message(
             "id": message_id,
             "content": message.content,
             "role": message.role,
-            "timestamp": now.isoformat(),
+            "created_at_utc": now.isoformat(),
             "metadata": message.metadata or {}
         }
     )
@@ -500,7 +500,7 @@ async def add_message(
         id=message_id,
         content=message.content,
         role=message.role,
-        created_at=now,
+        created_at_utc=now,
         metadata=message.metadata
     )
 
@@ -565,7 +565,7 @@ async def stream_message(
         "id": message_id,
         "content": message.content,
         "role": message.role,
-        "timestamp": now.isoformat(),
+        "created_at_utc": now.isoformat(),
         "metadata": message.metadata or {}
     }
 
@@ -591,7 +591,7 @@ async def stream_message(
             "id": message_id,
             "content": message.content,
             "role": message.role,
-            "timestamp": now.isoformat(),
+            "created_at_utc": now.isoformat(),
             "metadata": message.metadata or {}
         }
     ))
@@ -616,8 +616,12 @@ async def stream_message(
         # Simulate typing indicator
         yield f"data: {json.dumps({'choices': [{'delta': {'role': 'assistant'}}]})}\n\n"
 
-        # Simulate a thoughtful response based on the user's message
-        response_text = generate_demo_response(message.content)
+        # Generate a simple echo response
+        response_text = f"ECHO: {message.content}"
+        logger.info(f"Streaming echo response for conversation {conversation_id}")
+        
+        # Wait 5 seconds to simulate processing time
+        await asyncio.sleep(5)
 
         for chunk in response_text.split():
             # Wait a bit to simulate thinking/typing
@@ -673,7 +677,7 @@ async def stream_message(
                     "id": assistant_message_id,
                     "content": assistant_content.strip(),
                     "role": "assistant",
-                    "timestamp": datetime.utcnow().isoformat(),
+                    "created_at_utc": datetime.utcnow().isoformat(),
                     "metadata": {}
                 }
 
@@ -689,7 +693,7 @@ async def stream_message(
                         "id": assistant_message_id,
                         "content": assistant_content.strip(),
                         "role": "assistant",
-                        "timestamp": datetime.utcnow().isoformat()
+                        "created_at_utc": datetime.utcnow().isoformat()
                     }
                 )
 
@@ -729,11 +733,26 @@ async def simulate_assistant_response(conversation_id: str, user_message: str, d
         user_message: Message from user
         db: Database session
     """
-    # Wait to simulate processing time
-    await asyncio.sleep(1)
+    # Make sure typing indicator is shown
+    await send_event_to_conversation(
+        conversation_id,
+        "typing_indicator",
+        {
+            "isTyping": True,
+            "role": "assistant"
+        }
+    )
+    
+    # Wait 5 seconds to simulate processing time
+    logger.info(f"Waiting 5 seconds before sending echo response for conversation {conversation_id}")
+    await asyncio.sleep(5)
 
-    # Generate a response
-    response_text = generate_demo_response(user_message)
+    # Generate an echo response
+    response_text = f"ECHO: {user_message}"
+    logger.info(f"Generated echo response for conversation {conversation_id}: {response_text}")
+    
+    # Use the client's current local time for display consistency
+    now = datetime.now().replace(tzinfo=None)
 
     # Get the conversation
     conversation = db.query(Conversation).filter(
@@ -761,7 +780,7 @@ async def simulate_assistant_response(conversation_id: str, user_message: str, d
         "id": message_id,
         "content": response_text,
         "role": "assistant",
-        "timestamp": now.isoformat(),
+        "created_at_utc": now.isoformat(),
         "metadata": {}
     }
 
@@ -772,6 +791,20 @@ async def simulate_assistant_response(conversation_id: str, user_message: str, d
     conversation.last_active_at = now
 
     db.commit()
+    logger.info(f"Saved assistant response to conversation {conversation_id}")
+
+    # Send message received event
+    await send_event_to_conversation(
+        conversation_id,
+        "message_received",
+        {
+            "id": message_id,
+            "content": response_text,
+            "role": "assistant",
+            "created_at_utc": now.isoformat()
+        }
+    )
+    logger.info(f"Sent message_received event for conversation {conversation_id}")
 
     # Turn off typing indicator
     await send_event_to_conversation(
@@ -782,18 +815,7 @@ async def simulate_assistant_response(conversation_id: str, user_message: str, d
             "role": "assistant"
         }
     )
-
-    # Send message received event
-    await send_event_to_conversation(
-        conversation_id,
-        "message_received",
-        {
-            "id": message_id,
-            "content": response_text,
-            "role": "assistant",
-            "timestamp": now.isoformat()
-        }
-    )
+    logger.info(f"Turned off typing indicator for conversation {conversation_id}")
 
 
 def generate_demo_response(user_message: str) -> str:
