@@ -12,5 +12,23 @@
       "name": "cortex-platform",
       "path": "."
     }
-  ]
+  ],
+  "extensions": {
+    "recommendations": [
+      "GitHub.copilot",
+      "github.codespaces",
+      "aaron-bond.better-comments",
+      "charliermarsh.ruff",
+      "dbaeumer.vscode-eslint",
+      "epivision.vscode-file-header",
+      "esbenp.prettier-vscode",
+      "github.vscode-github-actions",
+      "ms-python.debugpy",
+      "ms-python.python",
+      "ms-vscode.makefile-tools",
+      "ms-vscode.vscode-node-azure-pack",
+      "tamasfe.even-better-toml",
+      "streetsidesoftware.code-spell-checker"
+    ]
+  }
 }

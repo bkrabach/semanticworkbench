@@ -2,10 +2,9 @@
 name = "cortex-core"
 version = "0.1.0"
 description = "Central orchestration engine for the Cortex Platform"
-authors = [{ name = "Cortex Team", email = "info@example.com" }]
+authors = [{ name = "Cortex Team" }]
 readme = "README.md"
-requires-python = ">=3.10"
-license = { text = "MIT" }
+requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.104.0",
     "uvicorn>=0.23.2",
@@ -13,62 +12,40 @@ dependencies = [
     "pydantic-settings>=2.0.3",
     "sqlalchemy>=2.0.22",
     "alembic>=1.12.0",
-    "asyncpg>=0.28.0", # PostgreSQL driver for async
-    "aiosqlite>=0.19.0", # SQLite driver for async
-    "redis>=5.0.1", # Redis client
-    "python-jose>=3.3.0", # For JWT
+    "asyncpg>=0.28.0",
+    "aiosqlite>=0.19.0",
+    "redis>=5.0.1",
+    "python-jose>=3.3.0",
     "cryptography>=41.0.4",
-    "python-multipart>=0.0.6", # For form data parsing
-    "passlib>=1.7.4", # Password hashing
+    "python-multipart>=0.0.6",
+    "passlib>=1.7.4",
     "python-dotenv>=1.0.0",
-    "websockets>=12.0", # For WebSocket support
-    "sse-starlette>=1.6.5", # For Server-Sent Events
-    # Removed conflicting JWT package
+    "websockets>=12.0",
+    "sse-starlette>=1.6.5",
 ]
 
-[project.optional-dependencies]
+[dependency-groups]
 dev = [
     "black>=23.9.1",
     "isort>=5.12.0",
     "mypy>=1.6.1",
     "pytest>=7.4.2",
     "pytest-asyncio>=0.21.1",
-    "httpx>=0.25.0",          # For testing FastAPI
-    "pytest-cov>=4.1.0",      # For test coverage
-    "ruff>=0.1.0",            # Fast linter
+    "httpx>=0.25.0",
+    "pytest-cov>=4.1.0",
+    "ruff>=0.1.0",
 ]
 
-[build-system]
-requires = ["setuptools>=42", "wheel"]
-build-backend = "setuptools.build_meta"
-
-[tool.setuptools]
+[tool.hatch.build.targets.wheel]
 packages = ["app"]
 
-[tool.black]
-line-length = 100
-target-version = ["py310"]
+[tool.uv]
+package = true
 
-[tool.isort]
-profile = "black"
-line_length = 100
-
-[tool.mypy]
-python_version = "3.10"
-warn_return_any = true
-warn_unused_configs = true
-disallow_untyped_defs = false
-disallow_incomplete_defs = false
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
-
-[tool.ruff]
-line-length = 100
-target-version = "py310"
-select = ["E", "F", "I"]
-ignore = []
-
-[project.scripts]
-cortex-core = "app.main:main"
