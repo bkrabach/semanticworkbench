@@ -1,0 +1,14 @@
+{
+  "configurations": [
+    {
+      "name": "web-client",
+      "console": "integratedTerminal",
+      "request": "launch",
+      "runtimeArgs": ["http-server", "-p", "4000", "."],
+      "runtimeExecutable": "npx",
+      "cwd": "${workspaceFolder}",
+      "skipFiles": ["<node_internals>/**"],
+      "type": "node"
+    }
+  ]
+}

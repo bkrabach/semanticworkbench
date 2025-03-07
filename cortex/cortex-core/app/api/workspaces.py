@@ -1,10 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 from sqlalchemy.orm import Session
 from typing import List, Optional, Dict, Any
-from pydantic import BaseModel
+from pydantic import BaseModel, field_serializer, Field
 import uuid
 from datetime import datetime
 import json
+from pydantic.json import pydantic_encoder
 
 from app.database.connection import get_db
 from app.database.models import User, Workspace
@@ -35,8 +36,11 @@ class WorkspaceResponse(BaseModel):
     name: str
     created_at: datetime
     last_active_at: datetime
-    config: Optional[Dict[str, Any]] = None
-    meta_data: Optional[Dict[str, Any]] = None
+    config: Dict[str, Any] = Field(default_factory=dict)
+    meta_data: Dict[str, Any] = Field(default_factory=dict)
+    
+    class Config:
+        from_attributes = True  # Allow model creation from ORM objects
 
 
 @router.get("/workspaces", response_model=Dict[str, List[WorkspaceResponse]])
@@ -50,8 +54,22 @@ async def list_workspaces(
     ).order_by(
         Workspace.last_active_at.desc()
     ).all()
-
-    return {"workspaces": workspaces}
+    
+    # Process each workspace to handle the JSON fields
+    processed_workspaces = []
+    for workspace in workspaces:
+        # Parse JSON strings to dictionaries
+        workspace_dict = {
+            "id": workspace.id,
+            "name": workspace.name,
+            "created_at": workspace.created_at,
+            "last_active_at": workspace.last_active_at,
+            "config": json.loads(workspace.config) if workspace.config else {},
+            "meta_data": json.loads(workspace.meta_data) if workspace.meta_data else {}
+        }
+        processed_workspaces.append(WorkspaceResponse.model_validate(workspace_dict))
+    
+    return {"workspaces": processed_workspaces}
 
 
 @router.post("/workspaces", response_model=WorkspaceResponse)
@@ -94,4 +112,12 @@ async def create_workspace(
         }
     )
 
-    return new_workspace
+    # Parse JSON strings and return validated model
+    return WorkspaceResponse.model_validate({
+        "id": new_workspace.id,
+        "name": new_workspace.name,
+        "created_at": new_workspace.created_at,
+        "last_active_at": new_workspace.last_active_at,
+        "config": json.loads(new_workspace.config) if new_workspace.config else {},
+        "meta_data": json.loads(new_workspace.meta_data) if new_workspace.meta_data else {}
+    })

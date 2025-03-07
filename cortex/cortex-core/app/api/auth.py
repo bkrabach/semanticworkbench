@@ -140,7 +140,21 @@ async def login(credentials: UserCredentials, db: Session = Depends(get_db)):
 
                 logger.info(f"Created test user: {credentials.identifier}")
 
-                # TODO: Create default workspace for test user
+                # Create default workspace for test user
+                from app.database.models import Workspace
+                now = datetime.utcnow()
+                default_workspace = Workspace(
+                    id=str(uuid.uuid4()),
+                    name="My Workspace",
+                    user_id=user.id,
+                    created_at=now,
+                    last_active_at=now,
+                    config="{}",
+                    meta_data="{}"
+                )
+                db.add(default_workspace)
+                db.commit()
+                logger.info(f"Created default workspace for test user: {user.id}")
 
             if not user:
                 logger.warning(f"User not found: {credentials.identifier}")
@@ -160,6 +174,25 @@ async def login(credentials: UserCredentials, db: Session = Depends(get_db)):
             # Update last login time
             user.last_login_at = datetime.utcnow()
             db.commit()
+            
+            # Check if user has any workspaces, create a default one if not
+            from app.database.models import Workspace
+            workspace_count = db.query(Workspace).filter(Workspace.user_id == user.id).count()
+            if workspace_count == 0:
+                # Create default workspace for existing user
+                now = datetime.utcnow()
+                default_workspace = Workspace(
+                    id=str(uuid.uuid4()),
+                    name="My Workspace",
+                    user_id=user.id,
+                    created_at=now,
+                    last_active_at=now,
+                    config="{}",
+                    meta_data="{}"
+                )
+                db.add(default_workspace)
+                db.commit()
+                logger.info(f"Created default workspace for existing user: {user.id}")
 
         elif credentials.type == "api_key":
             # TODO: Implement API key authentication

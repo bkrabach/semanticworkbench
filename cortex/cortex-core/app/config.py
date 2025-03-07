@@ -39,6 +39,7 @@ class CacheConfig(BaseSettings):
 
     class Config:
         env_prefix = "REDIS_"
+        env_nested_delimiter = None
 
 
 class SecurityConfig(BaseSettings):
@@ -46,7 +47,7 @@ class SecurityConfig(BaseSettings):
 
     jwt_secret: str = "default-jwt-secret-change-me"
     encryption_key: str = "default-encryption-key-change-me"
-    token_expiry_seconds: int = 86400  # 24 hours
+    token_expiry_seconds: int = 86400
     msal_config: Optional[MsalConfig] = None
 
     class Config:
@@ -112,8 +113,7 @@ class McpConfig(BaseSettings):
                 name = key.replace("MCP_ENDPOINT_", "")
                 if "|" in value:
                     endpoint, type_ = value.split("|", 1)
-                    self.endpoints.append(
-                        {"name": name, "endpoint": endpoint, "type": type_})
+                    self.endpoints.append({"name": name, "endpoint": endpoint, "type": type_})
 
 
 class SseConfig(BaseSettings):
@@ -135,17 +135,18 @@ class SseConfig(BaseSettings):
 class Settings(BaseSettings):
     """Main application settings"""
 
-    database: DatabaseConfig = Field(default_factory=DatabaseConfig)
-    cache: CacheConfig = Field(default_factory=CacheConfig)
-    security: SecurityConfig = Field(default_factory=SecurityConfig)
-    server: ServerConfig = Field(default_factory=ServerConfig)
-    memory: MemoryConfig = Field(default_factory=MemoryConfig)
-    mcp: McpConfig = Field(default_factory=McpConfig)
-    sse: SseConfig = Field(default_factory=SseConfig)
+    database: DatabaseConfig = DatabaseConfig()
+    cache: CacheConfig = CacheConfig()
+    security: SecurityConfig = SecurityConfig()
+    server: ServerConfig = ServerConfig()
+    memory: MemoryConfig = MemoryConfig()
+    mcp: McpConfig = McpConfig()
+    sse: SseConfig = SseConfig()
 
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
+        extra = "ignore"
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -164,8 +165,7 @@ class Settings(BaseSettings):
             self.security.jwt_secret == "default-jwt-secret-change-me"
             or self.security.encryption_key == "default-encryption-key-change-me"
         ):
-            raise ValueError(
-                "Production environment requires secure JWT secret and encryption key")
+            raise ValueError("Production environment requires secure JWT secret and encryption key")
 
 
 # Create and export settings instance
