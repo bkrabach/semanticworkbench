@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Minimal SSE Client with Input</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      padding: 20px;
+    }
+    #messages {
+      border: 1px solid #ccc;
+      padding: 10px;
+      height: 300px;
+      overflow-y: auto;
+      margin-bottom: 10px;
+    }
+    #userInput {
+      width: 80%;
+      padding: 8px;
+      font-size: 16px;
+    }
+    #sendBtn {
+      padding: 8px 16px;
+      font-size: 16px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Minimal SSE Client with Input</h1>
+  <div id="messages"></div>
+  <input type="text" id="userInput" placeholder="Type a message..." />
+  <button id="sendBtn">Send</button>
+  <script>
+    // Define endpoints.
+    const API_URL = "http://127.0.0.1:8000/process";
+    const SSE_URL = "http://127.0.0.1:8000/notifications";
+    
+    // Hardcoded user details.
+    const userId = "user1";
+    const token = "secret-token";
+    
+    const messagesDiv = document.getElementById("messages");
+    const userInput = document.getElementById("userInput");
+    const sendBtn = document.getElementById("sendBtn");
+
+    // Append a new message to the messages div.
+    function appendMessage(text) {
+      const p = document.createElement("p");
+      p.textContent = text;
+      messagesDiv.appendChild(p);
+      messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    }
+
+    // Set up SSE connection.
+    const eventSource = new EventSource(SSE_URL);
+    eventSource.onmessage = function(event) {
+      // For a minimal client, just display the raw event data.
+      // You can later refine this to process custom prefixes.
+      appendMessage(event.data.trim());
+      console.info("[EVENT]", event.data.trim());
+    };
+    eventSource.onerror = function(err) {
+      console.error("[SSE ERROR]", err);
+    };
+
+    // Send a message via POST to the /process endpoint.
+    async function sendMessage() {
+      const text = userInput.value.trim();
+      if (!text) return;
+      appendMessage("You: " + text);
+      userInput.value = "";
+      try {
+        const response = await fetch(API_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ user_id: userId, token: token, input_text: text })
+        });
+        const data = await response.json();
+        console.info("[API RESPONSE]", data.response);
+      } catch (e) {
+        console.error("[SEND ERROR]", e);
+      }
+    }
+
+    sendBtn.addEventListener("click", sendMessage);
+    userInput.addEventListener("keypress", function(e) {
+      if (e.key === "Enter") {
+        sendMessage();
+      }
+    });
+  </script>
+</body>
+</html>
