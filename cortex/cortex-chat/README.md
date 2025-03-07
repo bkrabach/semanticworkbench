@@ -1,54 +1,113 @@
-# React + TypeScript + Vite
+# Cortex Chat
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Cortex Chat is a modern React-based chat interface for interacting with the Cortex Core backend. It provides a real-time, conversational user interface with support for streaming responses, tool executions, and markdown rendering.
 
-Currently, two official plugins are available:
+## Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- Real-time chat interface with streaming responses
+- Markdown rendering with syntax highlighting
+- Tool execution result display
+- Authentication with token-based system
+- Workspace and conversation management
+- Server-Sent Events (SSE) for real-time updates
 
-## Expanding the ESLint configuration
+## Technology Stack
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+- **Frontend Framework**: React 19 with TypeScript
+- **Build Tool**: Vite
+- **UI Library**: Fluent UI (@fluentui/react-components)
+- **Data Fetching**: TanStack React Query 
+- **Real-time Communication**: Server-Sent Events (SSE)
+- **Routing**: React Router
+- **Package Management**: pnpm
 
-```js
-export default tseslint.config({
-  extends: [
-    // Remove ...tseslint.configs.recommended and replace with this
-    ...tseslint.configs.recommendedTypeChecked,
-    // Alternatively, use this for stricter rules
-    ...tseslint.configs.strictTypeChecked,
-    // Optionally, add this for stylistic rules
-    ...tseslint.configs.stylisticTypeChecked,
-  ],
-  languageOptions: {
-    // other options...
-    parserOptions: {
-      project: ['./tsconfig.node.json', './tsconfig.app.json'],
-      tsconfigRootDir: import.meta.dirname,
-    },
-  },
-})
+## Getting Started
+
+### Prerequisites
+
+- Node.js (v18 or later)
+- pnpm
+- Running Cortex Core backend service
+
+### Installation
+
+```bash
+# Install dependencies
+pnpm install
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+### Development
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default tseslint.config({
-  plugins: {
-    // Add the react-x and react-dom plugins
-    'react-x': reactX,
-    'react-dom': reactDom,
-  },
-  rules: {
-    // other rules...
-    // Enable its recommended typescript rules
-    ...reactX.configs['recommended-typescript'].rules,
-    ...reactDom.configs.recommended.rules,
-  },
-})
+```bash
+# Start development server
+pnpm dev
 ```
+
+The development server will start at `http://localhost:5173` by default.
+
+### Build
+
+```bash
+# Build for production
+pnpm build
+```
+
+### Lint
+
+```bash
+# Run ESLint
+pnpm lint
+```
+
+### Type Check
+
+```bash
+# Run TypeScript type checking
+pnpm type-check
+```
+
+## Project Structure
+
+```
+/src
+  /api                 # API client and types
+    /hooks             # React Query hooks
+    client.ts          # Base API client
+    types.ts           # TypeScript interfaces
+  /components          # React components
+    /auth              # Authentication components
+    /common            # Shared components
+    /conversation      # Conversation UI
+    /layout            # Layout components
+    /workspace         # Workspace management
+  /context             # React context providers
+  /hooks               # Custom React hooks
+  /utils               # Utility functions
+  App.tsx              # Main application component
+  main.tsx             # Application entry point
+```
+
+## Documentation
+
+For more detailed documentation, see the [docs](./docs/) directory:
+
+- [Architecture Overview](./docs/ARCHITECTURE_OVERVIEW.md)
+- [Component Relationships](./docs/COMPONENT_RELATIONSHIPS.md)
+- [API Integration](./docs/API_INTEGRATION.md)
+- [Development Guide](./docs/DEVELOPMENT.md)
+- [Contributing Guide](./CONTRIBUTING.md)
+
+## Backend Integration
+
+Cortex Chat connects to the Cortex Core backend service which runs on `http://127.0.0.1:8000` by default. For details on the backend API, see:
+
+- [Client API Reference](../cortex-core/docs/CLIENT_API_REFERENCE.md)
+- [Client Integration Guide](../cortex-core/docs/CLIENT_INTEGRATION_GUIDE.md)
+- [Client Quickstart](../cortex-core/docs/CLIENT_QUICKSTART.md)
+
+## Platform Architecture
+
+Cortex Chat is part of the broader Cortex Platform, which follows a central AI core with adaptive ecosystem model. The chat interface represents one of multiple potential input/output modalities in the platform's ecosystem. For more details on the platform architecture, see:
+
+- [Platform Overview](../cortex-platform/docs/PLATFORM_OVERVIEW.md)
+- [Codebase Structure](../cortex-platform/docs/CODEBASE_STRUCTURE.md)
