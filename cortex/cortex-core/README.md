@@ -18,14 +18,64 @@ The Cortex Core is responsible for:
 
 The Cortex Core follows a modular architecture with these key components:
 
-- **Session Manager**: Handles user sessions and workspace association
-- **Dispatcher**: Routes incoming requests to appropriate processing pathways
-- **Context Manager**: Interfaces with the memory system for context retrieval/update
-- **Integration Hub**: Facilitates communication with external tools/services
-- **Workspace Manager**: Manages workspaces and conversations
-- **Security Manager**: Handles authentication, authorization, and data security
+```mermaid
+graph TD
+    subgraph "Clients"
+        Web[Web Applications]
+        Mobile[Mobile Apps]
+        Desktop[Desktop Apps]
+    end
 
-These components interact through well-defined interfaces that enable parallel development and future extensibility.
+    subgraph "API Layer"
+        REST[REST API]
+        SSE[Server-Sent Events]
+    end
+
+    subgraph "Cortex Core"
+        API[API Gateway]
+        SM[Session Manager]
+        DI[Dispatcher]
+        CM[Context Manager]
+        IH[Integration Hub]
+        WM[Workspace Manager]
+        SEC[Security Manager]
+    end
+
+    subgraph "Inter-Service Communication"
+        MCP[Model Context Protocol]
+    end
+
+    subgraph "External Services"
+        Domain[Domain Experts]
+        Tools[External Tools]
+    end
+
+    Web --> REST & SSE
+    Mobile --> REST & SSE
+    Desktop --> REST & SSE
+
+    REST & SSE --> API
+    API --> SM & DI & CM & IH & WM & SEC
+
+    IH --> MCP
+    MCP --> Domain & Tools
+```
+
+Cortex Core uses:
+
+- **REST API** for standard request/response interactions with clients
+- **Server-Sent Events (SSE)** for real-time, server-to-client communication
+- **Model Context Protocol (MCP)** for internal communication between Cortex Core and specialized services or domain experts
+
+## Real-time Communication
+
+Cortex Core uses Server-Sent Events (SSE) for real-time communication with client applications. This enables:
+
+- Instant notifications of new messages
+- Live updates for conversation and workspace changes
+- Typing indicators and other real-time status updates
+
+See the [CLIENT_INTEGRATION_GUIDE.md](./CLIENT_INTEGRATION_GUIDE.md) for details on implementing SSE in client applications.
 
 ## Getting Started
 
@@ -84,51 +134,14 @@ These components interact through well-defined interfaces that enable parallel d
    uv run -m app.main
    ```
 
-## Development
+## Documentation
 
-### Project Structure
+For more detailed information, refer to:
 
-```
-cortex_core/
-├── alembic/              # Database migrations
-├── app/
-│   ├── __init__.py
-│   ├── main.py           # FastAPI application
-│   ├── config.py         # Configuration
-│   ├── components/       # Core components
-│   ├── interfaces/       # Interface definitions
-│   ├── api/              # API endpoints
-│   ├── modalities/       # Input/output modalities
-│   ├── database/         # Database models and connection
-│   ├── cache/            # Redis cache
-│   └── utils/            # Utility functions
-├── logs/                 # Log files
-├── tests/                # Test cases
-├── .env                  # Environment variables
-└── pyproject.toml        # Project metadata and dependencies
-```
-
-### Running Tests
-
-```bash
-uv run pytest
-```
-
-### Linting and Formatting
-
-```bash
-uv run black app tests
-uv run isort app tests
-uv run ruff check app tests
-```
-
-## API Documentation
-
-When running in development mode, API documentation is available at http://localhost:4000/docs.
-
-## Contributing
-
-Please see [CONTRIBUTING.md](CONTRIBUTING.md) for details on our code of conduct and the process for submitting pull requests.
+- [Development Guide](./DEVELOPMENT.md) - For contributors and developers
+- [API Reference](./API_REFERENCE.md) - API endpoint documentation
+- [Configuration](./CONFIGURATION.md) - Detailed configuration options
+- [Client Integration Guide](./CLIENT_INTEGRATION_GUIDE.md) - Guide for client application developers
 
 ## License
 

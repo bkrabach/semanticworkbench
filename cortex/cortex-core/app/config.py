@@ -84,8 +84,12 @@ class McpEndpoint(BaseSettings):
 
 
 class McpConfig(BaseSettings):
-    """MCP configuration"""
+    """MCP configuration - for internal service-to-service communication only"""
 
+    # Flag to explicitly indicate that MCP is for internal use only
+    internal_only: bool = True
+
+    # List of MCP endpoints (internal services)
     endpoints: List[Dict[str, str]] = []
 
     def __init__(self, **kwargs):
@@ -108,7 +112,24 @@ class McpConfig(BaseSettings):
                 name = key.replace("MCP_ENDPOINT_", "")
                 if "|" in value:
                     endpoint, type_ = value.split("|", 1)
-                    self.endpoints.append({"name": name, "endpoint": endpoint, "type": type_})
+                    self.endpoints.append(
+                        {"name": name, "endpoint": endpoint, "type": type_})
+
+
+class SseConfig(BaseSettings):
+    """Server-Sent Events configuration"""
+
+    # Maximum number of open connections per client
+    max_connections_per_client: int = 5
+
+    # Heartbeat interval in seconds
+    heartbeat_interval: int = 30
+
+    # Enable/disable SSE debugging
+    debug: bool = False
+
+    class Config:
+        env_prefix = "SSE_"
 
 
 class Settings(BaseSettings):
@@ -120,6 +141,7 @@ class Settings(BaseSettings):
     server: ServerConfig = Field(default_factory=ServerConfig)
     memory: MemoryConfig = Field(default_factory=MemoryConfig)
     mcp: McpConfig = Field(default_factory=McpConfig)
+    sse: SseConfig = Field(default_factory=SseConfig)
 
     class Config:
         env_file = ".env"
@@ -142,7 +164,8 @@ class Settings(BaseSettings):
             self.security.jwt_secret == "default-jwt-secret-change-me"
             or self.security.encryption_key == "default-encryption-key-change-me"
         ):
-            raise ValueError("Production environment requires secure JWT secret and encryption key")
+            raise ValueError(
+                "Production environment requires secure JWT secret and encryption key")
 
 
 # Create and export settings instance

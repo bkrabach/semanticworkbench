@@ -15,8 +15,8 @@ from app.utils.logger import logger, request_logger
 from app.database.connection import db
 from app.cache.redis_client import connect_redis, disconnect_redis
 
-# Import routers (to be implemented)
-# from app.api import auth, workspaces, conversations, integrations, mcp
+# Import routers
+from app.api import auth, sse, workspaces, conversations
 
 
 @asynccontextmanager
@@ -109,12 +109,17 @@ async def health_check():
     return {"status": "ok"}
 
 
-# TODO: Include routers
-# app.include_router(auth.router, prefix="/auth", tags=["Authentication"])
+# Include routers
+app.include_router(auth.router, prefix="/auth", tags=["Authentication"])
+app.include_router(sse.router, tags=["Events"])
+app.include_router(workspaces.router, tags=["Workspaces"])
+app.include_router(conversations.router, tags=["Conversations"])
+
+# Include additional routers as they are implemented
 # app.include_router(workspaces.router, prefix="/workspaces", tags=["Workspaces"])
 # app.include_router(conversations.router, tags=["Conversations"])
 # app.include_router(integrations.router, prefix="/integrations", tags=["Integrations"])
-# app.include_router(mcp.router, prefix="/mcp", tags=["MCP"])
+
 
 # Define entry point for running the application
 if __name__ == "__main__":

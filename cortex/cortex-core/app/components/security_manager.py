@@ -12,6 +12,12 @@ import hashlib
 from pydantic import BaseModel
 from cryptography.fernet import Fernet
 import base64
+from fastapi import Depends
+from sqlalchemy.orm import Session
+from fastapi.security import OAuth2PasswordBearer
+from app.database.connection import get_db
+from app.database.models import User
+from app.api.auth import oauth2_scheme_optional
 
 from app.config import settings
 from app.utils.logger import logger
@@ -62,7 +68,8 @@ def verify_jwt_token(token: str) -> Optional[TokenData]:
         Token data if valid, None otherwise
     """
     try:
-        payload = jwt.decode(token, settings.security.jwt_secret, algorithms=["HS256"])
+        payload = jwt.decode(
+            token, settings.security.jwt_secret, algorithms=["HS256"])
 
         user_id = payload.get("user_id")
         if user_id is None:
@@ -108,12 +115,41 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     return get_password_hash(plain_password) == hashed_password
 
 
+async def get_current_user_or_none(
+    token: Optional[str] = Depends(oauth2_scheme_optional),
+    db: Session = Depends(get_db)
+) -> Optional[User]:
+    """
+    Get current user from token but don't raise exception if token is invalid
+
+    Args:
+        token: JWT token (optional)
+        db: Database session
+
+    Returns:
+        User object if token is valid, None otherwise
+    """
+    if not token:
+        return None
+
+    try:
+        token_data = verify_jwt_token(token)
+        if not token_data:
+            return None
+
+        user = db.query(User).filter(User.id == token_data.user_id).first()
+        return user
+    except Exception:
+        return None
+
+
 class SecurityManager:
     """Security Manager implementation"""
 
     def __init__(self):
         # Derive encryption key from the provided key
-        key_bytes = hashlib.sha256(settings.security.encryption_key.encode()).digest()
+        key_bytes = hashlib.sha256(
+            settings.security.encryption_key.encode()).digest()
         self.fernet = Fernet(base64.urlsafe_b64encode(key_bytes))
 
     def encrypt(self, data: str) -> str:
