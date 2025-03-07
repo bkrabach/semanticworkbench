@@ -16,10 +16,6 @@
     {
       "name": "cortex-platform",
       "path": "."
-    },
-    {
-      "name": "semanticworkbench",
-      "path": "../.."
     }
   ],
   "settings": {
