@@ -88,7 +88,8 @@ async def request_logging_middleware(request: Request, call_next):
         status_code = response.status_code
 
         # Log the response
-        request_logger.info(f"{method} {path} {status_code} {process_time:.3f}s")
+        request_logger.info(
+            f"{method} {path} {status_code} {process_time:.3f}s")
 
         # Add X-Process-Time header
         response.headers["X-Process-Time"] = str(process_time)

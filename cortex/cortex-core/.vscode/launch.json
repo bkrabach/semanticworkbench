@@ -1,0 +1,13 @@
+{
+  "configurations": [
+    {
+      "name": "cortex-core",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "uvicorn",
+      "cwd": "${workspaceFolder}",
+      "args": ["app.main:app", "--reload"],
+      "jinja": true
+    }
+  ]
+}

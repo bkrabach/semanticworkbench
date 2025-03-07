@@ -1,0 +1,12 @@
+{
+  "folders": [
+    {
+      "name": "cortex-core",
+      "path": "../cortex-core"
+    },
+    {
+      "name": "cortex-platform",
+      "path": "."
+    }
+  ]
+}
