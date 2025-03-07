@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from typing import List, Optional, Dict, Any
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import uuid
 from datetime import datetime
 import json
@@ -60,7 +60,10 @@ class ConversationResponse(BaseModel):
     workspace_id: str
     created_at: datetime
     last_active_at: datetime
-    metadata: Optional[Dict[str, Any]] = None
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+    
+    class Config:
+        from_attributes = True  # Allow model creation from ORM objects
 
 
 @router.get("/workspaces/{workspace_id}/conversations", response_model=List[ConversationResponse])
@@ -99,8 +102,25 @@ async def list_conversations(
     ).order_by(
         Conversation.last_active_at.desc()
     ).offset(offset).limit(limit).all()
-
-    return conversations
+    
+    # Process each conversation to handle the JSON fields
+    processed_conversations = []
+    for conversation in conversations:
+        # Parse JSON strings to dictionaries
+        metadata = json.loads(conversation.meta_data) if conversation.meta_data else {}
+        
+        conversation_dict = {
+            "id": conversation.id,
+            "title": conversation.title,
+            "modality": conversation.modality,
+            "workspace_id": conversation.workspace_id,
+            "created_at": conversation.created_at,
+            "last_active_at": conversation.last_active_at,
+            "metadata": metadata
+        }
+        processed_conversations.append(ConversationResponse.model_validate(conversation_dict))
+    
+    return processed_conversations
 
 
 @router.post("/workspaces/{workspace_id}/conversations", response_model=ConversationResponse)
@@ -172,7 +192,16 @@ async def create_conversation(
         }
     )
 
-    return new_conversation
+    # Parse JSON strings and return validated model
+    return ConversationResponse.model_validate({
+        "id": new_conversation.id,
+        "title": new_conversation.title,
+        "modality": new_conversation.modality,
+        "workspace_id": new_conversation.workspace_id,
+        "created_at": new_conversation.created_at,
+        "last_active_at": new_conversation.last_active_at,
+        "metadata": json.loads(new_conversation.meta_data) if new_conversation.meta_data else {}
+    })
 
 
 @router.get("/conversations/{conversation_id}", response_model=ConversationResponse)
@@ -201,7 +230,16 @@ async def get_conversation(
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
-    return conversation
+    # Parse JSON strings and return validated model
+    return ConversationResponse.model_validate({
+        "id": conversation.id,
+        "title": conversation.title,
+        "modality": conversation.modality,
+        "workspace_id": conversation.workspace_id,
+        "created_at": conversation.created_at,
+        "last_active_at": conversation.last_active_at,
+        "metadata": json.loads(conversation.meta_data) if conversation.meta_data else {}
+    })
 
 
 @router.put("/conversations/{conversation_id}", response_model=ConversationResponse)
@@ -255,6 +293,9 @@ async def update_conversation(
     db.commit()
     db.refresh(conversation)
 
+    # Parse metadata for the event
+    metadata = json.loads(conversation.meta_data) if conversation.meta_data else {}
+    
     # Send SSE event for conversation update in the background
     background_tasks.add_task(
         send_event_to_conversation,
@@ -264,11 +305,20 @@ async def update_conversation(
             "id": conversation.id,
             "title": conversation.title,
             "last_active_at": conversation.last_active_at.isoformat(),
-            "metadata": json.loads(conversation.meta_data) if conversation.meta_data else {}
+            "metadata": metadata
         }
     )
 
-    return conversation
+    # Parse JSON strings and return validated model
+    return ConversationResponse.model_validate({
+        "id": conversation.id,
+        "title": conversation.title,
+        "modality": conversation.modality,
+        "workspace_id": conversation.workspace_id,
+        "created_at": conversation.created_at,
+        "last_active_at": conversation.last_active_at,
+        "metadata": metadata
+    })
 
 
 @router.delete("/conversations/{conversation_id}")
