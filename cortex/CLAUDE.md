@@ -23,6 +23,7 @@
 - Type annotations: Used consistently with Optional types
 - Error handling: Uses try/except with specific exceptions, logs errors
 - Documentation: Triple-quote docstrings with Args/Returns sections
+- Files must end with a newline (NL at EOF)
 
 ## Architecture
 
