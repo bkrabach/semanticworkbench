@@ -69,86 +69,188 @@ class SessionManager:
 
 ## Dispatcher
 
-The Dispatcher routes incoming requests to appropriate handlers based on the request type.
+The Dispatcher routes HTTP requests to appropriate API endpoints.
 
 ### Responsibilities
 
-- Route incoming requests to appropriate handlers
-- Prioritize and queue requests when necessary
-- Invoke domain experts for specialized tasks
-- Coordinate between different processing pathways
+- Route incoming HTTP requests to appropriate API handlers
+- Handle middleware concerns like authentication and logging
+- Manage FastAPI routing
 
 ### Implementation Details
 
-The Dispatcher is implemented as a core component of the FastAPI application, using middleware and routing mechanisms to handle request processing.
+The Dispatcher is implemented using FastAPI's routing mechanisms:
 
 ```python
-# Pseudocode for dispatcher functionality
-@app.middleware("http")
-async def dispatch_middleware(request: Request, call_next):
-    """Dispatch requests to appropriate handlers"""
-    # Determine request type and route to appropriate handler
-    # Prioritize requests based on context and user needs
-    # Delegate specialized tasks to domain experts
-    response = await call_next(request)
-    return response
+# API routes for different endpoints
+app.include_router(auth_router, prefix="/auth", tags=["Authentication"])
+app.include_router(workspaces_router, prefix="", tags=["Workspaces"])
+app.include_router(conversations_router, prefix="", tags=["Conversations"])
+app.include_router(sse_router, prefix="", tags=["Events"])
+```
+
+## Event System
+
+The Event System provides a decoupled message bus for communication between components.
+
+### Responsibilities
+
+- Enable communication between components without direct coupling
+- Support publishing events to subscribers
+- Allow components to subscribe to event patterns
+- Provide a way to unsubscribe from events
+
+### Implementation Details
+
+```python
+class EventSystemInterface(Protocol):
+    """Interface for the event system that connects components"""
+    
+    async def publish(self, event_name: str, data: Any) -> None:
+        """Publish an event to all subscribers"""
+        pass
+    
+    async def subscribe(self, event_pattern: str, callback: EventCallback) -> str:
+        """Subscribe to events matching a pattern"""
+        pass
+    
+    async def unsubscribe(self, subscription_id: str) -> bool:
+        """Unsubscribe from events"""
+        pass
 ```
 
 ## Cortex Router
 
-The Cortex Router is responsible for determining how to handle incoming messages from various input channels.
+The Cortex Router is the central intelligence component that processes inputs and determines responses.
 
 ### Responsibilities
 
-- Analyze incoming messages to determine the appropriate action
-- Provide immediate feedback about processing status
-- Prioritize messages based on content and context
-- Decide whether to respond directly, retrieve memory, or delegate to a specialized system
-- Coordinate between conversational flows and more complex processing paths
+- Process input messages from any source
+- Make autonomous decisions about how to handle each input
+- Determine if and when to respond
+- Choose appropriate output channels for responses
+- Coordinate with memory systems and domain experts
+- Support asynchronous processing and delayed responses
 
 ### Implementation Details
 
 ```python
-class RouterRequest(BaseModel):
-    """Input request to be routed"""
+class InputMessage(CortexMessage):
+    """Message received from an input channel"""
+    
+    # Source identification
+    channel_id: str
+    channel_type: ChannelType
+    
+    # Content
     content: str
-    conversation_id: str
-    workspace_id: str
-    metadata: Optional[Dict[str, Any]] = None
-    timestamp: datetime
+    
+    # Context
+    user_id: Optional[str] = None
+    workspace_id: Optional[str] = None
+    conversation_id: Optional[str] = None
+    
 
-class RoutingDecision(BaseModel):
-    """Routing decision made by the router"""
-    action_type: str  # "respond", "process", "retrieve_memory", "delegate", "ignore"
-    priority: int = 1  # 1 (lowest) to 5 (highest)
-    target_system: Optional[str] = None
-    status_message: Optional[str] = None
-    metadata: Dict[str, Any] = {}
+class OutputMessage(CortexMessage):
+    """Message to be sent to an output channel"""
+    
+    # Destination
+    channel_id: str
+    channel_type: ChannelType
+    
+    # Content
+    content: str
+    
+    # Relationship
+    reference_message_id: Optional[str] = None
+    context_ids: List[str] = Field(default_factory=list)
 
-class CortexRouterInterface(ABC):
+
+class RouterInterface(Protocol):
     """Interface for the Cortex Router"""
     
-    @abstractmethod
-    async def route(self, request: RouterRequest) -> RoutingDecision:
-        """Determine how to route an incoming message"""
-        pass
-    
-    @abstractmethod
-    async def process_feedback(self, request_id: str, success: bool, metadata: Dict[str, Any]) -> None:
-        """Process feedback about a previous routing decision"""
+    async def process_input(self, message: InputMessage) -> bool:
+        """Process an input message"""
         pass
 ```
 
-### Integration
+## Input Receivers
 
-The Cortex Router is integrated into the conversation flow, intercepting messages before they reach their final destination:
+Input Receivers handle inputs from specific channels and forward them to the Router.
 
-1. User sends a message through a conversation endpoint
-2. Message is passed to the Router for analysis
-3. Router determines the appropriate action and priority
-4. Status updates are sent to the user while processing
-5. The appropriate system handles the message based on the routing decision
-6. Results are returned to the user through the original conversation channel
+### Responsibilities
+
+- Accept inputs from specific modalities (conversation, voice, canvas, etc.)
+- Package inputs into a standardized format
+- Forward inputs to the Router
+- Complete their job immediately with no expectation of responses
+
+### Implementation Details
+
+```python
+class InputReceiverInterface(Protocol):
+    """Interface for components that receive inputs from external sources"""
+    
+    async def receive_input(self, **kwargs) -> bool:
+        """Process incoming input and forward it to the Router"""
+        pass
+    
+    def get_channel_id(self) -> str:
+        """Get the unique ID for this input channel"""
+        pass
+    
+    def get_channel_type(self) -> ChannelType:
+        """Get the type of this input channel"""
+        pass
+```
+
+## Output Publishers
+
+Output Publishers handle delivering messages to specific channels.
+
+### Responsibilities
+
+- Subscribe to events from the Event System
+- Receive messages from the Router via events
+- Format and deliver messages to specific channels
+- Maintain persistent connections to clients (SSE, WebSocket, etc.)
+- Handle message persistence to storage when needed
+
+### Implementation Details
+
+```python
+class OutputPublisherInterface(Protocol):
+    """Interface for components that send outputs to external destinations"""
+    
+    async def publish(self, message: OutputMessage) -> bool:
+        """Publish a message to this output channel"""
+        pass
+    
+    def get_channel_id(self) -> str:
+        """Get the unique ID for this output channel"""
+        pass
+    
+    def get_channel_type(self) -> ChannelType:
+        """Get the type of this output channel"""
+        pass
+```
+
+## Messaging Architecture
+
+The key architectural principle of the Cortex System is complete decoupling of inputs and outputs:
+
+1. Input Receivers accept inputs and forward them to the Router with no expectation of responses
+2. The Router processes inputs asynchronously and makes autonomous decisions
+3. If/when the Router decides to respond, it publishes messages via the Event System
+4. Output Publishers subscribe to events and deliver messages to their channels
+5. There is no direct connection between input and output paths
+
+This architecture enables:
+- Completely autonomous routing decisions
+- Delayed responses
+- Responses to different channels than the input came from
+- Multiple responses to a single input
+- No response at all for certain inputs
 
 ## Context Manager
 

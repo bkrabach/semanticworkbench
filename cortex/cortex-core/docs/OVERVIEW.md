@@ -34,17 +34,22 @@ graph LR
     subgraph "Business Logic Layer"
       Auth --> SecMgr[Security Manager]
       Workspaces --> WsMgr[Workspace Manager]
-      Conversations --> ConvHandler[Conversation Handler]
-      SSE --> EventSystem[Event System]
-      ConvHandler --> ContextMgr[Context Manager]
-      ConvHandler --> DomainExperts[Domain Experts]
+      Conversations --> InputRcv[Input Receivers]
+      SSE --> OutputPub[Output Publishers]
+      InputRcv --> Router[Cortex Router]
+      OutputPub --> EventSystem[Event System]
+      Router --> EventSystem
+      Router --> ContextMgr[Context Manager]
+      Router --> DomainExperts[Domain Experts]
     end
     
     %% Data Access Layer
     subgraph "Data Access Layer"
       SecMgr --> Models[Database Models]
       WsMgr --> Models
-      ConvHandler --> Models
+      InputRcv --> Models
+      Router --> Models
+      OutputPub --> Models
       ContextMgr --> MemorySystem[Memory System]
       MemorySystem --> Models
     end
@@ -77,10 +82,11 @@ graph LR
 
 - **Domain-Driven Design** - Core domain concepts reflected in model structures
 - **CQRS Principles** - Separation of read and write operations
-- **Event-Driven Architecture** - Real-time updates via Server-Sent Events
+- **Event-Driven Architecture** - Decoupled communication via message bus and Server-Sent Events
 - **Interface-Based Design** - Clear contracts for extensible components
 - **Repository Pattern** - Data access abstraction through ORM
 - **Asynchronous Programming** - Leveraging FastAPI's async support and SQLAlchemy's async capabilities
+- **Input/Output Decoupling** - Complete separation of input reception and output production
 
 ### Layered Architecture
 
@@ -116,6 +122,10 @@ cortex-core/
 - **app/config.py**: Configuration management using Pydantic
 - **app/api/*.py**: API endpoint implementations
 - **app/database/models.py**: SQLAlchemy models defining the database schema
+- **app/interfaces/router.py**: Core interfaces for the messaging architecture
+- **app/components/cortex_router.py**: Implementation of the Cortex Router
+- **app/components/event_system.py**: Event system for decoupled communication
+- **app/components/conversation_channels.py**: Input/output channel implementations
 - **app/components/security_manager.py**: Authentication and encryption
 - **app/interfaces/memory_system.py**: Memory system interface definition
 
@@ -127,10 +137,12 @@ The system is composed of the following key components:
 |-----------|----------------|----------------|
 | Security Manager | Authentication and encryption | JWT tokens, Fernet encryption |
 | Workspace Manager | Organization of user workspaces | SQLAlchemy models, CRUD operations |
-| Conversation Handler | Message management | FastAPI routes, streaming support |
+| Input Receivers | Accept and forward inputs | Channel-specific implementations |
+| Cortex Router | Process inputs and determine responses | Asynchronous queue-based processor |
+| Output Publishers | Deliver messages to channels | Event-driven delivery mechanisms |
+| Event System | Decoupled component communication | Pattern-based publish/subscribe |
 | Context Manager | Context retrieval and updates | Memory system interface |
 | Memory System | Knowledge persistence | Pluggable interface |
-| Event System | Real-time updates | Server-Sent Events |
 | Integration Hub | External service communication | MCP client/server |
 
 ### Key Component Details
@@ -172,11 +184,14 @@ See [COMPONENTS.md](COMPONENTS.md) for detailed component documentation.
 
 1. User creates or selects a workspace
 2. User creates a conversation within the workspace
-3. User sends messages to the conversation
+3. User sends messages to the conversation via an Input Receiver
 4. Message is stored in the database
-5. Response is generated and stored
-6. Real-time updates notify connected clients
-7. Context is updated in the memory system
+5. Input Receiver forwards the message to the Cortex Router
+6. Router processes the message asynchronously
+7. If the Router decides to respond, it sends message(s) via the Event System
+8. Output Publishers receive the message(s) and deliver them to appropriate channels
+9. Real-time updates notify connected clients
+10. Context is updated in the memory system
 
 ## API Structure
 
@@ -244,6 +259,43 @@ Key relationships:
 - Workspaces have many conversations (one-to-many)
 - Users can have multiple roles (many-to-many)
 - Workspaces can be shared with multiple users (many-to-many via WorkspaceSharing)
+
+## Messaging Architecture
+
+The Cortex messaging architecture is designed for maximum flexibility and decoupling:
+
+### Input/Output Decoupling
+
+- **Complete Separation**: Input channels and output channels have no direct connection
+- **Asynchronous Processing**: Messages are processed in an asynchronous queue
+- **Event-Driven Communication**: Components communicate via the Event System
+- **Autonomous Routing**: The Cortex Router has complete autonomy over handling inputs
+
+### Message Flow
+
+1. **Input Reception**:
+   - Input Receivers accept messages from specific channels (conversation, voice, etc.)
+   - Messages are stored in the database and forwarded to the Router
+   - Input Receivers complete their work immediately with no expectation of response
+
+2. **Message Processing**:
+   - The Router receives messages in an asynchronous queue
+   - Each message is analyzed and a routing decision is made
+   - Processing can involve memory retrieval, domain expert consultation, etc.
+   - The Router can choose to respond immediately, later, or not at all
+
+3. **Output Delivery**:
+   - When the Router decides to send a message, it publishes an event
+   - Output Publishers subscribe to events for their specific channels
+   - Publishers receive events and deliver messages to their channels
+   - Delivery includes database storage and client notification
+
+### Key Benefits
+
+- **Flexibility**: Messages can be routed to any output channel, not just the source
+- **Autonomy**: The Router can make complex decisions about if/when/how to respond
+- **Scalability**: Components can be scaled independently
+- **Extensibility**: New input/output channels can be added without changing the core
 
 ## Memory System
 

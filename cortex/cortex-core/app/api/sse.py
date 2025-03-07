@@ -376,6 +376,15 @@ async def conversation_events(
     
     logger.info(f"Conversation SSE connection established: user={token_user_id}, conversation={conversation_id}")
     
+    # Ensure there's an output publisher for this conversation
+    try:
+        # Import here to avoid circular imports
+        from app.components.conversation_channels import get_conversation_publisher
+        # Start this in a background task to avoid blocking
+        asyncio.create_task(get_conversation_publisher(conversation_id))
+    except Exception as e:
+        logger.error(f"Error initializing output publisher: {e}")
+    
     # Create a queue for this connection
     queue = asyncio.Queue()
     connection_id = str(uuid.uuid4())

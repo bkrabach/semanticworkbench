@@ -25,7 +25,6 @@ from app.database.models import User, Workspace, Conversation
 from app.api.auth import get_current_user
 from app.utils.logger import logger
 from app.api.sse import send_event_to_conversation, send_event_to_workspace
-from app.components.simple_cortex_router import SimpleCortexRouter, DateTimeEncoder
 
 router = APIRouter()
 
@@ -617,22 +616,66 @@ async def stream_message(
 
     # We'll handle the typing indicator in the response generator
 
-    # Initialize the router and get a streaming response generator
-    router = SimpleCortexRouter()
-    response_generator_fn, _, _ = await router.stream_message(
-        conversation_id=conversation_id,
-        user_message=message.content,
-        user_metadata=message.metadata,
+    # Get the conversation to get workspace_id
+    conversation = db.query(Conversation).filter(
+        Conversation.id == conversation_id
+    ).first()
+    
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    
+    # Set up the input receiver and output publisher for this conversation
+    from app.components.conversation_channels import ConversationInputReceiver, get_conversation_publisher
+    
+    # Ensure there's an output publisher for this conversation
+    await get_conversation_publisher(conversation_id)
+    
+    # Create input receiver to send message to the router
+    input_receiver = ConversationInputReceiver(conversation_id)
+    
+    # Send the message to the router (fire and forget)
+    await input_receiver.receive_input(
+        content=message.content,
+        workspace_id=conversation.workspace_id,
+        metadata=message.metadata,
         db=db
     )
     
-    if not response_generator_fn:
-        # If we couldn't get a response generator, return an error
-        raise HTTPException(status_code=404, detail="Conversation not found or processing error")
+    # This is the generator function that will handle streaming
+    # Note: The actual content will come from the router via the event system later
+    async def stream_response():
+        """Generator function for client streaming interface"""
+        message_id = str(uuid.uuid4())
         
-    # Use the generator from the router directly
+        # Simulate initial role message for the client
+        yield f"data: {json.dumps({'choices': [{'delta': {'role': 'assistant'}}]})}\n\n"
+        
+        # For now, we'll simulate the streaming content here
+        # In a real implementation, we'd get this from the router
+        await asyncio.sleep(0.5)
+        
+        # Send "thinking" message
+        yield f"data: {json.dumps({'choices': [{'delta': {'content': '...'}, 'index': 0}]})}\n\n"
+        
+        # Keep the connection open for a bit to demonstrate
+        # that the router will respond asynchronously
+        await asyncio.sleep(1)
+        
+        # Indicate that the client should wait for server-sent events
+        yield f"data: {json.dumps({'choices': [{'delta': {'content': ' [Waiting for response...]'}, 'index': 0}]})}\n\n"
+        
+        # Send end of stream
+        final_data = {
+            "id": message_id,
+            "created": int(datetime.now(timezone.utc).timestamp()),
+            "model": "simulation",
+            "choices": [{"delta": {}, "finish_reason": "listen_for_sse", "index": 0}]
+        }
+        yield f"data: {json.dumps(final_data)}\n\n"
+    
+    # Return streaming response
     return StreamingResponse(
-        response_generator_fn(),
+        stream_response(),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -653,17 +696,35 @@ async def simulate_assistant_response(conversation_id: str, user_message: str, d
         user_message: Message from user
         db: Database session
     """
-    # Initialize the router
-    router = SimpleCortexRouter()
+    # Get conversation to get workspace_id
+    conversation = db.query(Conversation).filter(
+        Conversation.id == conversation_id
+    ).first()
     
-    # Hand off the message to the router for full processing
-    await router.process_message(
-        conversation_id=conversation_id,
-        user_message=user_message,
+    if not conversation:
+        logger.warning(f"Conversation {conversation_id} not found")
+        return
+    
+    # Ensure there's an output publisher and input receiver for this conversation
+    from app.components.conversation_channels import ConversationInputReceiver, get_conversation_publisher
+    
+    # Set up the output publisher
+    await get_conversation_publisher(conversation_id)
+    
+    # Create or get an input receiver
+    input_receiver = ConversationInputReceiver(conversation_id)
+    
+    # Send the message to the router via the input receiver
+    success = await input_receiver.receive_input(
+        content=user_message,
+        workspace_id=conversation.workspace_id,
         db=db
     )
     
-    logger.info(f"Message passed to Cortex Router for conversation {conversation_id}")
+    if success:
+        logger.info(f"Message received for conversation {conversation_id}")
+    else:
+        logger.error(f"Failed to process message for conversation {conversation_id}")
 
 
 def generate_demo_response(user_message: str) -> str:

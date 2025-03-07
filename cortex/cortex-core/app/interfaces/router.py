@@ -1,62 +1,233 @@
 """
-Cortex Router Interface
-Defines the contract for routing messages to appropriate handlers
+Cortex Architecture Core Interfaces
+Defines the core interfaces for the Cortex system's messaging architecture
 """
 
-from typing import Dict, List, Optional, Any, Protocol, Tuple
+from typing import Dict, List, Optional, Any, Protocol, Tuple, Callable
+from enum import Enum
 from abc import ABC, abstractmethod
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from datetime import datetime
+import uuid
 
 
-class RouterRequest(BaseModel):
-    """Input request to be routed"""
+# ===== Channel Types =====
+
+class ChannelType(str, Enum):
+    """Types of input/output channels"""
+    CONVERSATION = "conversation"  # Text chat
+    VOICE = "voice"                # Voice interaction
+    CANVAS = "canvas"              # Visual workspace
+    APP = "app"                    # Application UI
+    WEBHOOK = "webhook"            # External webhook
+    API = "api"                    # API endpoint
+    EMAIL = "email"                # Email communication
+    SMS = "sms"                    # SMS/text messages
+    NOTIFICATION = "notification"  # System notifications
+    CLI = "cli"                    # Command line interface
+    CUSTOM = "custom"              # Custom channel type
+
+
+# ===== Message Models =====
+
+class CortexMessage(BaseModel):
+    """Base message model for all Cortex messages"""
     
+    message_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class InputMessage(CortexMessage):
+    """Message received from an input channel"""
+    
+    # Source identification
+    channel_id: str
+    channel_type: ChannelType
+    
+    # Content
     content: str
-    conversation_id: str
-    workspace_id: str
-    metadata: Optional[Dict[str, Any]] = None
-    timestamp: datetime
+    
+    # Context
+    user_id: Optional[str] = None
+    workspace_id: Optional[str] = None
+    conversation_id: Optional[str] = None
+    
+
+class OutputMessage(CortexMessage):
+    """Message to be sent to an output channel"""
+    
+    # Destination
+    channel_id: str
+    channel_type: ChannelType
+    
+    # Content
+    content: str
+    
+    # Relationship
+    reference_message_id: Optional[str] = None  # ID of a message this is responding to
+    context_ids: List[str] = Field(default_factory=list)  # Related context IDs (conversation, workspace, etc.)
+
+
+# ===== Core Interfaces =====
+
+class InputReceiverInterface(Protocol):
+    """
+    Interface for components that receive inputs from external sources
+    
+    Input Receivers are responsible for accepting inputs from specific
+    modalities, packaging them into InputMessages, and forwarding them
+    to the Router. They have no knowledge of how or when responses will
+    be generated.
+    """
+    
+    async def receive_input(self, **kwargs) -> bool:
+        """
+        Process incoming input and forward it to the Router
+        
+        Each implementation will have its own specific parameters,
+        but all should return a boolean indicating success.
+        """
+        ...
+    
+    def get_channel_id(self) -> str:
+        """Get the unique ID for this input channel"""
+        ...
+    
+    def get_channel_type(self) -> ChannelType:
+        """Get the type of this input channel"""
+        ...
+
+
+class OutputPublisherInterface(Protocol):
+    """
+    Interface for components that send outputs to external destinations
+    
+    Output Publishers maintain connections to client channels and are
+    responsible for formatting and delivering messages. They register
+    with the EventSystem to receive messages targeted at their channel.
+    """
+    
+    async def publish(self, message: OutputMessage) -> bool:
+        """
+        Publish a message to this output channel
+        
+        Args:
+            message: The message to publish
+            
+        Returns:
+            Boolean indicating success
+        """
+        ...
+    
+    def get_channel_id(self) -> str:
+        """Get the unique ID for this output channel"""
+        ...
+    
+    def get_channel_type(self) -> ChannelType:
+        """Get the type of this output channel"""
+        ...
+
+
+class EventCallback(Protocol):
+    """Callback protocol for event system subscribers"""
+    
+    async def __call__(self, event_name: str, data: Any) -> None:
+        """
+        Handle an event
+        
+        Args:
+            event_name: Name of the event
+            data: Event data
+        """
+        ...
+
+
+class EventSystemInterface(Protocol):
+    """
+    Interface for the event system that connects components
+    
+    The Event System acts as a message bus that allows components
+    to communicate without direct coupling. It supports publishing
+    events and subscribing to event types.
+    """
+    
+    async def publish(self, event_name: str, data: Any) -> None:
+        """
+        Publish an event to all subscribers
+        
+        Args:
+            event_name: Name of the event
+            data: Event data
+        """
+        ...
+    
+    async def subscribe(self, event_pattern: str, callback: EventCallback) -> str:
+        """
+        Subscribe to events matching a pattern
+        
+        Args:
+            event_pattern: Pattern to match event names (can use wildcards)
+            callback: Async function to call when matching events occur
+            
+        Returns:
+            Subscription ID
+        """
+        ...
+    
+    async def unsubscribe(self, subscription_id: str) -> bool:
+        """
+        Unsubscribe from events
+        
+        Args:
+            subscription_id: ID returned from subscribe
+            
+        Returns:
+            Boolean indicating success
+        """
+        ...
+
+
+class RouterInterface(Protocol):
+    """
+    Interface for the Cortex Router
+    
+    The Router is responsible for processing inputs, making routing
+    decisions, and optionally producing outputs. It has complete
+    autonomy over how and when to respond to inputs.
+    """
+    
+    async def process_input(self, message: InputMessage) -> bool:
+        """
+        Process an input message
+        
+        The router receives the message for processing but makes no
+        guarantees about if or when responses will be generated.
+        
+        Args:
+            message: The input message
+            
+        Returns:
+            Boolean indicating message was successfully received
+        """
+        ...
 
 
 class RoutingDecision(BaseModel):
-    """Routing decision made by the router"""
-    
-    action_type: str  # "respond", "process", "retrieve_memory", "delegate", "ignore"
-    priority: int = 1  # 1 (lowest) to 5 (highest)
-    target_system: Optional[str] = None
-    status_message: Optional[str] = None
-    metadata: Dict[str, Any] = {}
-
-
-class CortexRouterInterface(ABC):
     """
-    Interface for the Cortex Router
-    Responsible for determining how to handle incoming messages
-    from various input channels
+    Represents a decision made by the Router about how to handle an input
+    
+    This is an internal model used by the Router to track its decisions.
     """
     
-    @abstractmethod
-    async def route(self, request: RouterRequest) -> RoutingDecision:
-        """
-        Determine how to route an incoming message
-        
-        Args:
-            request: The incoming request to be routed
-            
-        Returns:
-            A routing decision indicating how to process the request
-        """
-        pass
+    # Core decision info
+    action_type: str = "process"  # "respond", "process", "delegate", "ignore", etc.
+    priority: int = 3             # 1 (lowest) to 5 (highest)
     
-    @abstractmethod
-    async def process_feedback(self, request_id: str, success: bool, metadata: Dict[str, Any]) -> None:
-        """
-        Process feedback about a previous routing decision
-        
-        Args:
-            request_id: ID of the original request
-            success: Whether the routing was successful
-            metadata: Additional information about the result
-        """
-        pass
+    # Destinations
+    target_channels: List[str] = Field(default_factory=list)  # Channel IDs
+    
+    # Processing info
+    status_message: Optional[str] = None  # Message to show while processing
+    reference_id: Optional[str] = None    # ID for tracking
+    metadata: Dict[str, Any] = Field(default_factory=dict)
