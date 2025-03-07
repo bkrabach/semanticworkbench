@@ -3,7 +3,7 @@ Token management for Cortex Core
 Handles JWT token generation, validation, and token data models
 """
 
-import jwt
+from jose import jwt
 from typing import Optional, List
 from datetime import datetime, timedelta
 from pydantic import BaseModel
@@ -71,6 +71,6 @@ def verify_jwt_token(token: str) -> Optional[TokenData]:
     except jwt.ExpiredSignatureError:
         logger.warning("Token has expired")
         return None
-    except jwt.InvalidTokenError:
+    except jwt.JWTError:
         logger.warning("Invalid token")
         return None
