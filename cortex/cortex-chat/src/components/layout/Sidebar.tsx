@@ -24,8 +24,8 @@ import {
     Search20Regular
 } from '@fluentui/react-icons';
 import { useConversations, useCreateConversation } from '../../api/hooks/useConversations';
-import { useAuth } from '../../context/AuthContext';
-import { useTheme } from '../../context/ThemeContext';
+import { useAuth } from '../../hooks/useAuth';
+import { useTheme } from '../../hooks/useTheme';
 import { Conversation } from '../../api/types';
 
 // Define styles for the sidebar

@@ -13,8 +13,8 @@ import {
     Divider
 } from '@fluentui/react-components';
 import { Key24Regular } from '@fluentui/react-icons';
-import { useAuth } from '../../context/AuthContext';
-import { useTheme } from '../../context/ThemeContext';
+import { useAuth } from '../../hooks/useAuth';
+import { useTheme } from '../../hooks/useTheme';
 
 // Define styles for the login page
 const useStyles = makeStyles({

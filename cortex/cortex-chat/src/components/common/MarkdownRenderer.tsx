@@ -3,7 +3,7 @@ import { makeStyles, tokens, shorthands } from '@fluentui/react-components';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus, vs } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { useTheme } from '../../context/ThemeContext';
+import { useTheme } from '../../hooks/useTheme';
 
 // Define styles for the markdown content
 const useStyles = makeStyles({
@@ -101,27 +101,40 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) => {
         [isDarkMode]
     );
 
+    // Safe cast using type assertion for SyntaxHighlighter's style prop
+    const safeTheme = useMemo(() => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        return syntaxTheme as any;
+    }, [syntaxTheme]);
+
     return (
         <div className={styles.markdownContainer}>
             <ReactMarkdown
                 components={{
-                    code({ inline, className, children, ...props }) {
-                        const match = /language-(\w+)/.exec(className || '');
-                        const language = match && match[1] ? match[1] : 'text';
+                    // Type the props as any to overcome the type issue, then handle props carefully
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    code: (props: any) => {
+                        const { className, children } = props;
 
-                        return !inline ? (
+                        // Check if this is a code block or inline code
+                        const match = /language-(\w+)/.exec(className || '');
+                        const isCodeBlock = !!match;
+                        const language = match?.[1] || 'text';
+
+                        if (!isCodeBlock) {
+                            // For inline code, just render a code tag with className only
+                            return <code className={className}>{children}</code>;
+                        }
+
+                        // For code blocks, use SyntaxHighlighter with minimal props
+                        return (
                             <SyntaxHighlighter
-                                style={syntaxTheme}
+                                style={safeTheme}
                                 language={language}
                                 PreTag="div"
-                                {...props}
                             >
                                 {String(children).replace(/\n$/, '')}
                             </SyntaxHighlighter>
-                        ) : (
-                            <code className={className} {...props}>
-                                {children}
-                            </code>
                         );
                     }
                 }}

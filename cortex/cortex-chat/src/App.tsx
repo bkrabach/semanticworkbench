@@ -1,8 +1,9 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
-import { AuthProvider, useAuth } from './context/AuthContext';
-import { ThemeProvider } from './context/ThemeContext';
+import { AuthProvider } from './context/AuthProvider';
+import { useAuth } from './hooks/useAuth';
+import { ThemeProvider } from './context/ThemeProvider';
 import AppLayout from './components/layout/AppLayout';
 import ConversationView from './components/conversation/ConversationView';
 import LoginPage from './components/auth/LoginPage';
