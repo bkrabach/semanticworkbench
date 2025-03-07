@@ -1,6 +1,10 @@
 # Cortex Core Quick Start Guide
 
+_Date: 2025-03-07_
+
 This guide provides a minimal working example to get started with the Cortex Core API. Follow these steps to quickly build a basic client that can interact with the Cortex Core platform.
+
+> **Note:** This guide provides a basic implementation example for the current API. For more detailed integration instructions, see the [Client Integration Guide](CLIENT_INTEGRATION_GUIDE.md). For information about the implementation status and future plans, see the [Implementation Status](IMPLEMENTATION_STATUS.md) document.
 
 ## Prerequisites
 

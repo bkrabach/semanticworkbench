@@ -1,6 +1,10 @@
 # Cortex Core Client Integration Guide
 
+_Date: 2025-03-07_
+
 This guide provides comprehensive documentation for developers building client applications that interface with the Cortex Core API. The document outlines all necessary endpoints, authentication methods, data structures, and real-time communication patterns required to build a fully functional client.
+
+> **Note:** This guide reflects the current implementation of the API. For a concise API reference, see [Client API Reference](CLIENT_API_REFERENCE.md). For information about the implementation status and future plans, see the [Implementation Status](IMPLEMENTATION_STATUS.md) document.
 
 ## Table of Contents
 

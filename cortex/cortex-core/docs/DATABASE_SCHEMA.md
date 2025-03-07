@@ -1,6 +1,10 @@
 # Cortex Core Database Schema
 
+_Date: 2025-03-07_
+
 This document describes the database schema used by Cortex Core, implemented using SQLAlchemy ORM.
+
+> **Note**: This document reflects the current implementation of the database schema. As the project evolves, the schema may be enhanced to support additional functionality described in the [Project Vision](PROJECT_VISION.md).
 
 ## Overview
 

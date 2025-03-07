@@ -1,6 +1,10 @@
-# Cortex Core API Reference
+# Cortex Core Client API Reference
 
-A concise technical reference for the Cortex Core API endpoints, data structures, and integration patterns.
+_Date: 2025-03-07_
+
+A concise technical reference for the Cortex Core API endpoints, data structures, and integration patterns, focused on client application development.
+
+> **Note:** This document is a client-focused summary of the [complete API Reference](API_REFERENCE.md). It focuses on practical implementation guidance for client developers.
 
 ## Quick Start
 

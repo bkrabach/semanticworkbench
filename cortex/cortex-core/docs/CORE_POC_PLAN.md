@@ -1,7 +1,9 @@
 # Cortex Core PoC Implementation Plan
 
-**Date:** 2025-03-06
-**Status:** Working Draft - Being actively refined
+**Date:** 2025-03-07
+**Status:** Implementation Reference Document
+
+> **Note**: This document served as the implementation plan for the initial Proof of Concept (PoC) build of Cortex Core. It is maintained as a reference for understanding the implementation approach and original design decisions. For the current status of the implementation, refer to [Implementation Status](IMPLEMENTATION_STATUS.md).
 
 ## 1. Introduction
 

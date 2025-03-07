@@ -1,8 +1,12 @@
 # Cortex Core Architecture Overview
 
+_Date: 2025-03-07_
+
 ## Introduction
 
-Cortex Core is the backend component of the Cortex Platform, providing a central intelligent system that manages conversations, orchestrates AI interactions, and integrates with external tools. Built with FastAPI and SQLAlchemy, it implements the vision of a modular, extensible AI ecosystem with a unified memory and context-aware processing.
+Cortex Core is the backend component of the Cortex Platform, providing a central intelligent system that manages conversations, orchestrates AI interactions, and integrates with external tools. Built with FastAPI and SQLAlchemy, it implements the foundation of a modular, extensible AI ecosystem with memory storage and context-aware processing.
+
+> **Note:** This document describes the current implementation architecture of Cortex Core. For the broader platform vision, see [Project Vision](PROJECT_VISION.md). For information about what is implemented versus planned for future development, see [Implementation Status](IMPLEMENTATION_STATUS.md).
 
 ## System Architecture
 
@@ -53,16 +57,16 @@ The Conversation Handler is responsible for managing the lifecycle of conversati
 
 When a user message is received, the handler enriches it with contextual information from the memory system, processes it through the LLM, handles any tool invocations, and returns the response.
 
-### 3. Memory System (`memory.py`)
+### 3. Memory Adapter (`memory.py`)
 
-The Memory Adapter provides persistent storage for conversation context:
+The Memory Adapter provides storage for conversation context:
 
-- Maintains conversation history
+- Maintains conversation history with user-specific partitioning
 - Stores and retrieves contextual information
-- Implements a simplified "whiteboard" model for the current implementation
-- Designed to be replaceable with more sophisticated memory systems in the future
+- Implements a simple memory model with basic persistence
+- Designed with abstraction to support more sophisticated memory systems in the future
 
-The memory system ensures that each interaction builds upon previous context, creating a coherent user experience.
+The current implementation uses a basic approach to context management, storing conversation content directly without sophisticated retrieval mechanisms. This provides essential functionality while leaving room for future enhancements toward the full Memory System vision.
 
 ### 4. LLM Integration (`llm.py`)
 
@@ -75,14 +79,14 @@ The LLM Client manages interactions with language models:
 
 ### 5. MCP Client (`mcp_client.py`)
 
-The Model Context Protocol (MCP) Client enables integration with external tools:
+The MCP Client implementation enables basic tool integration:
 
-- Manages connections to MCP servers
-- Routes tool execution requests to appropriate servers
-- Handles tool execution results
+- Registers and manages available tools
+- Handles tool execution requests from the Conversation Handler
+- Processes tool execution results
 - Integrates tool outputs into the conversation flow
 
-This component enables the extensibility of the system through standardized tool integration.
+The current implementation uses a simplified approach with mock tools rather than a full MCP protocol implementation. It provides the essential functionality for demonstrating tool usage while laying the groundwork for more sophisticated integration in the future.
 
 ### 6. Authentication System (`auth.py`)
 
@@ -206,16 +210,34 @@ Key configuration options include:
 
 ## Extension Points
 
-Cortex Core is designed to be extensible in several ways:
+Cortex Core is designed with several extension points:
 
-1. **Memory Systems**: The Memory Adapter interface allows for replacing the current implementation with more sophisticated systems.
+1. **Memory Systems**: The Memory Adapter interface is abstracted to allow replacing the current implementation with more sophisticated systems.
 
-2. **LLM Providers**: Support for multiple LLM providers through LiteLLM.
+2. **LLM Providers**: Support for multiple LLM providers through LiteLLM's standardized interface.
 
-3. **MCP Tools**: New tools can be added by registering them with MCP servers.
+3. **Tool Integration**: The current implementation supports basic tool registration and execution, with a path to more comprehensive MCP protocol support in the future.
 
-4. **Authentication Methods**: The authentication system supports multiple login types.
+4. **Authentication Methods**: The authentication system is designed to support multiple login types, currently focused on AAD.
+
+## Current Limitations
+
+The current implementation has several limitations compared to the full platform vision:
+
+1. **Simple Memory Model**: The current memory implementation lacks sophisticated retrieval mechanisms.
+
+2. **Limited Tool Integration**: Tool support is functional but basic, without full MCP client/server protocol implementation.
+
+3. **No Domain Expert Entities**: The autonomous domain expert architecture described in the vision documents is not yet implemented.
+
+4. **Limited Input/Output Modalities**: Currently focused on chat interfaces rather than the full range of modalities in the platform vision.
 
 ## Conclusion
 
-Cortex Core provides a robust, modular foundation for the Cortex Platform. Its event-driven architecture, clear separation of concerns, and standardized interfaces enable both current functionality and future extensions as the platform evolves.
+Cortex Core provides a foundational implementation of the modular architecture envisioned for the Cortex Platform. While the current implementation focuses on essential functionality, its event-driven architecture, clear separation of concerns, and standardized interfaces establish a path for progressive enhancement toward the full platform vision.
+
+## Change Log
+
+| Date | Change |
+|------|--------|
+| 2025-03-07 | Updated to clarify current implementation vs. vision |

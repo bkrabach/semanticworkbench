@@ -1,6 +1,10 @@
 # Cortex Core API Reference
 
-This document provides a detailed reference for the Cortex Core REST API endpoints.
+_Date: 2025-03-07_
+
+This document provides a detailed reference for the Cortex Core REST API endpoints. This reference reflects the current implementation of the API as of the document date.
+
+> **Note:** This API reference documents the currently implemented endpoints. For information about the implementation status and future plans, see the [Implementation Status](IMPLEMENTATION_STATUS.md) document.
 
 ## Authentication
 
@@ -338,19 +342,17 @@ Establishes a Server-Sent Events (SSE) connection for real-time updates.
 - `conversation_id`: ID of the conversation
 
 **Events:**
-- `message`: New message in the conversation
-- `message_chunk`: Partial content of a message being generated
-- `tool_call`: Tool execution request
-- `tool_result`: Result of a tool execution
+- `message_created`: When a new message is added
+- `message_updated`: When a message is updated (e.g., during streaming)
+- `conversation_updated`: When conversation metadata is updated
+- `tool_execution_started`: When a tool execution begins
+- `tool_execution_completed`: When a tool execution completes
+- `tool_execution_failed`: When a tool execution fails
 
 **Event Data Format:**
-```json
-{
-  "type": "string (event type)",
-  "data": {
-    // Event-specific data
-  }
-}
+```
+event: message_created
+data: {"id":"msg-id","conversation_id":"conv-id","role":"assistant","content":"Hello!","created_at":"2025-03-06T21:10:05Z","metadata":{},"tool_calls":[],"is_complete":true}
 ```
 
 **Status Codes:**
