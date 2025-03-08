@@ -208,7 +208,7 @@ class SimpleCortexRouter(RouterInterface):
                     if conversation:
                         # Parse entries
                         try:
-                            entries = json.loads(conversation.entries)
+                            entries = json.loads(str(getattr(conversation, 'entries')))
                         except json.JSONDecodeError:
                             entries = []
                         
@@ -227,8 +227,8 @@ class SimpleCortexRouter(RouterInterface):
                         })
                         
                         # Update conversation
-                        conversation.entries = json.dumps(entries, cls=DateTimeEncoder)
-                        conversation.last_active_at_utc = now
+                        setattr(conversation, 'entries', json.dumps(entries, cls=DateTimeEncoder))
+                        setattr(conversation, 'last_active_at_utc', now)
                         db.commit()
                 
                 return True

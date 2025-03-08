@@ -192,8 +192,8 @@ async def login(credentials: UserCredentials, db: Session = Depends(get_db)):
                     f"Invalid password for user: {credentials.identifier}")
                 return AuthResponse(success=False, error="Invalid email or password")
 
-            # Update last login time
-            user.last_login_at_utc = datetime.now(timezone.utc)
+            # Update last login time - setattr to properly handle ORM Column attribute
+            setattr(user, 'last_login_at_utc', datetime.now(timezone.utc))
             db.commit()
             
             # Check if user has any workspaces, create a default one if not
@@ -239,7 +239,7 @@ async def login(credentials: UserCredentials, db: Session = Depends(get_db)):
             seconds=settings.security.token_expiry_seconds
         )
         token = generate_jwt_token(
-            TokenData(user_id=user.id),
+            TokenData(user_id=str(user.id)),
             expires_delta=timedelta(
                 seconds=settings.security.token_expiry_seconds),
         )
@@ -247,7 +247,7 @@ async def login(credentials: UserCredentials, db: Session = Depends(get_db)):
         logger.info(f"User {user.id} authenticated successfully")
 
         return AuthResponse(
-            success=True, user_id=user.id, token=token, expires_at_utc=token_expires
+            success=True, user_id=str(user.id), token=token, expires_at_utc=token_expires
         )
 
     except Exception as e:
@@ -298,7 +298,7 @@ async def generate_api_key(
         api_key = ApiKey(
             id=str(uuid.uuid4()),
             key=encrypted_key,
-            user_id=user.id,
+            user_id=str(user.id),
             scopes_json=security_manager.stringify_json(request.scopes),
             created_at_utc=datetime.now(timezone.utc),
             expires_at_utc=expiry,

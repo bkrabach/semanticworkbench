@@ -22,13 +22,6 @@ from app.api.sse import send_event_to_conversation
 from app.database.models import Conversation
 from sqlalchemy.orm import Session
 
-# Custom JSON encoder for datetime objects
-class DateTimeEncoder(json.JSONEncoder):
-    def default(self, o):
-        if isinstance(o, datetime):
-            return o.isoformat()
-        return super().default(o)
-
 
 class ConversationInputReceiver(InputReceiverInterface):
     """
@@ -131,7 +124,7 @@ class ConversationOutputPublisher(OutputPublisherInterface):
         self.event_system = get_event_system()
         
         # We'll store subscription IDs for cleanup
-        self.subscriptions = []
+        self.subscriptions: list[str] = []
     
     async def _subscribe_to_events(self):
         """Subscribe to events for this channel"""
@@ -248,7 +241,7 @@ class ConversationOutputPublisher(OutputPublisherInterface):
             
         # Parse entries
         try:
-            entries_str = str(conversation.entries) if conversation.entries else "[]"
+            entries_str = str(getattr(conversation, 'entries')) if getattr(conversation, 'entries') else "[]"
             entries = json.loads(entries_str)
         except json.JSONDecodeError:
             entries = []
@@ -265,8 +258,9 @@ class ConversationOutputPublisher(OutputPublisherInterface):
         # Update conversation using ORM
         entries_json = json.dumps(entries, cls=DateTimeEncoder)
         
-        conversation.entries = entries_json
-        conversation.last_active_at_utc = message.timestamp
+        # Using setattr to handle ORM Column attributes
+        setattr(conversation, 'entries', entries_json)
+        setattr(conversation, 'last_active_at_utc', message.timestamp)
         
         # Commit to DB
         db.commit()

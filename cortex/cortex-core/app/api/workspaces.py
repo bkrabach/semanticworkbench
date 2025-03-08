@@ -115,7 +115,7 @@ async def create_workspace(
 
     new_workspace = Workspace(
         id=str(uuid.uuid4()),
-        user_id=user.id,
+        user_id=str(user.id),
         name=workspace.name,
         created_at_utc=now,
         last_active_at_utc=now,
@@ -130,11 +130,11 @@ async def create_workspace(
     # Send event to user
     background_tasks.add_task(
         send_event_to_user,
-        user.id,
+        str(user.id),
         "workspace_created",
         {
-            "id": new_workspace.id,
-            "name": new_workspace.name,
+            "id": str(new_workspace.id),
+            "name": str(new_workspace.name),
             "created_at_utc": new_workspace.created_at_utc.isoformat()
         }
     )

@@ -121,7 +121,8 @@ async def list_conversations(
     processed_conversations = []
     for conversation in conversations:
         # Parse JSON strings to dictionaries
-        meta_data_str = str(conversation.meta_data) if conversation.meta_data else "{}"
+        meta_data_value = getattr(conversation, 'meta_data')
+        meta_data_str = str(meta_data_value) if meta_data_value is not None else "{}"
         try:
             metadata = json.loads(meta_data_str)
         except json.JSONDecodeError:
@@ -196,18 +197,18 @@ async def create_conversation(
     # Update workspace last_active_at_utc
     workspace = db.query(Workspace).filter(Workspace.id == workspace_id).first()
     if workspace:
-        workspace.last_active_at_utc = now
+        setattr(workspace, 'last_active_at_utc', now)
         db.commit()
 
     # Send SSE event for the new conversation in the background
     background_tasks.add_task(
         send_event_to_workspace,
-        workspace_id,
+        str(workspace_id),
         "conversation_created",
         {
-            "id": new_conversation.id,
-            "title": new_conversation.title,
-            "modality": new_conversation.modality,
+            "id": str(new_conversation.id),
+            "title": str(new_conversation.title),
+            "modality": str(new_conversation.modality),
             "created_at_utc": new_conversation.created_at_utc.isoformat()
         }
     )
@@ -312,37 +313,42 @@ async def update_conversation(
 
     # Update conversation fields
     if update_data.title is not None:
-        conversation.title = update_data.title
+        setattr(conversation, 'title', update_data.title)
 
     if update_data.metadata is not None:
         # Parse existing metadata
         try:
-            existing_metadata = json.loads(conversation.meta_data)
+            existing_metadata = json.loads(str(getattr(conversation, 'meta_data')))
         except json.JSONDecodeError:
             existing_metadata = {}
 
         # Update with new metadata
         existing_metadata.update(update_data.metadata)
-        conversation.meta_data = json.dumps(existing_metadata)
+        setattr(conversation, 'meta_data', json.dumps(existing_metadata))
 
     # Update last_active_at_utc with timezone-aware UTC datetime
-    conversation.last_active_at_utc = datetime.now(timezone.utc)
+    setattr(conversation, 'last_active_at_utc', datetime.now(timezone.utc))
 
     db.commit()
     db.refresh(conversation)
 
     # Parse metadata for the event
-    metadata = json.loads(conversation.meta_data) if conversation.meta_data else {}
+    meta_data_value = getattr(conversation, 'meta_data')
+    meta_data_str = str(meta_data_value) if meta_data_value is not None else "{}"
+    try:
+        metadata = json.loads(meta_data_str)
+    except json.JSONDecodeError:
+        metadata = {}
     
     # Send SSE event for conversation update in the background
     background_tasks.add_task(
         send_event_to_conversation,
-        conversation_id,
+        str(conversation_id),
         "conversation_update",
         {
-            "id": conversation.id,
-            "title": conversation.title,
-            "last_active_at_utc": conversation.last_active_at_utc.isoformat(),
+            "id": str(getattr(conversation, 'id')),
+            "title": str(getattr(conversation, 'title')),
+            "last_active_at_utc": getattr(conversation, 'last_active_at_utc').isoformat(),
             "metadata": metadata
         }
     )
@@ -396,10 +402,10 @@ async def delete_conversation(
     # Send SSE event for conversation deletion in the background
     background_tasks.add_task(
         send_event_to_workspace,
-        workspace_id,
+        str(workspace_id),
         "conversation_deleted",
         {
-            "id": conversation_id
+            "id": str(conversation_id)
         }
     )
 
@@ -438,7 +444,7 @@ async def get_conversation_messages(
 
     # Parse entries from conversation
     try:
-        entries = json.loads(conversation.entries)
+        entries = json.loads(str(getattr(conversation, 'entries')))
     except json.JSONDecodeError:
         entries = []
 
@@ -517,27 +523,27 @@ async def add_message(
 
     # Parse and update entries
     try:
-        entries = json.loads(conversation.entries)
+        entries = json.loads(str(getattr(conversation, 'entries')))
     except json.JSONDecodeError:
         entries = []
 
     entries.append(new_entry)
 
     # Update conversation - use custom encoder for datetime objects
-    conversation.entries = json.dumps(entries, cls=DateTimeEncoder)
-    conversation.last_active_at_utc = now
+    setattr(conversation, 'entries', json.dumps(entries, cls=DateTimeEncoder))
+    setattr(conversation, 'last_active_at_utc', now)
 
     db.commit()
 
     # Send SSE event for the new message in the background
     background_tasks.add_task(
         send_event_to_conversation,
-        conversation_id,
+        str(conversation_id),
         "message_received",
         {
-            "id": message_id,
-            "content": message.content,
-            "role": message.role,
+            "id": str(message_id),
+            "content": str(message.content),
+            "role": str(message.role),
             "created_at_utc": now.isoformat(),  # Convert to ISO string for transport
             "metadata": message.metadata or {}
         }
@@ -558,8 +564,8 @@ async def add_message(
         # For demo purposes, we'll simulate response generation in a background task
         background_tasks.add_task(
             simulate_assistant_response,
-            conversation_id,
-            message.content,
+            str(conversation_id),
+            str(message.content),
             db
         )
 
@@ -609,15 +615,15 @@ async def stream_message(
 
     # Parse and update entries
     try:
-        entries = json.loads(conversation.entries)
+        entries = json.loads(str(getattr(conversation, 'entries')))
     except json.JSONDecodeError:
         entries = []
 
     entries.append(new_entry)
 
     # Update conversation - use custom encoder for datetime objects
-    conversation.entries = json.dumps(entries, cls=DateTimeEncoder)
-    conversation.last_active_at_utc = now
+    setattr(conversation, 'entries', json.dumps(entries, cls=DateTimeEncoder))
+    setattr(conversation, 'last_active_at_utc', now)
 
     db.commit()
 
@@ -656,7 +662,7 @@ async def stream_message(
     # Send the message to the router (fire and forget)
     await input_receiver.receive_input(
         content=message.content,
-        workspace_id=conversation.workspace_id,
+        workspace_id=str(getattr(conversation, 'workspace_id')),
         metadata=message.metadata,
         db=db
     )
@@ -737,7 +743,7 @@ async def simulate_assistant_response(conversation_id: str, user_message: str, d
     # Send the message to the router via the input receiver
     success = await input_receiver.receive_input(
         content=user_message,
-        workspace_id=conversation.workspace_id,
+        workspace_id=str(getattr(conversation, 'workspace_id')),
         db=db
     )
     

@@ -27,7 +27,8 @@ class ExtendedLogRecord(logging.LogRecord):
     """Extended LogRecord with extra attribute"""
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.extra = {}
+        # Add extra field directly to the object
+        setattr(self, 'extra', {})
 
 
 class CustomFormatter(logging.Formatter):
@@ -47,11 +48,15 @@ class CustomFormatter(logging.Formatter):
             log_message += f"\n{self.formatException(record.exc_info)}"
 
         # Add extra fields if present
-        if hasattr(record, "extra") and record.extra:
-            try:
-                log_message += f" {json.dumps(record.extra)}"
-            except:
-                pass
+        try:
+            if hasattr(record, "extra") and getattr(record, "extra"):
+                try:
+                    extra_data = getattr(record, "extra")
+                    log_message += f" {json.dumps(extra_data)}"
+                except Exception as e:
+                    pass
+        except Exception:
+            pass
 
         return log_message
 
