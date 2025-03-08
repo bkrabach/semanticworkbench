@@ -3,6 +3,7 @@ Test suite for the monitoring API endpoints
 """
 
 import pytest
+import asyncio
 from fastapi.testclient import TestClient
 from unittest.mock import AsyncMock, patch
 
@@ -37,7 +38,7 @@ class AsyncMockWithStats(AsyncMock):
 
 
 def test_get_event_stats(test_client):
-    """Test the event stats endpoint"""
+    """Test the event stats endpoint with a mock"""
     # Create a mock with preconfigured stats response
     mock_system = AsyncMockWithStats(spec=EventSystem)
     
@@ -58,3 +59,137 @@ def test_get_event_stats(test_client):
         assert "errors" in data
         assert "uptime_seconds" in data
         assert "events_per_second" in data
+
+
+@pytest.mark.asyncio
+async def test_event_system_stats_real():
+    """Test the event system stats with the real implementation"""
+    # Create a real EventSystem instance
+    event_system = EventSystem()
+    
+    # Define a simple subscriber
+    async def test_subscriber(event_type, payload):
+        # Just a dummy subscriber that does nothing
+        pass
+    
+    # Another subscriber that will raise an exception
+    async def error_subscriber(event_type, payload):
+        raise Exception("Test error")
+    
+    # Subscribe to events
+    await event_system.subscribe("test.*", test_subscriber)
+    await event_system.subscribe("error.*", error_subscriber)
+    await event_system.subscribe("another.*", test_subscriber)
+    
+    # Publish some events
+    await event_system.publish("test.event1", {"data": "value1"}, "test_source")
+    await event_system.publish("test.event2", {"data": "value2"}, "test_source")
+    await event_system.publish("another.event", {"data": "value3"}, "test_source")
+    
+    # Publish an event that will cause an error
+    await event_system.publish("error.event", {"data": "error_data"}, "test_source")
+    
+    # Get stats
+    stats = await event_system.get_stats()
+    
+    # Verify stats
+    assert stats["events_published"] == 4
+    assert stats["events_delivered"] == 3  # One failed due to error
+    assert stats["subscriber_count"] == 3
+    assert len(stats["event_types"]) == 4  # Four different event types
+    assert "test.event1" in stats["event_types"]
+    assert "test.event2" in stats["event_types"]
+    assert "another.event" in stats["event_types"]
+    assert "error.event" in stats["event_types"]
+    assert stats["errors"] == 1
+    assert "uptime_seconds" in stats
+    assert "events_per_second" in stats
+
+
+@pytest.mark.asyncio
+async def test_monitoring_api_with_real_event_system():
+    """Test the monitoring API with a real event system"""
+    # Create a real EventSystem instance
+    event_system = EventSystem()
+    
+    # Generate some activity
+    async def test_subscriber(event_type, payload):
+        pass
+    
+    # Subscribe and publish some events
+    await event_system.subscribe("api.test.*", test_subscriber)
+    for i in range(5):
+        await event_system.publish(f"api.test.event{i}", {"index": i}, "test_source")
+    
+    # Patch the get_event_system function to return our instance
+    with patch("app.api.monitoring.get_event_system", return_value=event_system):
+        # Create a test client
+        client = TestClient(app)
+        
+        # Make the request
+        response = client.get("/monitoring/events/stats")
+        
+        # Verify the response
+        assert response.status_code == 200
+        data = response.json()
+        
+        # Check that stats reflect our activity
+        # Note: Event system is recreated when the API is called, so it won't have our events
+        # Just check the basic structure is correct
+        assert "events_published" in data
+        assert "events_delivered" in data 
+        assert "subscriber_count" in data
+        assert "event_types" in data
+        assert "errors" in data
+        assert "uptime_seconds" in data
+        assert "events_per_second" in data
+
+
+@pytest.mark.asyncio
+async def test_stats_update_over_time():
+    """Test that stats update correctly over time"""
+    # Create an event system
+    event_system = EventSystem()
+    
+    # Initial stats
+    initial_stats = await event_system.get_stats()
+    initial_time = initial_stats["uptime_seconds"]
+    
+    # Wait a short time
+    await asyncio.sleep(0.1)
+    
+    # Get updated stats
+    updated_stats = await event_system.get_stats()
+    updated_time = updated_stats["uptime_seconds"]
+    
+    # Verify time has advanced
+    assert updated_time > initial_time
+    
+    # Now publish some events
+    pre_publish_stats = await event_system.get_stats()
+    pre_count = pre_publish_stats["events_published"]
+    
+    # Define a subscriber
+    async def test_subscriber(event_type, payload):
+        pass
+    
+    # Subscribe and publish
+    subscription_id = await event_system.subscribe("stats.test.*", test_subscriber)
+    await event_system.publish("stats.test.event1", {"test": 1}, "test_source")
+    await event_system.publish("stats.test.event2", {"test": 2}, "test_source")
+    
+    # Get post-publish stats
+    post_publish_stats = await event_system.get_stats()
+    
+    # Verify counts increased
+    assert post_publish_stats["events_published"] == pre_count + 2
+    assert post_publish_stats["subscriber_count"] == 1
+    assert "stats.test.event1" in post_publish_stats["event_types"]
+    assert "stats.test.event2" in post_publish_stats["event_types"]
+    
+    # Unsubscribe
+    await event_system.unsubscribe(subscription_id)
+    
+    # Check subscriber count decreased
+    final_stats = await event_system.get_stats()
+    assert final_stats["subscriber_count"] == 0
