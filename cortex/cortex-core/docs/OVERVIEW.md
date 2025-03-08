@@ -131,19 +131,31 @@ cortex-core/
 
 ## System Components
 
-The system is composed of the following key components:
+### Current Implementation
+
+The system currently implements the following key components:
 
 | Component | Responsibility | Implementation |
 |-----------|----------------|----------------|
-| Security Manager | Authentication and encryption | JWT tokens, Fernet encryption |
-| Workspace Manager | Organization of user workspaces | SQLAlchemy models, CRUD operations |
-| Input Receivers | Accept and forward inputs | Channel-specific implementations |
-| Cortex Router | Process inputs and determine responses | Asynchronous queue-based processor |
-| Output Publishers | Deliver messages to channels | Event-driven delivery mechanisms |
+| Security Manager | Encryption and token handling | Fernet encryption, JWT utilities |
 | Event System | Decoupled component communication | Pattern-based publish/subscribe |
-| Context Manager | Context retrieval and updates | Memory system interface |
-| Memory System | Knowledge persistence | Pluggable interface |
-| Integration Hub | External service communication | MCP client/server |
+| SSE Service | Real-time client updates | Server-Sent Events with FastAPI |
+| Circuit Breaker | Failure prevention | State-machine pattern |
+| Repository Pattern | Data access abstraction | SQLAlchemy-based repositories |
+| Redis Cache | Caching with fallback | Redis with in-memory alternative |
+
+### Planned Components
+
+The following components are planned for future implementation:
+
+| Component | Responsibility | Current Status |
+|-----------|----------------|----------------|
+| Context Manager | Context retrieval and updates | Interface defined, not implemented |
+| Memory System | Knowledge persistence | Interface defined, not implemented |
+| Integration Hub | External service communication | Planned |
+| Workspace Manager | Organization of user workspaces | Currently handled through repository pattern |
+| Cortex Router | Central message processing | Basic implementation, needs enhancement |
+| Domain Experts | Specialized processing modules | Interface defined, not implemented |
 
 ### Key Component Details
 

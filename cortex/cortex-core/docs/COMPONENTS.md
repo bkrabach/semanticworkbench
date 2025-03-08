@@ -16,18 +16,13 @@ This document details the core components and interfaces of the Cortex Core syst
 - [Circuit Breaker](#circuit-breaker)
 - [SSE System](#sse-system)
 
-## Session Manager
+## Session Management
 
-The Session Manager is responsible for creating, validating, and managing user sessions.
+The session management system is currently handled through the database models without a dedicated Session Manager component. This is planned for future implementation.
 
-### Responsibilities
+### Current Implementation
 
-- User session creation, validation, and termination
-- Session state persistence
-- Association of sessions with workspaces
-- Session-specific configuration management
-
-### Implementation Details
+Sessions are managed through the database model and FastAPI's dependency injection system:
 
 ```python
 class Session(Base):
@@ -37,14 +32,16 @@ class Session(Base):
     user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"))
     created_at = Column(DateTime, default=datetime.utcnow)
     last_active_at = Column(DateTime, default=datetime.utcnow)
-    active_workspace_id = Column(String(36), nullable=False)
+    active_workspace_id = Column(String(36), nullable=True)
     config = Column(Text, default="{}")  # Stored as JSON string
     meta_data = Column(Text, default="{}")  # Stored as JSON string
     # Relationships
     user = relationship("User", back_populates="sessions")
 ```
 
-### Interface
+### Future Interface Plans
+
+A dedicated SessionManager component is planned for the future with the following interface:
 
 ```python
 class SessionManager:
@@ -69,19 +66,15 @@ class SessionManager:
         pass
 ```
 
-## Dispatcher
+**Note**: This component is planned for future implementation. Currently, session management is handled through database operations and authentication middleware.
 
-The Dispatcher routes HTTP requests to appropriate API endpoints.
+## Routing System
 
-### Responsibilities
-
-- Route incoming HTTP requests to appropriate API handlers
-- Handle middleware concerns like authentication and logging
-- Manage FastAPI routing
+Instead of a dedicated Dispatcher component, Cortex Core uses FastAPI's built-in routing mechanisms.
 
 ### Implementation Details
 
-The Dispatcher is implemented using FastAPI's routing mechanisms:
+Routing is handled directly by FastAPI's include_router functionality in `app/main.py`:
 
 ```python
 # API routes for different endpoints
@@ -89,7 +82,10 @@ app.include_router(auth_router, prefix="/auth", tags=["Authentication"])
 app.include_router(workspaces_router, prefix="", tags=["Workspaces"])
 app.include_router(conversations_router, prefix="", tags=["Conversations"])
 app.include_router(sse_router, prefix="", tags=["Events"])
+app.include_router(monitoring_router, prefix="/monitoring", tags=["Monitoring"])
 ```
+
+Each router is defined in its respective module in the `app/api` directory, with endpoints grouped by functionality.
 
 ## Event System
 
@@ -372,17 +368,21 @@ This architecture enables:
 - Multiple responses to a single input
 - No response at all for certain inputs
 
-## Context Manager
+## Future Components
 
-The Context Manager interfaces with the memory system to retrieve and update the context for processing requests.
+The following components are planned for future implementation but are not currently implemented in the codebase. They represent the architectural vision for the system's evolution.
 
-### Responsibilities
+### Context Manager (Planned)
+
+The Context Manager will interface with the memory system to retrieve and update the context for processing requests.
+
+#### Planned Responsibilities
 
 - Retrieve relevant context for processing requests
 - Update the memory state with new information
 - Maintain an in-memory cache of recent context for performance
 
-### Interface
+#### Proposed Interface
 
 ```python
 class ContextManager:
@@ -399,18 +399,18 @@ class ContextManager:
         pass
 ```
 
-## Integration Hub
+### Integration Hub (Planned)
 
-The Integration Hub facilitates communication with external services and tools, managing MCP client/server interactions.
+The Integration Hub will facilitate communication with external services and tools, managing MCP client/server interactions.
 
-### Responsibilities
+#### Planned Responsibilities
 
 - Implement the MCP client/server protocol
 - Manage connections to external tools and services
 - Route data between the core system and external components
 - Handle protocol translation when necessary
 
-### Implementation Details
+#### Proposed Interface
 
 ```python
 class IntegrationHub:
@@ -435,18 +435,13 @@ class IntegrationHub:
         pass
 ```
 
-## Workspace Manager
+## Workspace and Conversation Management
 
-The Workspace Manager handles the creation, retrieval, and organization of workspaces and associated conversations.
+While there is no dedicated WorkspaceManager component, workspace and conversation functionality is implemented through the Repository Pattern in the current codebase.
 
-### Responsibilities
+### Current Implementation
 
-- Create and manage workspaces for organizing user interactions
-- Handle creation and retrieval of conversations within workspaces
-- Transform raw activity logs into modality-specific conversation views
-- Expose APIs for workspace and conversation management
-
-### Implementation Details
+Workspaces and conversations are managed through database models and repositories:
 
 ```python
 class Workspace(Base):
@@ -463,7 +458,6 @@ class Workspace(Base):
     user = relationship("User", back_populates="workspaces")
     conversations = relationship("Conversation", back_populates="workspace", cascade="all, delete-orphan")
     memory_items = relationship("MemoryItem", back_populates="workspace", cascade="all, delete-orphan")
-    workspace_sharings = relationship("WorkspaceSharing", back_populates="workspace", cascade="all, delete-orphan")
 
 class Conversation(Base):
     """Conversation model"""
@@ -480,51 +474,40 @@ class Conversation(Base):
     workspace = relationship("Workspace", back_populates="conversations")
 ```
 
-### Interface
+### Repository Pattern Implementation
+
+Conversations are managed through a repository implementation:
 
 ```python
-class WorkspaceManager:
-    async def create_workspace(self, user_id: str, name: str, config: Optional[Dict[str, Any]] = None) -> Workspace:
-        """Create a new workspace"""
-        pass
-
-    async def get_workspace(self, workspace_id: str) -> Optional[Workspace]:
-        """Get workspace by ID"""
-        pass
-
-    async def list_workspaces(self, user_id: str) -> List[Workspace]:
-        """List workspaces for a user"""
-        pass
-
-    async def create_conversation(self, workspace_id: str, modality: str, title: Optional[str] = None) -> Conversation:
-        """Create a conversation in a workspace"""
-        pass
-
-    async def get_conversation(self, conversation_id: str) -> Optional[Conversation]:
-        """Get a conversation by ID"""
-        pass
-
-    async def list_conversations(self, workspace_id: str, filter: Optional[Dict[str, Any]] = None) -> List[Conversation]:
-        """List conversations in a workspace"""
-        pass
-
-    async def add_conversation_entry(self, conversation_id: str, entry: Dict[str, Any]) -> None:
-        """Add an entry to a conversation"""
-        pass
+class ConversationRepository:
+    def __init__(self, db_session: Session):
+        self.db = db_session
+        
+    def get_conversation_by_id(self, conversation_id: str) -> Optional[Conversation]:
+        return self.db.query(Conversation).filter(Conversation.id == conversation_id).first()
+        
+    def get_conversations_by_workspace(self, workspace_id: str, limit: int = 100, offset: int = 0) -> List[Conversation]:
+        return self.db.query(Conversation).filter(
+            Conversation.workspace_id == workspace_id
+        ).order_by(Conversation.last_active_at.desc()).offset(offset).limit(limit).all()
+        
+    def add_message(self, conversation_id: str, content: str, role: str, metadata: Optional[Dict] = None) -> Dict:
+        # Implementation...
 ```
+
+A dedicated WorkspaceManager component is planned for the future to provide more advanced workspace management features.
 
 ## Security Manager
 
-The Security Manager handles authentication, data encryption, and authorization processes.
+The Security Manager handles basic encryption and authentication functions. The current implementation is simplified compared to the planned comprehensive security layer.
 
 ### Responsibilities
 
-- User authentication and authorization
-- API key and access token management
 - Data encryption for sensitive information
-- Access control policy enforcement
+- JSON serialization/deserialization
+- Basic token handling functions
 
-### Implementation Details
+### Current Implementation
 
 ```python
 class SecurityManager:
@@ -565,14 +548,11 @@ class SecurityManager:
         except Exception as e:
             logger.error(f"JSON parse failed: {str(e)}")
             return {}
-
-    async def check_access(self, user_id: str, resource: str, action: str) -> bool:
-        """Check if a user has access to a resource"""
-        # Implementation details
-        pass
 ```
 
-### Authentication Functions
+### Authentication Implementation
+
+Authentication is currently implemented through utility functions that handle JWT token generation and verification:
 
 ```python
 def generate_jwt_token(data: TokenData, expires_delta: Optional[timedelta] = None) -> str:
@@ -608,6 +588,39 @@ def verify_jwt_token(token: str) -> Optional[TokenData]:
         logger.warning("Invalid token")
         return None
 ```
+
+### Authentication Schemes
+
+The system also uses auth_schemes module for authentication dependencies:
+
+```python
+def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> User:
+    """Dependency to get the current authenticated user"""
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    
+    token_data = verify_jwt_token(token)
+    if token_data is None:
+        raise credentials_exception
+        
+    user = db.query(User).filter(User.id == token_data.user_id).first()
+    if user is None:
+        raise credentials_exception
+        
+    return user
+```
+
+### Future Enhancements
+
+Plans for enhancing security include:
+- Comprehensive access control policies
+- Advanced API key management 
+- Role-based authorization system
+- Resource-level permission checks
+- Integration with external identity providers
 
 ## Memory System Interface
 
@@ -689,11 +702,11 @@ class MemorySystemInterface(ABC):
         pass
 ```
 
-## Domain Expert Interface
+## Domain Expert Interface (Planned)
 
-The Domain Expert Interface defines the contract for domain expert entities.
+The Domain Expert Interface defines the planned contract for domain expert entities. This is a future component and is not currently implemented in the codebase.
 
-### Interface Definition
+### Planned Interface Definition
 
 ```python
 class ExpertTaskConstraints(BaseModel):
@@ -770,6 +783,8 @@ class DomainExpertInterface(ABC):
         """Get the capabilities of this domain expert"""
         pass
 ```
+
+**Note**: This interface is planned for future implementation. The current codebase does not include domain expert implementations.
 
 ## Circuit Breaker
 

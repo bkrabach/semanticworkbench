@@ -8,28 +8,27 @@ The Cortex Core SSE implementation provides real-time event streaming to clients
 
 The SSE architecture consists of the following key components:
 
-1. **SSE Service** (`app/components/sse/__init__.py`):
+1. **SSE Service** (`app/components/sse/manager.py`):
    - Central service that coordinates all SSE functionality
-   - Provides a unified interface for authentication, access control, and event delivery
+   - Handles connection management and event delivery
+   - Performs basic authentication and access control
 
-2. **Connection Manager** (`app/components/sse/manager.py`):
+2. **Connection Manager** (part of the SSE Service):
    - Manages the lifecycle of SSE connections
    - Handles connection registration, removal, and clean-up
    - Provides efficient queuing and event delivery
 
-3. **Authentication Service** (`app/components/sse/auth.py`):
-   - Performs token authentication and verification
-   - Enforces access control for resources
-   - Provides a clean abstraction for future auth systems
+3. **Authentication** (`app/components/sse/auth.py`):
+   - Contains authentication-related models and functions
+   - Provides validation methods for SSE connections
+   - Supports resource access verification
 
-4. **Event Subscriber** (`app/components/sse/events.py`):
-   - Subscribes to relevant events from the Event System
-   - Routes events to the appropriate SSE channels
-   - Ensures proper cleanup of subscriptions
-
-5. **Models** (`app/components/sse/models.py`):
+4. **Event Models** (`app/components/sse/models.py`):
    - Defines data types and models for the SSE module
-   - Enforces type safety and consistent interfaces
+   - Includes SSEConnectionStats, SSEEvent, and other models
+   - Supports typed event handling
+
+Each component is designed to be modular, making the system easier to maintain and extend over time.
 
 ## API Endpoints
 

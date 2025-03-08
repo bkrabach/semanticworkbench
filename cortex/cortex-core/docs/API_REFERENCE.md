@@ -2,7 +2,7 @@
 
 This document details the API endpoints available in Cortex Core.
 
-> **Note on Timestamps**: All timestamps in API responses are provided in ISO 8601 format with UTC timezone (indicated by the 'Z' suffix, e.g., `2023-01-15T12:00:00Z`). Timestamps are consistently provided with the `*_utc` suffix (e.g., `created_at_utc`) to clearly indicate their timezone. Client applications should convert these UTC timestamps to local time for display.
+> **⚠️ Implementation Notes**: This document describes the current state of API implementation. Some endpoints may be documented but not fully implemented yet. The prefix `/api/v1` is not currently implemented for most endpoints (except SSE endpoints which use `/v1`).
 
 ## Authentication API
 
@@ -29,7 +29,7 @@ Authenticate a user and create a session token.
   "success": true,
   "user_id": "user-uuid",
   "token": "jwt-token",
-  "expires_at": "2023-12-31T23:59:59Z"  // ISO 8601 format with 'Z' indicating UTC timezone
+  "expires_at": "2023-12-31T23:59:59Z"
 }
 ```
 
@@ -38,7 +38,7 @@ Authenticate a user and create a session token.
 - `401 Unauthorized`: Invalid credentials
 - `400 Bad Request`: Invalid request format
 
-### Refresh Token
+### Refresh Token (Not Implemented)
 
 Refresh an authentication token.
 
@@ -46,20 +46,17 @@ Refresh an authentication token.
 
 **Authentication**: Bearer token
 
+> ⚠️ Note: This endpoint returns a 501 Not Implemented status.
+
 **Response**:
 
 ```json
 {
   "success": true,
   "token": "new-jwt-token",
-  "expires_at": "2023-12-31T23:59:59Z"  // ISO 8601 format with 'Z' indicating UTC timezone
+  "expires_at": "2023-12-31T23:59:59Z"
 }
 ```
-
-**Error Responses**:
-
-- `401 Unauthorized`: Invalid or expired token
-- `400 Bad Request`: Invalid request format
 
 ### Logout
 
@@ -69,6 +66,8 @@ Log out and invalidate token.
 
 **Authentication**: Bearer token
 
+> ⚠️ Note: Currently, this endpoint returns a success message but does not fully invalidate tokens.
+
 **Response**:
 
 ```json
@@ -77,13 +76,15 @@ Log out and invalidate token.
 }
 ```
 
-### Generate API Key
+### Generate API Key (Partial Implementation)
 
 Generate an API key for programmatic access.
 
 **Endpoint**: `POST /auth/key/generate`
 
 **Authentication**: Bearer token
+
+> ⚠️ Note: API key authentication is not fully implemented yet.
 
 **Request Body**:
 
@@ -99,14 +100,9 @@ Generate an API key for programmatic access.
 ```json
 {
   "key": "api-key",
-  "expires_at": "2023-12-31T23:59:59Z"  // ISO 8601 format with 'Z' indicating UTC timezone
+  "expires_at": "2023-12-31T23:59:59Z"
 }
 ```
-
-**Error Responses**:
-
-- `401 Unauthorized`: Invalid or expired token
-- `400 Bad Request`: Invalid request format
 
 ## Workspace API
 
@@ -126,16 +122,14 @@ List workspaces for the current user.
     {
       "id": "workspace-uuid",
       "name": "Project X",
-      "created_at_utc": "2023-01-01T00:00:00Z",
-      "last_active_at_utc": "2023-01-10T15:30:00Z"
+      "created_at": "2023-01-01T00:00:00Z",
+      "last_active_at": "2023-01-10T15:30:00Z"
     }
   ]
 }
 ```
 
-**Error Responses**:
-
-- `401 Unauthorized`: Invalid or expired token
+> ⚠️ Note: The response format uses `created_at` and `last_active_at` rather than the `created_at_utc` and `last_active_at_utc` mentioned in older documentation.
 
 ### Create Workspace
 
@@ -162,110 +156,33 @@ Create a new workspace.
 {
   "id": "new-workspace-uuid",
   "name": "New Project",
-  "created_at_utc": "2023-01-15T00:00:00Z"
+  "created_at": "2023-01-15T00:00:00Z"
 }
 ```
 
-**Error Responses**:
-
-- `401 Unauthorized`: Invalid or expired token
-- `400 Bad Request`: Invalid request format
-
-### Get Workspace
+### Get Workspace (Not Implemented)
 
 Get details of a specific workspace.
 
 **Endpoint**: `GET /workspaces/{id}`
 
-**Authentication**: Bearer token
+> ⚠️ Note: This endpoint is not currently implemented.
 
-**Parameters**:
-
-- `id` (path): Workspace ID
-
-**Response**:
-
-```json
-{
-  "id": "workspace-uuid",
-  "name": "Project X",
-  "created_at_utc": "2023-01-01T00:00:00Z",
-  "last_active_at_utc": "2023-01-10T15:30:00Z",
-  "config": {
-    "default_modality": "chat"
-  },
-  "meta_data": {}
-}
-```
-
-**Error Responses**:
-
-- `401 Unauthorized`: Invalid or expired token
-- `404 Not Found`: Workspace not found
-
-### Update Workspace
+### Update Workspace (Not Implemented)
 
 Update a workspace.
 
 **Endpoint**: `PUT /workspaces/{id}`
 
-**Authentication**: Bearer token
+> ⚠️ Note: This endpoint is not currently implemented.
 
-**Parameters**:
-
-- `id` (path): Workspace ID
-
-**Request Body**:
-
-```json
-{
-  "name": "Updated Project Name",
-  "config": {
-    "default_modality": "voice"
-  }
-}
-```
-
-**Response**:
-
-```json
-{
-  "id": "workspace-uuid",
-  "name": "Updated Project Name",
-  "updated_at_utc": "2023-01-16T12:00:00Z"
-}
-```
-
-**Error Responses**:
-
-- `401 Unauthorized`: Invalid or expired token
-- `404 Not Found`: Workspace not found
-- `400 Bad Request`: Invalid request format
-
-### Delete Workspace
+### Delete Workspace (Not Implemented)
 
 Delete a workspace.
 
 **Endpoint**: `DELETE /workspaces/{id}`
 
-**Authentication**: Bearer token
-
-**Parameters**:
-
-- `id` (path): Workspace ID
-
-**Response**:
-
-```json
-{
-  "message": "Workspace deleted successfully"
-}
-```
-
-**Error Responses**:
-
-- `401 Unauthorized`: Invalid or expired token
-- `404 Not Found`: Workspace not found
+> ⚠️ Note: This endpoint is not currently implemented.
 
 ## Conversation API
 
@@ -290,17 +207,12 @@ List conversations in a workspace.
       "id": "conversation-uuid",
       "title": "Chat with AI",
       "modality": "chat",
-      "created_at_utc": "2023-01-15T10:00:00Z",
-      "last_active_at_utc": "2023-01-15T11:30:00Z"
+      "created_at": "2023-01-15T10:00:00Z",
+      "last_active_at": "2023-01-15T11:30:00Z"
     }
   ]
 }
 ```
-
-**Error Responses**:
-
-- `401 Unauthorized`: Invalid or expired token
-- `404 Not Found`: Workspace not found
 
 ### Create Conversation
 
@@ -330,15 +242,9 @@ Create a new conversation.
   "id": "new-conversation-uuid",
   "title": "New Discussion",
   "modality": "chat",
-  "created_at_utc": "2023-01-15T12:00:00Z"
+  "created_at": "2023-01-15T12:00:00Z"
 }
 ```
-
-**Error Responses**:
-
-- `401 Unauthorized`: Invalid or expired token
-- `404 Not Found`: Workspace not found
-- `400 Bad Request`: Invalid request format
 
 ### Get Conversation
 
@@ -359,17 +265,64 @@ Get details of a specific conversation.
   "id": "conversation-uuid",
   "title": "Chat with AI",
   "modality": "chat",
-  "created_at_utc": "2023-01-15T10:00:00Z",
-  "last_active_at_utc": "2023-01-15T11:30:00Z",
-  "workspace_id": "workspace-uuid",
-  "meta_data": {}
+  "created_at": "2023-01-15T10:00:00Z",
+  "last_active_at": "2023-01-15T11:30:00Z",
+  "workspace_id": "workspace-uuid"
 }
 ```
 
-**Error Responses**:
+### Update Conversation
 
-- `401 Unauthorized`: Invalid or expired token
-- `404 Not Found`: Conversation not found
+Update a conversation.
+
+**Endpoint**: `PATCH /conversations/{id}`
+
+> ⚠️ Note: The current implementation uses PATCH instead of the PUT method mentioned in older documentation.
+
+**Authentication**: Bearer token
+
+**Parameters**:
+
+- `id` (path): Conversation ID
+
+**Request Body**:
+
+```json
+{
+  "title": "Updated Discussion Name"
+}
+```
+
+**Response**:
+
+```json
+{
+  "id": "conversation-uuid",
+  "title": "Updated Discussion Name",
+  "modality": "chat",
+  "updated_at": "2023-01-16T12:00:00Z"
+}
+```
+
+### Delete Conversation
+
+Delete a conversation.
+
+**Endpoint**: `DELETE /conversations/{id}`
+
+**Authentication**: Bearer token
+
+**Parameters**:
+
+- `id` (path): Conversation ID
+
+**Response**:
+
+```json
+{
+  "message": "Conversation deleted successfully"
+}
+```
 
 ### Add Message to Conversation
 
@@ -400,23 +353,19 @@ Add a message to a conversation.
   "id": "message-uuid",
   "content": "Hello, how can you help me today?",
   "role": "user",
-  "created_at_utc": "2023-01-15T12:05:00Z"  // ISO 8601 format with 'Z' indicating UTC timezone
+  "created_at": "2023-01-15T12:05:00Z"
 }
 ```
 
-**Error Responses**:
-
-- `401 Unauthorized`: Invalid or expired token
-- `404 Not Found`: Conversation not found
-- `400 Bad Request`: Invalid request format
-
-### Stream Messages
+### Stream Messages (Partial Implementation)
 
 Send a message and receive a streaming response.
 
 **Endpoint**: `POST /conversations/{id}/messages/stream`
 
 **Authentication**: Bearer token
+
+> ⚠️ Note: This endpoint currently returns a placeholder response instructing clients to listen for events via the SSE endpoints.
 
 **Parameters**:
 
@@ -433,46 +382,13 @@ Send a message and receive a streaming response.
 ```
 
 **Response**:
-Server-Sent Events stream with chunks of the response in the following format:
 
 ```json
 {
-  "id": "response-uuid",
-  "created": 1689956912,
-  "model": "model-name",
-  "choices": [
-    {
-      "delta": {
-        "content": "chunk of text"
-      },
-      "index": 0
-    }
-  ]
+  "message": "Stream initiated. Listen to the SSE endpoint for real-time updates.",
+  "conversation_id": "conversation-uuid"
 }
 ```
-
-Final chunk includes finish reason:
-
-```json
-{
-  "id": "response-uuid",
-  "created": 1689956912,
-  "model": "model-name",
-  "choices": [
-    {
-      "delta": {},
-      "finish_reason": "stop",
-      "index": 0
-    }
-  ]
-}
-```
-
-**Error Responses**:
-
-- `401 Unauthorized`: Invalid or expired token
-- `404 Not Found`: Conversation not found
-- `400 Bad Request`: Invalid request format
 
 ### Get Conversation Messages
 
@@ -495,22 +411,17 @@ Get messages in a conversation.
       "id": "message-uuid-1",
       "content": "Hello, how can you help me today?",
       "role": "user",
-      "created_at_utc": "2023-01-15T12:05:00Z"
+      "created_at": "2023-01-15T12:05:00Z"
     },
     {
       "id": "message-uuid-2",
       "content": "I'm here to assist you with any questions or tasks you have. What would you like to work on today?",
       "role": "assistant",
-      "created_at_utc": "2023-01-15T12:05:05Z"
+      "created_at": "2023-01-15T12:05:05Z"
     }
   ]
 }
 ```
-
-**Error Responses**:
-
-- `401 Unauthorized`: Invalid or expired token
-- `404 Not Found`: Conversation not found
 
 ## Events API
 
@@ -543,7 +454,9 @@ Cortex Core uses Server-Sent Events (SSE) for real-time updates to clients. The 
 
 Depending on the channel type, you will receive different specialized events:
 
-#### Global Channel (`/v1/global/global`)
+#### Global Channel (`/v1/global`)
+
+> ⚠️ Note: The implementation uses `/v1/global` rather than `/v1/global/global` mentioned in older documentation.
 
 - `notification`: General system notifications
 - `system_update`: System update information
@@ -555,10 +468,10 @@ event: connect
 data: {"connected": true}
 
 event: notification
-data: {"message": "New platform feature available", "timestamp_utc": "2023-01-15T12:00:00Z"}
+data: {"message": "New platform feature available", "timestamp": "2023-01-15T12:00:00Z"}
 
 event: heartbeat
-data: {"timestamp_utc": "2023-01-15T12:00:30Z"}
+data: {"timestamp": "2023-01-15T12:00:30Z"}
 ```
 
 #### User Channel (`/v1/user/{user_id}`)
@@ -573,10 +486,10 @@ event: connect
 data: {"connected": true}
 
 event: notification
-data: {"message": "You have a new message", "timestamp_utc": "2023-01-15T12:00:00Z"}
+data: {"message": "You have a new message", "timestamp": "2023-01-15T12:00:00Z"}
 
 event: heartbeat
-data: {"timestamp_utc": "2023-01-15T12:00:30Z"}
+data: {"timestamp": "2023-01-15T12:00:30Z"}
 ```
 
 #### Workspace Channel (`/v1/workspace/{workspace_id}`)
@@ -584,8 +497,6 @@ data: {"timestamp_utc": "2023-01-15T12:00:30Z"}
 - `workspace_update`: Workspace metadata updates
 - `conversation_created`: New conversation in the workspace
 - `conversation_deleted`: Conversation deleted from workspace
-- `member_joined`: New member joined the workspace
-- `member_left`: Member left the workspace
 
 Example events:
 
@@ -594,10 +505,10 @@ event: connect
 data: {"connected": true}
 
 event: conversation_created
-data: {"id": "conversation-uuid", "title": "New Chat", "modality": "chat", "created_at_utc": "2023-01-15T12:00:00Z"}
+data: {"id": "conversation-uuid", "title": "New Chat", "modality": "chat", "created_at": "2023-01-15T12:00:00Z"}
 
 event: heartbeat
-data: {"timestamp_utc": "2023-01-15T12:00:30Z"}
+data: {"timestamp": "2023-01-15T12:00:30Z"}
 ```
 
 #### Conversation Channel (`/v1/conversation/{conversation_id}`)
@@ -613,13 +524,13 @@ event: connect
 data: {"connected": true}
 
 event: status_update
-data: {"status": "typing", "role": "assistant", "timestamp_utc": "2023-01-15T12:00:00Z"}
+data: {"status": "typing", "role": "assistant", "timestamp": "2023-01-15T12:00:00Z"}
 
 event: message_received
-data: {"id": "message-uuid", "content": "Hello there!", "role": "assistant", "created_at_utc": "2023-01-15T12:00:05Z"}
+data: {"id": "message-uuid", "content": "Hello there!", "role": "assistant", "created_at": "2023-01-15T12:00:05Z"}
 
 event: heartbeat
-data: {"timestamp_utc": "2023-01-15T12:00:30Z"}
+data: {"timestamp": "2023-01-15T12:00:30Z"}
 ```
 
 ### Connection Statistics
@@ -680,10 +591,6 @@ Get statistics about the event system.
 }
 ```
 
-**Error Responses**:
-
-- `401 Unauthorized`: Invalid or expired token
-
 ## Health Check API
 
 ### Health Check
@@ -710,25 +617,6 @@ Authorization: Bearer <token>
 
 Tokens are obtained through the login endpoint or by generating an API key.
 
-## Rate Limiting
-
-API endpoints are rate-limited to prevent abuse. Current limits:
-
-- Authentication endpoints: 10 requests per minute
-- All other endpoints: 100 requests per minute
-
-Exceeding these limits will result in a `429 Too Many Requests` response.
-
-## API Versioning
-
-The API version is included in the URL path:
-
-```
-/api/v1/workspaces
-```
-
-The current version is v1.
-
 ## Error Handling
 
 All error responses follow a standard format:
@@ -747,3 +635,13 @@ Common HTTP status codes:
 - `404 Not Found`: Resource not found
 - `429 Too Many Requests`: Rate limit exceeded
 - `500 Internal Server Error`: Server-side error
+- `501 Not Implemented`: The feature is not implemented yet
+
+## Timestamp Format Notes
+
+The current implementation uses timestamps with the following formats:
+- `created_at` (without the `_utc` suffix mentioned in older documentation)
+- `last_active_at` (without the `_utc` suffix)
+- `updated_at` (without the `_utc` suffix)
+
+All timestamps are provided in ISO 8601 format with UTC timezone (indicated by the 'Z' suffix, e.g., `2023-01-15T12:00:00Z`).
