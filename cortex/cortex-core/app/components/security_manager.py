@@ -5,16 +5,14 @@ Handles authentication, authorization, and encryption
 
 import json
 import hashlib
-from typing import Optional, Dict, List, Any, Union
-from datetime import datetime
-import secrets
+from typing import Optional, Any
 from cryptography.fernet import Fernet
 import base64
 from fastapi import Depends
 from sqlalchemy.orm import Session
 from app.database.connection import get_db
 from app.database.models import User
-from app.components.tokens import TokenData, verify_jwt_token
+from app.components.tokens import verify_jwt_token
 from app.components.auth_schemes import oauth2_scheme_optional
 
 from app.config import settings

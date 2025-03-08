@@ -4,7 +4,7 @@ Test suite for the monitoring API endpoints
 
 import pytest
 from fastapi.testclient import TestClient
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, patch
 
 from app.main import app
 from app.components.event_system import EventSystem

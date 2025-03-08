@@ -5,20 +5,17 @@ Core component for processing inputs and routing messages
 
 import asyncio
 import uuid
-import json
 import logging
 import threading
 import queue
 from datetime import datetime
 from queue import Queue
-from typing import Dict, List, Any, Optional, Set, Tuple
 
 from app.interfaces.router import (
     RouterInterface,
     InputMessage,
     OutputMessage,
-    RoutingDecision,
-    ChannelType
+    RoutingDecision
 )
 from app.components.event_system import get_event_system
 

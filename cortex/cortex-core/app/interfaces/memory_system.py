@@ -3,7 +3,7 @@ Memory System Interface for Cortex Core
 Defines the contract for memory systems (Whiteboard, JAKE, etc.)
 """
 
-from typing import Dict, List, Optional, Any, Protocol
+from typing import Dict, List, Optional, Any
 from datetime import datetime
 from abc import ABC, abstractmethod
 from pydantic import BaseModel

@@ -4,9 +4,8 @@ Defines the core interfaces for the Cortex system's messaging architecture
 """
 
 from __future__ import annotations
-from typing import Dict, List, Optional, Any, Protocol, Tuple, Callable, TYPE_CHECKING
+from typing import Dict, List, Optional, Any, Protocol, TYPE_CHECKING
 from enum import Enum
-from abc import ABC, abstractmethod
 from pydantic import BaseModel, Field
 from datetime import datetime
 import uuid

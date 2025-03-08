@@ -2,25 +2,19 @@
 Server-Sent Events (SSE) API endpoints for Cortex Core
 """
 
-from fastapi import APIRouter, Depends, Request, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, Request, HTTPException
 from fastapi.responses import StreamingResponse
-from sqlalchemy.orm import Session
-from typing import List, Dict, Any, AsyncGenerator, Optional
+from typing import List, Dict, Any, Optional
 import asyncio
 import json
 import uuid
 from datetime import datetime, timezone
 from fastapi import Query
-from app.components.security_manager import get_current_user_or_none
-from app.components.tokens import verify_jwt_token
 from app.api.auth import get_current_user
-from jose import jwt
 from app.config import settings
 
-from app.database.connection import get_db
-from app.database.models import User, Workspace, Conversation
+from app.database.models import User
 from app.utils.logger import logger
-from app.utils.json_helpers import DateTimeEncoder
 
 router = APIRouter()
 

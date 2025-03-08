@@ -2,11 +2,6 @@
 Integration tests for the main application
 """
 
-import pytest
-from unittest.mock import patch, AsyncMock, MagicMock
-import sys
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
 
 from app.main import app
 
@@ -14,7 +9,6 @@ from app.main import app
 def test_app_includes_monitoring_router():
     """Test that app includes the monitoring router"""
     # Get all registered routes in the app
-    test_client = TestClient(app)
     routes = app.routes
     
     # Find routes with monitoring prefix

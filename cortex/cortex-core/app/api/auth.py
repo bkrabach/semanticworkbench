@@ -3,10 +3,9 @@ Authentication API endpoints for Cortex Core
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordRequestForm
-from app.components.auth_schemes import oauth2_scheme, oauth2_scheme_optional
-from pydantic import BaseModel, Field
-from typing import Optional, List, Any, Dict
+from app.components.auth_schemes import oauth2_scheme
+from pydantic import BaseModel
+from typing import Optional, List
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta, timezone
 import uuid
@@ -16,7 +15,6 @@ from app.config import settings
 from app.utils.logger import logger
 from app.components.security_manager import SecurityManager
 from app.components.tokens import TokenData, generate_jwt_token, verify_jwt_token
-from app.utils.json_helpers import DateTimeEncoder
 
 # Create router
 router = APIRouter()

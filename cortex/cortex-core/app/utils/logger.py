@@ -53,7 +53,7 @@ class CustomFormatter(logging.Formatter):
                 try:
                     extra_data = getattr(record, "extra")
                     log_message += f" {json.dumps(extra_data)}"
-                except Exception as e:
+                except Exception:
                     pass
         except Exception:
             pass

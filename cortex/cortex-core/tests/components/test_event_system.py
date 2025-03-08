@@ -4,7 +4,7 @@ Test suite for the enhanced event system
 
 import pytest
 import asyncio
-from app.components.event_system import EventSystem, EventPayload
+from app.components.event_system import EventSystem
 
 
 @pytest.fixture

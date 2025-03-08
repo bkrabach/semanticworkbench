@@ -4,7 +4,7 @@ Helper functions for JSON serialization/deserialization with database storage
 
 import json
 from datetime import datetime
-from typing import Any, Dict, List, Optional, TypeVar, Generic, Type, Union
+from typing import Any, Dict, List, Optional, TypeVar
 from app.utils.logger import logger
 
 

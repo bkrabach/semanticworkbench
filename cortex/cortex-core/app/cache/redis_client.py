@@ -5,9 +5,8 @@ Redis cache utility for Cortex Core with in-memory fallback
 import redis.asyncio as redis
 from app.config import settings
 from app.utils.logger import logger
-import asyncio
 import time
-from typing import Dict, Any, Optional, Union
+from typing import Dict, Any, Optional
 import threading
 
 # Redis client instance

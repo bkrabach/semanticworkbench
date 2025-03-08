@@ -2,11 +2,9 @@
 Configuration management for Cortex Core using Pydantic
 """
 
-from typing import List, Optional, Dict, Any
-from pydantic import Field
+from typing import List, Optional, Dict
 from pydantic_settings import BaseSettings
 import os
-from pathlib import Path
 
 
 class MsalConfig(BaseSettings):

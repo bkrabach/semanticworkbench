@@ -2,8 +2,7 @@
 Main entry point for Cortex Core FastAPI application
 """
 
-import asyncio
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import uvicorn
@@ -99,7 +98,7 @@ async def request_logging_middleware(request: Request, call_next):
         # Add X-Process-Time header
         response.headers["X-Process-Time"] = str(process_time)
         return response
-    except Exception as e:
+    except Exception:
         # Log the error
         logger.error(f"Request failed: {method} {path}", exc_info=True)
         return JSONResponse(

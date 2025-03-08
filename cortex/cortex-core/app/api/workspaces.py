@@ -1,17 +1,14 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
+from fastapi import APIRouter, Depends, BackgroundTasks
 from sqlalchemy.orm import Session
 from typing import List, Optional, Dict, Any
-from pydantic import BaseModel, field_serializer, Field
+from pydantic import BaseModel, Field
 import uuid
 from datetime import datetime, timezone
 import json
-from pydantic.json import pydantic_encoder
 from app.database.connection import get_db
 from app.database.models import User, Workspace
 from app.api.auth import get_current_user
-from app.utils.logger import logger
 from app.api.sse import send_event_to_user
-from app.utils.json_helpers import DateTimeEncoder
 
 router = APIRouter()
 

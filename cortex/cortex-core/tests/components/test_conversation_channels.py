@@ -3,8 +3,7 @@ Test suite for the conversation channels implementation
 """
 
 import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
-import json
+from unittest.mock import AsyncMock, patch
 from datetime import datetime
 
 from app.components.conversation_channels import ConversationOutputPublisher
