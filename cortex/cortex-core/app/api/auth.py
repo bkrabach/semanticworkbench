@@ -51,11 +51,12 @@ class AuthResponse(BaseModel):
     expires_at_utc: Optional[datetime] = None
     error: Optional[str] = None
     
-    class Config:
-        json_encoders = {
+    model_config = {
+        "json_encoders": {
             # Ensure datetime is serialized to ISO format
             datetime: lambda dt: dt.isoformat()
         }
+    }
 
 
 class ApiKeyRequest(BaseModel):
@@ -71,11 +72,12 @@ class ApiKeyResponse(BaseModel):
     key: str
     expires_at_utc: Optional[datetime] = None
     
-    class Config:
-        json_encoders = {
+    model_config = {
+        "json_encoders": {
             # Ensure datetime is serialized to ISO format
             datetime: lambda dt: dt.isoformat()
         }
+    }
 
 
 # Authentication dependency
@@ -191,7 +193,7 @@ async def login(credentials: UserCredentials, db: Session = Depends(get_db)):
                 return AuthResponse(success=False, error="Invalid email or password")
 
             # Update last login time
-            user.last_login_at = datetime.utcnow()
+            user.last_login_at_utc = datetime.now(timezone.utc)
             db.commit()
             
             # Check if user has any workspaces, create a default one if not
@@ -199,13 +201,13 @@ async def login(credentials: UserCredentials, db: Session = Depends(get_db)):
             workspace_count = db.query(Workspace).filter(Workspace.user_id == user.id).count()
             if workspace_count == 0:
                 # Create default workspace for existing user
-                now = datetime.utcnow()
+                now = datetime.now(timezone.utc)
                 default_workspace = Workspace(
                     id=str(uuid.uuid4()),
                     name="My Workspace",
                     user_id=user.id,
-                    created_at=now,
-                    last_active_at=now,
+                    created_at_utc=now,
+                    last_active_at_utc=now,
                     config="{}",
                     meta_data="{}"
                 )
@@ -233,7 +235,7 @@ async def login(credentials: UserCredentials, db: Session = Depends(get_db)):
             )
 
         # Generate JWT token
-        token_expires = datetime.utcnow() + timedelta(
+        token_expires = datetime.now(timezone.utc) + timedelta(
             seconds=settings.security.token_expiry_seconds
         )
         token = generate_jwt_token(
@@ -245,7 +247,7 @@ async def login(credentials: UserCredentials, db: Session = Depends(get_db)):
         logger.info(f"User {user.id} authenticated successfully")
 
         return AuthResponse(
-            success=True, user_id=user.id, token=token, expires_at=token_expires
+            success=True, user_id=user.id, token=token, expires_at_utc=token_expires
         )
 
     except Exception as e:
@@ -282,7 +284,7 @@ async def generate_api_key(
         # Calculate expiry date if provided
         expiry = None
         if request.expiry_days:
-            expiry = datetime.utcnow() + timedelta(days=request.expiry_days)
+            expiry = datetime.now(timezone.utc) + timedelta(days=request.expiry_days)
 
         # Generate random key
         import secrets
@@ -298,8 +300,8 @@ async def generate_api_key(
             key=encrypted_key,
             user_id=user.id,
             scopes_json=security_manager.stringify_json(request.scopes),
-            created_at=datetime.utcnow(),
-            expires_at=expiry,
+            created_at_utc=datetime.now(timezone.utc),
+            expires_at_utc=expiry,
         )
 
         db.add(api_key)
@@ -307,7 +309,7 @@ async def generate_api_key(
 
         logger.info(f"Generated API key for user {user.id}")
 
-        return ApiKeyResponse(key=key, expires_at=expiry)
+        return ApiKeyResponse(key=key, expires_at_utc=expiry)
 
     except Exception as e:
         logger.error(f"Failed to generate API key: {str(e)}", exc_info=True)

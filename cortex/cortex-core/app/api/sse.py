@@ -32,7 +32,7 @@ class DateTimeEncoder(JSONEncoder):
         return super().default(o)
 
 # In-memory store for active SSE connections
-active_connections: Dict[str, List[Dict[str, Any]]] = {
+active_connections = {
     "global": [],
     "users": {},
     "workspaces": {},
@@ -136,20 +136,23 @@ def get_active_connection_count() -> Dict[str, Any]:
     Returns:
         Dictionary with connection counts by channel
     """
+    users_count = {}
+    for user_id, connections in active_connections["users"].items():
+        users_count[user_id] = len(connections)
+        
+    workspaces_count = {}
+    for workspace_id, connections in active_connections["workspaces"].items():
+        workspaces_count[workspace_id] = len(connections)
+        
+    conversations_count = {}
+    for conversation_id, connections in active_connections["conversations"].items():
+        conversations_count[conversation_id] = len(connections)
+    
     return {
         "global": len(active_connections["global"]),
-        "users": {
-            user_id: len(connections)
-            for user_id, connections in active_connections["users"].items()
-        },
-        "workspaces": {
-            workspace_id: len(connections)
-            for workspace_id, connections in active_connections["workspaces"].items()
-        },
-        "conversations": {
-            conversation_id: len(connections)
-            for conversation_id, connections in active_connections["conversations"].items()
-        },
+        "users": users_count,
+        "workspaces": workspaces_count,
+        "conversations": conversations_count
     }
 
 

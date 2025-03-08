@@ -6,8 +6,9 @@ import json
 import logging
 from typing import Dict, Any, Optional
 from uuid import uuid4
-from datetime import datetime
+from datetime import datetime, timezone
 
+from sqlalchemy import text
 from app.interfaces.router import (
     InputReceiverInterface,
     OutputPublisherInterface,
@@ -20,6 +21,13 @@ from app.components.cortex_router import get_router
 from app.api.sse import send_event_to_conversation
 from app.database.models import Conversation
 from sqlalchemy.orm import Session
+
+# Custom JSON encoder for datetime objects
+class DateTimeEncoder(json.JSONEncoder):
+    def default(self, o):
+        if isinstance(o, datetime):
+            return o.isoformat()
+        return super().default(o)
 
 
 class ConversationInputReceiver(InputReceiverInterface):
@@ -40,27 +48,27 @@ class ConversationInputReceiver(InputReceiverInterface):
         self.channel_id = f"conversation-{conversation_id}"
         self.logger = logging.getLogger(__name__)
     
-    async def receive_input(
-        self,
-        content: str,
-        user_id: Optional[str] = None,
-        workspace_id: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-        db: Optional[Session] = None
-    ) -> bool:
+    async def receive_input(self, **kwargs) -> bool:
         """
-        Receive a message from the conversation API
+        Receive a message from the conversation API using kwargs
         
         Args:
-            content: Message content
-            user_id: User ID
-            workspace_id: Workspace ID
-            metadata: Additional metadata
-            db: Database session
+            **kwargs: Keyword arguments including:
+                content: Message content
+                user_id: User ID
+                workspace_id: Workspace ID 
+                metadata: Additional metadata
+                db: Database session
             
         Returns:
             Boolean indicating success
         """
+        content = kwargs.get('content')
+        user_id = kwargs.get('user_id')
+        workspace_id = kwargs.get('workspace_id')
+        metadata = kwargs.get('metadata', {})
+        db = kwargs.get('db')
+        
         # Format the message
         message = InputMessage(
             message_id=str(uuid4()),
@@ -70,7 +78,7 @@ class ConversationInputReceiver(InputReceiverInterface):
             user_id=user_id,
             workspace_id=workspace_id,
             conversation_id=self.conversation_id,
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             metadata=metadata or {}
         )
         
@@ -237,7 +245,8 @@ class ConversationOutputPublisher(OutputPublisherInterface):
             
         # Parse entries
         try:
-            entries = json.loads(conversation.entries)
+            entries_str = str(conversation.entries) if conversation.entries else "[]"
+            entries = json.loads(entries_str)
         except json.JSONDecodeError:
             entries = []
             
@@ -246,12 +255,13 @@ class ConversationOutputPublisher(OutputPublisherInterface):
             "id": message.message_id,
             "content": message.content,
             "role": "assistant",  # Hardcoded for now
-            "created_at_utc": message.timestamp,
+            "created_at_utc": message.timestamp.isoformat(),
             "metadata": message.metadata
         })
         
         # Update conversation
-        conversation.entries = json.dumps(entries, cls=DateTimeEncoder)
+        entries_json = json.dumps(entries, cls=DateTimeEncoder)
+        conversation.entries = entries_json
         conversation.last_active_at_utc = message.timestamp
         
         # Commit to DB

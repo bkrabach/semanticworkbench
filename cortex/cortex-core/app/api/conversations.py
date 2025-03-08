@@ -5,6 +5,7 @@ Conversation API endpoints for Cortex Core
 from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field
 import uuid
@@ -59,11 +60,12 @@ class MessageResponse(BaseModel):
     created_at_utc: datetime  # UTC timestamp for message creation
     metadata: Optional[Dict[str, Any]] = None
     
-    class Config:
-        json_encoders = {
+    model_config = {
+        "json_encoders": {
             # Ensure datetime is serialized to ISO format
             datetime: lambda dt: dt.isoformat()
         }
+    }
 
 
 class ConversationResponse(BaseModel):
@@ -76,12 +78,13 @@ class ConversationResponse(BaseModel):
     last_active_at: datetime
     metadata: Dict[str, Any] = Field(default_factory=dict)
     
-    class Config:
-        from_attributes = True  # Allow model creation from ORM objects
-        json_encoders = {
+    model_config = {
+        "from_attributes": True,
+        "json_encoders": {
             # Ensure datetime is serialized to ISO format
             datetime: lambda dt: dt.isoformat()
         }
+    }
 
 
 @router.get("/workspaces/{workspace_id}/conversations", response_model=List[ConversationResponse])
@@ -125,13 +128,17 @@ async def list_conversations(
     processed_conversations = []
     for conversation in conversations:
         # Parse JSON strings to dictionaries
-        metadata = json.loads(conversation.meta_data) if conversation.meta_data else {}
+        meta_data_str = str(conversation.meta_data) if conversation.meta_data else "{}"
+        try:
+            metadata = json.loads(meta_data_str)
+        except json.JSONDecodeError:
+            metadata = {}
         
         conversation_dict = {
-            "id": conversation.id,
-            "title": conversation.title,
-            "modality": conversation.modality,
-            "workspace_id": conversation.workspace_id,
+            "id": str(conversation.id),
+            "title": str(conversation.title),
+            "modality": str(conversation.modality),
+            "workspace_id": str(conversation.workspace_id),
             "created_at": conversation.created_at_utc,
             "last_active_at": conversation.last_active_at_utc,
             "metadata": metadata
@@ -194,8 +201,10 @@ async def create_conversation(
     db.refresh(new_conversation)
 
     # Update workspace last_active_at_utc
-    workspace.last_active_at_utc = now
-    db.commit()
+    workspace = db.query(Workspace).filter(Workspace.id == workspace_id).first()
+    if workspace:
+        workspace.last_active_at_utc = now
+        db.commit()
 
     # Send SSE event for the new conversation in the background
     background_tasks.add_task(

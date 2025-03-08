@@ -47,12 +47,12 @@ class WorkspaceResponse(BaseModel):
     config: Dict[str, Any] = Field(default_factory=dict)
     meta_data: Dict[str, Any] = Field(default_factory=dict)
     
-    class Config:
-        from_attributes = True  # Allow model creation from ORM objects
-        json_encoders = {
-            # Ensure datetime is serialized to ISO format
+    model_config = {
+        "from_attributes": True,
+        "json_encoders": {
             datetime: lambda dt: dt.isoformat()
         }
+    }
 
 
 @router.get("/workspaces", response_model=Dict[str, List[WorkspaceResponse]])
@@ -71,13 +71,26 @@ async def list_workspaces(
     processed_workspaces = []
     for workspace in workspaces:
         # Parse JSON strings to dictionaries
+        config_str = str(workspace.config) if workspace.config else "{}"
+        meta_data_str = str(workspace.meta_data) if workspace.meta_data else "{}"
+        
+        try:
+            config = json.loads(config_str)
+        except json.JSONDecodeError:
+            config = {}
+            
+        try:
+            meta_data = json.loads(meta_data_str)
+        except json.JSONDecodeError:
+            meta_data = {}
+            
         workspace_dict = {
-            "id": workspace.id,
-            "name": workspace.name,
+            "id": str(workspace.id),
+            "name": str(workspace.name),
             "created_at_utc": workspace.created_at_utc,
             "last_active_at_utc": workspace.last_active_at_utc,
-            "config": json.loads(workspace.config) if workspace.config else {},
-            "meta_data": json.loads(workspace.meta_data) if workspace.meta_data else {}
+            "config": config,
+            "meta_data": meta_data
         }
         processed_workspaces.append(WorkspaceResponse.model_validate(workspace_dict))
     
@@ -125,11 +138,24 @@ async def create_workspace(
     )
 
     # Parse JSON strings and return validated model
+    config_str = str(new_workspace.config) if new_workspace.config else "{}"
+    meta_data_str = str(new_workspace.meta_data) if new_workspace.meta_data else "{}"
+    
+    try:
+        config = json.loads(config_str)
+    except json.JSONDecodeError:
+        config = {}
+        
+    try:
+        meta_data = json.loads(meta_data_str)
+    except json.JSONDecodeError:
+        meta_data = {}
+    
     return WorkspaceResponse.model_validate({
-        "id": new_workspace.id,
-        "name": new_workspace.name,
+        "id": str(new_workspace.id),
+        "name": str(new_workspace.name),
         "created_at_utc": new_workspace.created_at_utc,
         "last_active_at_utc": new_workspace.last_active_at_utc,
-        "config": json.loads(new_workspace.config) if new_workspace.config else {},
-        "meta_data": json.loads(new_workspace.meta_data) if new_workspace.meta_data else {}
+        "config": config,
+        "meta_data": meta_data
     })

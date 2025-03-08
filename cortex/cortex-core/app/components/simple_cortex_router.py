@@ -14,19 +14,29 @@ from sqlalchemy.orm import Session
 
 from app.utils.logger import logger
 from app.interfaces.router import (
-    CortexRouterInterface, 
+    RouterInterface, 
     RoutingDecision,
     InputMessage,
-    InputChannel,
-    OutputChannel,
-    InputChannelType,
-    OutputChannelType
+    ChannelType
 )
+
+# Define channel classes for this implementation
+class InputChannel:
+    def __init__(self, channel_id: str, channel_type: ChannelType, metadata=None):
+        self.channel_id = channel_id
+        self.channel_type = channel_type
+        self.metadata = metadata or {}
+
+class OutputChannel:
+    def __init__(self, channel_id: str, channel_type: ChannelType, metadata=None):
+        self.channel_id = channel_id
+        self.channel_type = channel_type
+        self.metadata = metadata or {}
 from app.api.sse import send_event_to_conversation
 from app.database.models import Conversation
 
 
-class SimpleCortexRouter(CortexRouterInterface):
+class SimpleCortexRouter(RouterInterface):
     """
     Simple implementation of the Cortex Router
     
@@ -84,7 +94,7 @@ class SimpleCortexRouter(CortexRouterInterface):
                 if not isinstance(e, asyncio.TimeoutError):
                     logger.error(f"Error processing message: {e}")
     
-    async def accept_input(self, message: InputMessage) -> bool:
+    async def process_input(self, message: InputMessage) -> bool:
         """
         Accept an input message for asynchronous processing
         
@@ -94,12 +104,12 @@ class SimpleCortexRouter(CortexRouterInterface):
         Returns:
             True if message was queued successfully
         """
-        logger.info(f"Accepting message from channel {message.channel.channel_id} of type {message.channel.channel_type}")
+        logger.info(f"Accepting message from channel {message.channel_id} of type {message.channel_type}")
         
         try:
             # Map conversation ID to input channel ID for potential responses
             if message.conversation_id:
-                self.conversation_output_map[message.conversation_id] = message.channel.channel_id
+                self.conversation_output_map[message.conversation_id] = message.channel_id
             
             # Queue the message for asynchronous processing
             self.message_queue.put(message)
@@ -119,7 +129,7 @@ class SimpleCortexRouter(CortexRouterInterface):
         Returns:
             Routing decision
         """
-        logger.info(f"Routing message from channel {message.channel.channel_id}")
+        logger.info(f"Routing message from channel {message.channel_id}")
         
         # Generate a unique request ID for tracking
         request_id = str(uuid.uuid4())
@@ -160,7 +170,7 @@ class SimpleCortexRouter(CortexRouterInterface):
         
         try:
             # Handle different channel types
-            if channel.channel_type == OutputChannelType.CONVERSATION:
+            if channel.channel_type == ChannelType.CONVERSATION:
                 # For conversation channels, use the SSE mechanism
                 conversation_id = channel.metadata.get("conversation_id")
                 if not conversation_id:
@@ -223,7 +233,7 @@ class SimpleCortexRouter(CortexRouterInterface):
                 
                 return True
                 
-            elif channel.channel_type == OutputChannelType.NOTIFICATION:
+            elif channel.channel_type == ChannelType.NOTIFICATION:
                 # Send as a notification
                 conversation_id = channel.metadata.get("conversation_id")
                 if conversation_id:
@@ -349,7 +359,7 @@ class SimpleCortexRouter(CortexRouterInterface):
         if message.conversation_id:
             # Check if we already have a registered channel for this conversation
             for channel_id, channel in self.output_channels.items():
-                if (channel.channel_type == OutputChannelType.CONVERSATION and 
+                if (channel.channel_type == ChannelType.CONVERSATION and 
                     channel.metadata.get("conversation_id") == message.conversation_id):
                     return channel
             
@@ -357,7 +367,7 @@ class SimpleCortexRouter(CortexRouterInterface):
             channel_id = f"conversation-{message.conversation_id}"
             channel = OutputChannel(
                 channel_id=channel_id,
-                channel_type=OutputChannelType.CONVERSATION,
+                channel_type=ChannelType.CONVERSATION,
                 metadata={
                     "conversation_id": message.conversation_id,
                     # We would normally get this from a DB connection pool
