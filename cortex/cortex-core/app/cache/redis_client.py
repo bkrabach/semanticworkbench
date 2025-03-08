@@ -121,6 +121,9 @@ class RedisClient:
             return "OK"
         else:
             # Use Redis
+            if redis_client is None:
+                logger.error("Redis client is None, unable to set key")
+                return "ERROR"
             return await redis_client.set(key, value, ex=ex, px=px)
 
     @staticmethod
@@ -140,6 +143,9 @@ class RedisClient:
 
             return entry["value"]
         else:
+            if redis_client is None:
+                logger.error("Redis client is None, unable to get key")
+                return None
             return await redis_client.get(key)
 
     @staticmethod
@@ -151,6 +157,9 @@ class RedisClient:
                 return 1
             return 0
         else:
+            if redis_client is None:
+                logger.error("Redis client is None, unable to delete key")
+                return 0
             return await redis_client.delete(key)
 
     @staticmethod
@@ -169,6 +178,9 @@ class RedisClient:
 
             return 0
         else:
+            if redis_client is None:
+                logger.error("Redis client is None, unable to check if key exists")
+                return 0
             return await redis_client.exists(key)
 
     @staticmethod
@@ -190,6 +202,9 @@ class RedisClient:
             memory_cache[key] = entry
             return 1
         else:
+            if redis_client is None:
+                logger.error("Redis client is None, unable to set expiry on key")
+                return 0
             return await redis_client.expire(key, seconds)
 
     @staticmethod
@@ -216,6 +231,9 @@ class RedisClient:
             # Return TTL in seconds
             return int(entry["expiry"] - now)
         else:
+            if redis_client is None:
+                logger.error("Redis client is None, unable to get TTL for key")
+                return -2
             return await redis_client.ttl(key)
 
     @staticmethod
@@ -243,6 +261,9 @@ class RedisClient:
 
             return new_value
         else:
+            if redis_client is None:
+                logger.error("Redis client is None, unable to increment key")
+                return 0
             return await redis_client.incr(key)
 
     @staticmethod
@@ -270,6 +291,9 @@ class RedisClient:
 
             return new_value
         else:
+            if redis_client is None:
+                logger.error("Redis client is None, unable to increment key by amount")
+                return 0
             return await redis_client.incrby(key, amount)
 
     @staticmethod
@@ -285,6 +309,9 @@ class RedisClient:
             memory_cache[key] = {"value": value, "expiry": None}
             return 1
         else:
+            if redis_client is None:
+                logger.error("Redis client is None, unable to set key if not exists")
+                return 0
             return await redis_client.setnx(key, value)
 
     @staticmethod
@@ -294,6 +321,9 @@ class RedisClient:
             memory_cache.clear()
             return "OK"
         else:
+            if redis_client is None:
+                logger.error("Redis client is None, unable to flush all data")
+                return "ERROR"
             return await redis_client.flushall()
 
     @staticmethod

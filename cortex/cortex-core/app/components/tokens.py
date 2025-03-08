@@ -4,6 +4,7 @@ Handles JWT token generation, validation, and token data models
 """
 
 from jose import jwt
+from jose.exceptions import ExpiredSignatureError, JWTError
 from typing import Optional, List
 from datetime import datetime, timedelta, timezone
 from pydantic import BaseModel
@@ -68,9 +69,9 @@ def verify_jwt_token(token: str) -> Optional[TokenData]:
 
         return TokenData(user_id=user_id, scopes=scopes)
 
-    except jwt.ExpiredSignatureError:
+    except ExpiredSignatureError:
         logger.warning("Token has expired")
         return None
-    except jwt.JWTError:
+    except JWTError:
         logger.warning("Invalid token")
         return None

@@ -26,10 +26,10 @@ router = APIRouter()
 
 # Custom JSON encoder to handle datetime objects
 class DateTimeEncoder(JSONEncoder):
-    def default(self, obj):
-        if isinstance(obj, datetime):
-            return obj.isoformat()
-        return super().default(obj)
+    def default(self, o):
+        if isinstance(o, datetime):
+            return o.isoformat()
+        return super().default(o)
 
 # In-memory store for active SSE connections
 active_connections: Dict[str, List[Dict[str, Any]]] = {

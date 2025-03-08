@@ -282,10 +282,10 @@ class ConversationOutputPublisher(OutputPublisherInterface):
 
 # Custom JSON encoder for datetime objects
 class DateTimeEncoder(json.JSONEncoder):
-    def default(self, obj):
-        if isinstance(obj, datetime):
-            return obj.isoformat()
-        return super().default(obj)
+    def default(self, o):
+        if isinstance(o, datetime):
+            return o.isoformat()
+        return super().default(o)
 
 
 # Global registry of output publishers
