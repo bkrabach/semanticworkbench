@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, timezone
 
 from app.main import app
 from app.config import settings
-from app.api.sse import active_connections
+from app.components.sse import get_sse_service
 
 
 # Mock response for SSE testing
@@ -70,7 +70,7 @@ def sse_test_client(monkeypatch):
 
     # Patch get method to return mock responses for SSE endpoints
     def mock_get(url, **kwargs):
-        if "/events" in url and "token=" in url:
+        if "/v1/" in url and "token=" in url:
             # For any SSE endpoint with a token, return a mock response
             token = url.split("token=")[1].split("&")[0] if "token=" in url else None
             if token:
@@ -79,13 +79,17 @@ def sse_test_client(monkeypatch):
                     payload = jwt.decode(token, settings.security.jwt_secret, algorithms=["HS256"])
 
                     # For user-specific endpoint, check the user ID matches
-                    if "/users/" in url:
-                        url_user_id = url.split("/users/")[1].split("/")[0]
+                    if "/user/" in url:
+                        url_user_id = url.split("/user/")[1].split("?")[0]
                         token_user_id = payload.get("user_id")
 
                         # If user IDs don't match, let the endpoint handle the authorization error
                         if url_user_id != token_user_id:
                             return original_get(url, **kwargs)
+
+                    # For global endpoint, no additional checks needed
+                    if "/v1/global" in url:
+                        return MockSSEResponse()
 
                     # Valid token and matching user ID (if applicable)
                     return MockSSEResponse()
@@ -102,27 +106,30 @@ def sse_test_client(monkeypatch):
 @pytest.fixture
 def clean_connections():
     """Create a clean set of connections for the test"""
+    # Get the connection manager
+    connection_manager = get_sse_service().connection_manager
+    
     # Save original connections
     original = {
-        "global": active_connections["global"].copy(),
-        "users": {k: v.copy() for k, v in active_connections["users"].items()},
-        "workspaces": {k: v.copy() for k, v in active_connections["workspaces"].items()},
-        "conversations": {k: v.copy() for k, v in active_connections["conversations"].items()},
+        "global": connection_manager.connections["global"].copy(),
+        "user": {k: v.copy() for k, v in connection_manager.connections["user"].items()},
+        "workspace": {k: v.copy() for k, v in connection_manager.connections["workspace"].items()},
+        "conversation": {k: v.copy() for k, v in connection_manager.connections["conversation"].items()},
     }
 
     # Clear connections for the test
-    active_connections["global"].clear()
-    active_connections["users"].clear()
-    active_connections["workspaces"].clear()
-    active_connections["conversations"].clear()
+    connection_manager.connections["global"].clear()
+    connection_manager.connections["user"].clear()
+    connection_manager.connections["workspace"].clear()
+    connection_manager.connections["conversation"].clear()
 
-    yield active_connections
+    yield connection_manager.connections
 
     # Restore original connections
-    active_connections["global"] = original["global"]
-    active_connections["users"] = original["users"]
-    active_connections["workspaces"] = original["workspaces"]
-    active_connections["conversations"] = original["conversations"]
+    connection_manager.connections["global"] = original["global"]
+    connection_manager.connections["user"] = original["user"]
+    connection_manager.connections["workspace"] = original["workspace"]
+    connection_manager.connections["conversation"] = original["conversation"]
 
 
 # Tests
@@ -131,12 +138,11 @@ def test_sse_global_events_endpoint_auth(sse_test_client, valid_token):
     token, user_id = valid_token
 
     # Test with no token
-    response = sse_test_client.get("/events")
-    assert response.status_code == 401
-    assert "No token provided" in response.json()["detail"]
+    response = sse_test_client.get("/v1/global")
+    assert response.status_code == 422  # Validation error for missing required query parameter
 
     # Test with valid token
-    response = sse_test_client.get(f"/events?token={token}")
+    response = sse_test_client.get(f"/v1/global?token={token}")
     assert response.status_code == 200
     assert response.headers["content-type"] == "text/event-stream"
 
@@ -149,18 +155,18 @@ def test_sse_user_events_endpoint(sse_test_client, valid_token):
     token, user_id = valid_token
 
     # Test with no token
-    response = sse_test_client.get(f"/users/{user_id}/events")
-    assert response.status_code == 401
+    response = sse_test_client.get(f"/v1/user/{user_id}")
+    assert response.status_code == 422  # Validation error for missing required query parameter
 
     # Test with valid token
-    response = sse_test_client.get(f"/users/{user_id}/events?token={token}")
+    response = sse_test_client.get(f"/v1/user/{user_id}?token={token}")
     assert response.status_code == 200
     assert response.headers["content-type"] == "text/event-stream"
 
     # Test with token for different user
     other_user_id = str(uuid.uuid4())
-    response = sse_test_client.get(f"/users/{other_user_id}/events?token={token}")
-    assert response.status_code == 401 or response.status_code == 403
+    response = sse_test_client.get(f"/v1/user/{other_user_id}?token={token}")
+    assert response.status_code == 403  # Should now consistently be 403 Forbidden
 
     # Close any open connections
     if response.status_code == 200:
@@ -173,7 +179,7 @@ def test_sse_workspace_events_endpoint(sse_test_client, valid_token):
     workspace_id = str(uuid.uuid4())
 
     # Test with valid token
-    response = sse_test_client.get(f"/workspaces/{workspace_id}/events?token={token}")
+    response = sse_test_client.get(f"/v1/workspace/{workspace_id}?token={token}")
     assert response.status_code == 200
     assert response.headers["content-type"] == "text/event-stream"
 
@@ -195,7 +201,7 @@ def test_sse_conversation_events_endpoint(sse_test_client, valid_token, monkeypa
                side_effect=mock_publisher):
 
         # Test with valid token
-        response = sse_test_client.get(f"/conversations/{conversation_id}/events?token={token}")
+        response = sse_test_client.get(f"/v1/conversation/{conversation_id}?token={token}")
         assert response.status_code == 200
         assert response.headers["content-type"] == "text/event-stream"
 
@@ -212,23 +218,23 @@ async def test_sse_connection_tracking(clean_connections):
     user_id = str(uuid.uuid4())
     queue = asyncio.Queue()
 
-    if conversation_id not in clean_connections["conversations"]:
-        clean_connections["conversations"][conversation_id] = []
+    if conversation_id not in clean_connections["conversation"]:
+        clean_connections["conversation"][conversation_id] = []
 
-    clean_connections["conversations"][conversation_id].append({
+    clean_connections["conversation"][conversation_id].append({
         "id": connection_id,
         "user_id": user_id,
         "queue": queue
     })
 
     # Verify connection was added
-    assert len(clean_connections["conversations"][conversation_id]) == 1
+    assert len(clean_connections["conversation"][conversation_id]) == 1
 
     # Remove the connection
-    clean_connections["conversations"][conversation_id] = [
-        conn for conn in clean_connections["conversations"][conversation_id]
+    clean_connections["conversation"][conversation_id] = [
+        conn for conn in clean_connections["conversation"][conversation_id]
         if conn["id"] != connection_id
     ]
 
     # Verify connection was removed
-    assert len(clean_connections["conversations"][conversation_id]) == 0
+    assert len(clean_connections["conversation"][conversation_id]) == 0

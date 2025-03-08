@@ -371,7 +371,18 @@ The CI pipeline runs:
 - Keep components modular and focused on a single responsibility
 - Use dependency injection for better testability
 
-## Architecture Guidelines
+## Core Development Principles
+
+### Clean Implementation Over Backward Compatibility
+
+**Important**: This codebase is currently in pre-production development. Therefore:
+
+- **No Backward Compatibility Required**: When refactoring or redesigning components, do not maintain backward compatibility with previous implementations.
+- **No Migration Path Needed**: Since the codebase and database are not yet in production use, you don't need to provide migration paths between versions.
+- **Focus on Clean Design**: Prioritize creating clean, well-designed APIs and components without worrying about preserving old patterns or interfaces.
+- **Delete Unused Code**: Remove deprecated or unused code entirely rather than keeping it around for compatibility.
+
+This principle allows us to move quickly and maintain a clean codebase during initial development.
 
 ### Layered Architecture
 
@@ -468,12 +479,15 @@ Before approving a PR, check:
 - [ ] Is there clear separation between API handlers and business logic?
 - [ ] Are database operations contained within repositories?
 
-### Refactoring Strategy for Legacy Code
+### Refactoring Strategy
 
-When encountering code that doesn't follow these patterns:
+When refactoring existing code:
 
-1. **Identify seams**: Find natural boundaries where you can introduce interfaces
-2. **Extract repositories**: Move data access into repository classes
-3. **Extract services**: Move business logic into service classes
-4. **Update tests**: Rewrite tests to target public interfaces, not implementation details
-5. **Introduce interfaces**: Define clear interfaces between components
+1. **Identify better designs**: Think about the cleanest possible implementation without constraints
+2. **Make clean breaks**: Don't worry about maintaining backward compatibility 
+3. **Extract repositories and services**: Move data access into repository classes and business logic into service classes
+4. **Implement interfaces**: Define clear interfaces between components
+5. **Update tests**: Rewrite tests to target public interfaces, not implementation details
+6. **Remove old implementations**: Delete deprecated code completely rather than leaving it for compatibility
+
+Remember: This is a pre-production codebase, so prioritize clean implementation over compatibility.

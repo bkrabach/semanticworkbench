@@ -42,12 +42,28 @@ async def lifespan(app: FastAPI):
     app.state.event_system = get_event_system()
     logger.info("Event System initialized")
 
-    # Additional startup initialization could be added here
+    # Initialize SSE service
+    try:
+        # Use the new modular SSE service
+        from app.components.sse import get_sse_service
+        app.state.sse_service = get_sse_service()
+        await app.state.sse_service.initialize()
+        logger.info("SSE Service initialized")
+    except Exception as e:
+        logger.error(f"Error initializing SSE service: {e}")
 
     yield
 
     # Shutdown
     logger.info("Shutting down Cortex Core")
+
+    # Clean up SSE service
+    try:
+        if hasattr(app.state, "sse_service"):
+            await app.state.sse_service.cleanup()
+            logger.info("SSE Service cleaned up")
+    except Exception as e:
+        logger.error(f"Error cleaning up SSE service: {e}")
 
     # Disconnect from Redis
     await disconnect_redis()
@@ -210,7 +226,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 
 # Include routers
 app.include_router(auth.router, prefix="/auth", tags=["Authentication"])
-app.include_router(sse.router, tags=["Events"])
+app.include_router(sse.router, tags=["Events"])  # No prefix - the router already has /v1 prefix
 app.include_router(workspaces.router, tags=["Workspaces"])
 app.include_router(conversations.router, tags=["Conversations"])
 app.include_router(monitoring.router, prefix="/monitoring", tags=["Monitoring"])

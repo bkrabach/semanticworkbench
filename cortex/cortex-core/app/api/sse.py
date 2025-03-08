@@ -1,516 +1,204 @@
 """
 Server-Sent Events (SSE) API endpoints for Cortex Core
+
+Provides real-time event streams to clients via Server-Sent Events.
+This implementation uses a unified, clean architecture without backward compatibility
+requirements.
 """
 
-from fastapi import APIRouter, Depends, Request, HTTPException
+from fastapi import APIRouter, Depends, Request, HTTPException, BackgroundTasks
 from fastapi.responses import StreamingResponse
-from typing import List, Dict, Any, Optional
-import asyncio
-import json
-import uuid
-from datetime import datetime, timezone
-from fastapi import Query
-from app.api.auth import get_current_user
-from app.config import settings
-from app.exceptions import ServiceError
-from app.utils.circuit_breaker import CircuitBreaker
+from typing import Optional
+from sqlalchemy.orm import Session
 
-from app.database.models import User
+from app.database.connection import get_db
+from app.components.sse import get_sse_service
 from app.utils.logger import logger
 
-# Initialize circuit breakers
-conversation_publisher_cb = CircuitBreaker(
-    "conversation_publisher",
-    failure_threshold=3,
-    recovery_timeout=60.0
+router = APIRouter(
+    prefix="/v1",
+    tags=["Events"]
 )
 
-router = APIRouter()
-
-# In-memory store for active SSE connections
-active_connections = {
-    "global": [],
-    "users": {},
-    "workspaces": {},
-    "conversations": {},
-}
-
-
-# This function was refactored directly into the endpoint handlers
-# to fix issues with async generators
-
-
-async def send_heartbeats(queue: asyncio.Queue, heartbeat_interval: Optional[float] = None):
-    """
-    Send periodic heartbeats to keep the connection alive
-
-    Args:
-        queue: Event queue for the connection
-        heartbeat_interval: Time in seconds between heartbeats.
-                          If None, uses the value from application settings.
-    """
-    # Use config value if not explicitly provided
-    interval = heartbeat_interval if heartbeat_interval is not None else settings.sse.heartbeat_interval
-    logger.debug(f"Starting heartbeat task with interval {interval}s")
-
-    # Initialize sleep_task to avoid unbound variable errors
-    sleep_task = None
-
-    try:
-        while True:
-            try:
-                # Create a task that will let us detect cancellation
-                # while making heartbeat sending cancellable
-                sleep_task = asyncio.create_task(asyncio.sleep(interval))
-                await sleep_task
-
-                # Send heartbeat
-                timestamp = datetime.now(timezone.utc).isoformat()
-                heartbeat_data = {
-                    "event": "heartbeat",
-                    "data": {"timestamp_utc": timestamp}
-                }
-                await queue.put(heartbeat_data)
-
-            except asyncio.CancelledError:
-                # Cancel pending sleep if any
-                if sleep_task and not sleep_task.done():
-                    sleep_task.cancel()
-
-                # Re-raise to exit the loop
-                raise
-
-    except asyncio.CancelledError:
-        # Properly handle task cancellation with logging
-        logger.debug("Heartbeat task cancelled")
-        # Don't put any more events in the queue
-        raise  # Re-raise to properly propagate the cancellation
-
-
-async def broadcast_to_channel(
-    connections: List[Dict[str, Any]], event_type: str, data: Dict[str, Any]
+# Helper function to handle SSE connections
+async def handle_sse_connection(
+    channel_type: str,
+    resource_id: str,
+    token: str,  # This function expects a non-None token
+    sse_service,
+    db: Session
 ):
     """
-    Broadcast an event to all connections in a channel
-
+    Common function to handle SSE connections for all channel types
+    
     Args:
-        connections: List of active connections
-        event_type: Type of event to broadcast
-        data: Event data payload
-    """
-    for connection in connections:
-        if connection.get("queue"):
-            try:
-                await connection["queue"].put({"event": event_type, "data": data})
-            except Exception as e:
-                logger.error(f"Failed to send event to queue: {e}")
-
-
-async def send_event_to_user(user_id: str, event_type: str, data: Dict[str, Any]):
-    """
-    Send an event to all connections for a specific user
-
-    Args:
-        user_id: User ID to send the event to
-        event_type: Type of event to send
-        data: Event data payload
-    """
-    if user_id in active_connections["users"]:
-        await broadcast_to_channel(active_connections["users"][user_id], event_type, data)
-
-
-async def send_event_to_workspace(workspace_id: str, event_type: str, data: Dict[str, Any]):
-    """
-    Send an event to all connections for a specific workspace
-
-    Args:
-        workspace_id: Workspace ID to send the event to
-        event_type: Type of event to send
-        data: Event data payload
-    """
-    if workspace_id in active_connections["workspaces"]:
-        await broadcast_to_channel(active_connections["workspaces"][workspace_id], event_type, data)
-
-
-async def send_event_to_conversation(conversation_id: str, event_type: str, data: Dict[str, Any]):
-    """
-    Send an event to all connections for a specific conversation
-
-    Args:
-        conversation_id: Conversation ID to send the event to
-        event_type: Type of event to send
-        data: Event data payload
-    """
-    if conversation_id in active_connections["conversations"]:
-        await broadcast_to_channel(
-            active_connections["conversations"][conversation_id], event_type, data
-        )
-
-
-async def send_global_event(event_type: str, data: Dict[str, Any]):
-    """
-    Send an event to all global connections
-
-    Args:
-        event_type: Type of event to send
-        data: Event data payload
-    """
-    await broadcast_to_channel(active_connections["global"], event_type, data)
-
-
-def get_active_connection_count() -> Dict[str, Any]:
-    """
-    Get counts of active connections
-
+        channel_type: Type of events to subscribe to
+        resource_id: ID of the resource to subscribe to
+        token: Authentication token (must be non-null)
+        sse_service: SSE service instance
+        db: Database session
+        
     Returns:
-        Dictionary with connection counts by channel
+        Tuple containing the event queue, connection ID, and background tasks
     """
-    users_count = {}
-    for user_id, connections in active_connections["users"].items():
-        users_count[user_id] = len(connections)
+    # Authenticate user
+    user_info = await sse_service.authenticate_token(token)
+    
+    # For non-global channels, verify resource access
+    if channel_type != "global":
+        has_access = await sse_service.verify_resource_access(
+            user_info, channel_type, resource_id, db
+        )
+        
+        if not has_access:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Not authorized to access {channel_type} events for {resource_id}"
+            )
+    
+    # Register connection
+    connection_manager = sse_service.connection_manager
+    queue, connection_id = await connection_manager.register_connection(
+        channel_type, resource_id, user_info["id"]
+    )
+    
+    # Create background tasks object
+    background_tasks = BackgroundTasks()
+    
+    # Handle special case for conversation channel - start publisher
+    if channel_type == "conversation":
+        try:
+            from app.components.conversation_channels import get_conversation_publisher
+            # Add publisher task to background tasks
+            background_tasks.add_task(
+                get_conversation_publisher, 
+                resource_id
+            )
+        except Exception as e:
+            logger.error(f"Error initializing conversation publisher: {e}")
+    
+    # Add cleanup task to background tasks
+    background_tasks.add_task(
+        connection_manager.remove_connection,
+        channel_type, resource_id, connection_id
+    )
+    
+    return queue, connection_id, background_tasks
 
-    workspaces_count = {}
-    for workspace_id, connections in active_connections["workspaces"].items():
-        workspaces_count[workspace_id] = len(connections)
-
-    conversations_count = {}
-    for conversation_id, connections in active_connections["conversations"].items():
-        conversations_count[conversation_id] = len(connections)
-
-    return {
-        "global": len(active_connections["global"]),
-        "users": users_count,
-        "workspaces": workspaces_count,
-        "conversations": conversations_count
-    }
-
-
-@router.get("/events")
+# Global events endpoint
+@router.get("/global")
 async def global_events(
     request: Request,
-    token: Optional[str] = Query(None),
+    token: Optional[str] = None,  # Make token parameter optional at function level
+    sse_service = Depends(get_sse_service),
+    db: Session = Depends(get_db)
 ):
     """
-    Global events endpoint
-
+    Global events endpoint for system-wide events
+    
     Args:
         request: FastAPI request object
-        token: Authentication token from query param
-
+        token: Authentication token (technically optional at function level but required for actual use)
+        sse_service: SSE service
+        db: Database session
+        
     Returns:
         SSE stream for global events
     """
-    # Skip full validation for now to avoid any async generator issues
-    # Just verify token minimally
+    # Validate token is provided - this will trigger 422 error when missing
     if not token:
-        raise HTTPException(status_code=401, detail="No token provided")
-
-    # Manually decode token just to get user_id without using get_db
-    try:
-        from jose import jwt
-        payload = jwt.decode(token, settings.security.jwt_secret, algorithms=["HS256"])
-        user_id = payload.get("user_id")
-        if not user_id:
-            raise HTTPException(status_code=401, detail="Invalid token")
-    except Exception as e:
-        logger.error(f"Token error: {e}")
-        raise HTTPException(status_code=401, detail="Invalid token")
-
-    logger.info(f"SSE connection established for user_id={user_id}")
-
-    # Define a simple generator function that doesn't use async generators
-    async def sse_events():
-        # Initial connection message
-        connection_msg = f"event: connect\ndata: {json.dumps({'connected': True})}\n\n"
-        yield connection_msg
-
-        # Simple heartbeat loop
-        i = 0
-        while i < 100:  # Limit to avoid infinite loops
-            await asyncio.sleep(10)
-            heartbeat_msg = f"event: heartbeat\ndata: {json.dumps({'timestamp': datetime.utcnow().isoformat()})}\n\n"
-            yield heartbeat_msg
-            i += 1
-
-    # Return a simple streaming response without complex queue handling
+        raise HTTPException(
+            status_code=422,
+            detail="Missing required parameter: token"
+        )
+    
+    queue, connection_id, background_tasks = await handle_sse_connection(
+        "global", "global", token, sse_service, db
+    )
+    
+    # Create event generator
+    generator = sse_service.connection_manager.generate_sse_events(queue)
+    
+    # Return streaming response with background tasks
     return StreamingResponse(
-        sse_events(),
+        generator,
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
-        }
+        },
+        background=background_tasks
     )
 
 
-@router.get("/users/{user_id}/events")
-async def user_events(
-    user_id: str,
+# Dynamic channel type endpoints
+@router.get("/{channel_type}/{resource_id}")
+async def events(
+    channel_type: str,
+    resource_id: str,
     request: Request,
-    token: Optional[str] = Query(None),
+    token: Optional[str] = None,  # Make token parameter optional at function level
+    sse_service = Depends(get_sse_service),
+    db: Session = Depends(get_db)
 ):
     """
-    User-specific events endpoint
-
+    Unified SSE endpoint for all event types
+    
     Args:
-        user_id: User ID to subscribe to
+        channel_type: Type of events to subscribe to (user, workspace, conversation)
+        resource_id: ID of the resource to subscribe to
         request: FastAPI request object
-        token: Authentication token from query param
-
+        token: Authentication token (technically optional at function level but required for actual use)
+        sse_service: SSE service
+        db: Database session
+        
     Returns:
-        SSE stream for user events
+        SSE stream for the requested events
     """
-    # Skip full validation for now to avoid any async generator issues
-    # Just verify token minimally
+    # Validate token is provided - this will trigger 422 error when missing
     if not token:
-        raise HTTPException(status_code=401, detail="No token provided")
-
-    # Manually decode token just to get user_id without using get_db
-    try:
-        from jose import jwt
-        payload = jwt.decode(token, settings.security.jwt_secret, algorithms=["HS256"])
-        token_user_id = payload.get("user_id")
-        if not token_user_id:
-            raise HTTPException(status_code=401, detail="Invalid token")
-
-        # Simple authorization check
-        if token_user_id != user_id:
-            raise HTTPException(status_code=403, detail="Not authorized to access this user's events")
-    except Exception as e:
-        logger.error(f"Token error: {e}")
-        raise HTTPException(status_code=401, detail="Invalid token")
-
-    logger.info(f"User SSE connection established for user_id={user_id}")
-
-    # Define a simple generator function that doesn't use async generators
-    async def sse_events():
-        # Initial connection message
-        connection_msg = f"event: connect\ndata: {json.dumps({'connected': True})}\n\n"
-        yield connection_msg
-
-        # Simple heartbeat loop
-        i = 0
-        while i < 100:  # Limit to avoid infinite loops
-            await asyncio.sleep(10)
-            heartbeat_msg = f"event: heartbeat\ndata: {json.dumps({'timestamp': datetime.utcnow().isoformat()})}\n\n"
-            yield heartbeat_msg
-            i += 1
-
-    # Return a simple streaming response without complex queue handling
+        raise HTTPException(
+            status_code=422,
+            detail="Missing required parameter: token"
+        )
+        
+    # Validate channel type
+    valid_channels = ["user", "workspace", "conversation"]
+    if channel_type not in valid_channels:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid channel type: {channel_type}. Must be one of: {', '.join(valid_channels)}"
+        )
+    
+    queue, connection_id, background_tasks = await handle_sse_connection(
+        channel_type, resource_id, token, sse_service, db
+    )
+    
+    # Create event generator
+    generator = sse_service.connection_manager.generate_sse_events(queue)
+    
+    # Return streaming response with background tasks
     return StreamingResponse(
-        sse_events(),
+        generator,
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
-        }
+        },
+        background=background_tasks
     )
 
-
-@router.get("/workspaces/{workspace_id}/events")
-async def workspace_events(
-    workspace_id: str,
-    request: Request,
-    token: Optional[str] = Query(None),
+@router.get("/stats")
+async def connection_stats(
+    sse_service = Depends(get_sse_service)
 ):
     """
-    Workspace-specific events endpoint
-
+    Get statistics about active SSE connections
+    
     Args:
-        workspace_id: Workspace ID to subscribe to
-        request: FastAPI request object
-        token: Authentication token from query param
-
+        sse_service: SSE service
+        
     Returns:
-        SSE stream for workspace events
+        Dictionary with connection statistics
     """
-    # Skip full validation for now to avoid any async generator issues
-    # Just verify token minimally
-    if not token:
-        raise HTTPException(status_code=401, detail="No token provided")
-
-    # Manually decode token just to get user_id without using get_db
-    try:
-        from jose import jwt
-        payload = jwt.decode(token, settings.security.jwt_secret, algorithms=["HS256"])
-        token_user_id = payload.get("user_id")
-        if not token_user_id:
-            raise HTTPException(status_code=401, detail="Invalid token")
-
-        # NOTE: For now, skip workspace authorization check
-        # In a real situation, we'd verify the user has access to this workspace
-    except Exception as e:
-        logger.error(f"Token error in workspace events: {e}")
-        raise HTTPException(status_code=401, detail="Invalid token")
-
-    logger.info(f"Workspace SSE connection established: user={token_user_id}, workspace={workspace_id}")
-
-    # Define a simple generator function that doesn't use async generators
-    async def sse_events():
-        # Initial connection message
-        connection_msg = f"event: connect\ndata: {json.dumps({'connected': True})}\n\n"
-        yield connection_msg
-
-        # Simple heartbeat loop
-        i = 0
-        while i < 100:  # Limit to avoid infinite loops
-            await asyncio.sleep(10)
-            heartbeat_msg = f"event: heartbeat\ndata: {json.dumps({'timestamp': datetime.utcnow().isoformat()})}\n\n"
-            yield heartbeat_msg
-            i += 1
-
-    # Return a simple streaming response without complex queue handling
-    return StreamingResponse(
-        sse_events(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-        }
-    )
-
-
-@router.get("/conversations/{conversation_id}/events")
-async def conversation_events(
-    conversation_id: str,
-    request: Request,
-    token: Optional[str] = Query(None),
-):
-    """
-    Conversation-specific events endpoint
-
-    Args:
-        conversation_id: Conversation ID to subscribe to
-        request: FastAPI request object
-        token: Authentication token from query param
-
-    Returns:
-        SSE stream for conversation events
-    """
-    # Skip full validation for now to avoid any async generator issues
-    # Just verify token minimally
-    if not token:
-        raise HTTPException(status_code=401, detail="No token provided")
-
-    # Manually decode token just to get user_id without using get_db
-    try:
-        from jose import jwt
-        payload = jwt.decode(token, settings.security.jwt_secret, algorithms=["HS256"])
-        token_user_id = payload.get("user_id")
-        if not token_user_id:
-            raise HTTPException(status_code=401, detail="Invalid token")
-
-        # NOTE: For now, skip conversation authorization check
-        # In a real situation, we'd verify the user has access to this conversation
-    except Exception as e:
-        logger.error(f"Token error in conversation events: {e}")
-        raise HTTPException(status_code=401, detail="Invalid token")
-
-    logger.info(f"Conversation SSE connection established: user={token_user_id}, conversation={conversation_id}")
-
-    # Ensure there's an output publisher for this conversation using circuit breaker
-    try:
-        # Import here to avoid circular imports
-        from app.components.conversation_channels import get_conversation_publisher
-
-        # Execute the publisher through the circuit breaker
-        try:
-            # Start this in a background task that's protected by the circuit breaker
-            asyncio.create_task(
-                conversation_publisher_cb.execute(get_conversation_publisher, conversation_id)
-            )
-        except ServiceError as e:
-            # Log the error but continue - connection still works but publisher might not
-            logger.error(f"Publisher service unavailable: {str(e)}")
-    except Exception as e:
-        logger.error(f"Error initializing output publisher: {e}")
-
-    # Create a queue for this connection
-    queue = asyncio.Queue()
-    connection_id = str(uuid.uuid4())
-
-    # Initialize conversations dictionary if it doesn't exist
-    if conversation_id not in active_connections["conversations"]:
-        active_connections["conversations"][conversation_id] = []
-
-    # Add this connection to the active connections for this conversation
-    connection_info = {
-        "id": connection_id,
-        "user_id": token_user_id,
-        "queue": queue,
-        "connected_at": datetime.utcnow().isoformat()
-    }
-    active_connections["conversations"][conversation_id].append(connection_info)
-    logger.info(f"Added SSE connection {connection_id} for conversation {conversation_id}")
-
-    # Define a simple generator function that doesn't use async generators
-    async def sse_events():
-        # Start heartbeat task
-        heartbeat_task = asyncio.create_task(send_heartbeats(queue))
-
-        try:
-            # Initial connection message
-            connection_msg = f"event: connect\ndata: {json.dumps({'connected': True})}\n\n"
-            yield connection_msg
-
-            # Send messages from the queue
-            while True:
-                try:
-                    # Wait for a message with a timeout
-                    event = await asyncio.wait_for(queue.get(), timeout=60)
-
-                    # Format SSE message
-                    event_type = event.get("event", "message")
-                    data = event.get("data", {})
-                    sse_msg = f"event: {event_type}\ndata: {json.dumps(data)}\n\n"
-
-                    yield sse_msg
-                    queue.task_done()
-                except asyncio.TimeoutError:
-                    # Send a heartbeat on timeout
-                    heartbeat_msg = f"event: heartbeat\ndata: {json.dumps({'timestamp': datetime.utcnow().isoformat()})}\n\n"
-                    yield heartbeat_msg
-        finally:
-            # Clean up
-            heartbeat_task.cancel()
-            # Remove connection from active connections
-            if conversation_id in active_connections["conversations"]:
-                active_connections["conversations"][conversation_id] = [
-                    conn for conn in active_connections["conversations"][conversation_id]
-                    if conn["id"] != connection_id
-                ]
-                logger.info(f"Removed SSE connection {connection_id} for conversation {conversation_id}")
-
-    # Return a streaming response with the event generator
-    return StreamingResponse(
-        sse_events(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-        }
-    )
-
-
-@router.get("/admin/connections", include_in_schema=False)
-async def admin_connections(user: User = Depends(get_current_user)):
-    """
-    Admin endpoint to view active connections
-    Only available to admin users
-
-    Args:
-        user: Authenticated user
-
-    Returns:
-        Dictionary with active connection counts
-    """
-    # Check if user is admin
-    # This is a placeholder - implement your own admin check
-    is_admin = False
-    if user.email is not None:
-        is_admin = str(user.email).endswith("@admin.com")
-
-    if not is_admin:
-        raise HTTPException(status_code=403, detail="Admin access required")
-
-    return get_active_connection_count()
+    return sse_service.connection_manager.get_stats()

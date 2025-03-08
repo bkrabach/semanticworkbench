@@ -17,7 +17,7 @@ from app.interfaces.router import (
 )
 from app.components.event_system import get_event_system
 from app.components.cortex_router import get_router
-from app.api.sse import send_event_to_conversation
+from app.components.sse import get_sse_service
 from app.database.models import Conversation
 from sqlalchemy.orm import Session
 
@@ -180,8 +180,10 @@ class ConversationOutputPublisher(OutputPublisherInterface):
             
         self.logger.info(f"Received status event for conversation {self.conversation_id}")
         
-        # Send status update
-        await send_event_to_conversation(
+        # Send status update using the new SSE service
+        sse_service = get_sse_service()
+        await sse_service.connection_manager.send_event(
+            "conversation",
             self.conversation_id,
             "status_update",
             {
@@ -202,8 +204,10 @@ class ConversationOutputPublisher(OutputPublisherInterface):
             Boolean indicating success
         """
         try:
-            # Send the message via SSE
-            await send_event_to_conversation(
+            # Send the message via the new SSE service
+            sse_service = get_sse_service()
+            await sse_service.connection_manager.send_event(
+                "conversation",
                 self.conversation_id,
                 "message_received",
                 {

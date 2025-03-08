@@ -661,14 +661,17 @@ events.on("message_received", (data) => {
   // Update UI with new message
 });
 
-// Connect to the events endpoint
-events.connect("/events");
+// Connect to the unified events endpoints
+events.connect("/v1/global");  // For system-wide events
+
+// For user-specific events
+// events.connect(`/v1/user/${userId}`);
 
 // For workspace-specific events
-// events.connect(`/workspaces/${workspaceId}/events`);
+// events.connect(`/v1/workspace/${workspaceId}`);
 
 // For conversation-specific events
-// events.connect(`/conversations/${conversationId}/events`);
+// events.connect(`/v1/conversation/${conversationId}`);
 ```
 
 ## Error Handling
@@ -994,7 +997,7 @@ function notifyUser(message) {
           }
 
           const url = new URL(
-            `https://your-cortex-core-instance/conversations/${conversationId}/events`
+            `https://your-cortex-core-instance/v1/conversation/${conversationId}`
           );
           url.searchParams.append("token", token);
 
@@ -1214,7 +1217,7 @@ function addConversationToList(conversation) {
 
 ### Multi-Modal Interface
 
-See the [Advanced Integration Examples](./examples/multi-modal-interface.md) document for a complete implementation of a multi-modal interface that supports chat, voice, and canvas interactions.
+A multi-modal interface combines chat, voice, and canvas interactions in a single unified experience. The examples above demonstrate the individual modalities that you can integrate into your application.
 
 ## Best Practices
 

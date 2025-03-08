@@ -215,10 +215,10 @@ The API is organized into logical groupings:
 - `POST /conversations/{conversation_id}/messages/stream`: Stream message responses
 
 ### Server-Sent Events
-- `GET /events`: Global events endpoint
-- `GET /users/{user_id}/events`: User-specific events
-- `GET /workspaces/{workspace_id}/events`: Workspace-specific events
-- `GET /conversations/{conversation_id}/events`: Conversation-specific events
+- `GET /v1/global/global`: Global events endpoint
+- `GET /v1/user/{user_id}`: User-specific events
+- `GET /v1/workspace/{workspace_id}`: Workspace-specific events
+- `GET /v1/conversation/{conversation_id}`: Conversation-specific events
 
 See [API_REFERENCE.md](API_REFERENCE.md) for complete API documentation.
 

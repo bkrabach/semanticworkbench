@@ -1,0 +1,93 @@
+asyncapi: 2.4.0
+info:
+  title: Cortex Core SSE API
+  version: 1.0.0
+  description: |
+    Server-Sent Events API for Cortex Core.
+    
+    This API provides real-time events for users, workspaces, and conversations.
+
+channels:
+  /v1/global/global:
+    subscribe:
+      summary: Global events
+      description: Receive global platform events
+      parameters:
+        - $ref: '#/components/parameters/token'
+      message:
+        $ref: '#/components/messages/Event'
+        
+  /v1/user/{userId}:
+    subscribe:
+      summary: User events
+      description: Receive events specific to a user
+      parameters:
+        - $ref: '#/components/parameters/token'
+        - $ref: '#/components/parameters/userId'
+      message:
+        $ref: '#/components/messages/Event'
+        
+  /v1/workspace/{workspaceId}:
+    subscribe:
+      summary: Workspace events
+      description: Receive events specific to a workspace
+      parameters:
+        - $ref: '#/components/parameters/token'
+        - $ref: '#/components/parameters/workspaceId'
+      message:
+        $ref: '#/components/messages/Event'
+        
+  /v1/conversation/{conversationId}:
+    subscribe:
+      summary: Conversation events
+      description: Receive events specific to a conversation
+      parameters:
+        - $ref: '#/components/parameters/token'
+        - $ref: '#/components/parameters/conversationId'
+      message:
+        $ref: '#/components/messages/Event'
+
+components:
+  parameters:
+    token:
+      name: token
+      in: query
+      description: Authentication token
+      required: true
+      schema:
+        type: string
+    userId:
+      name: userId
+      in: path
+      description: User ID
+      required: true
+      schema:
+        type: string
+    workspaceId:
+      name: workspaceId
+      in: path
+      description: Workspace ID
+      required: true
+      schema:
+        type: string
+    conversationId:
+      name: conversationId
+      in: path
+      description: Conversation ID
+      required: true
+      schema:
+        type: string
+        
+  messages:
+    Event:
+      summary: Generic event message
+      payload:
+        type: object
+        properties:
+          event:
+            type: string
+            description: Event type
+          data:
+            type: object
+            description: Event data
+            additionalProperties: true

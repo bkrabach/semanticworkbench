@@ -312,6 +312,127 @@ def test_login_endpoint(client_with_db_override, mock_db):
     assert data["token"] is not None
 ```
 
+### Testing Unified SSE Endpoints
+
+When testing the unified SSE endpoints (`/v1/{channel_type}/{resource_id}`), follow these best practices:
+
+1. **Create Dedicated Test Fixtures**:
+
+```python
+@pytest.fixture
+def sse_client(client_with_db_override, monkeypatch):
+    """Test client with mocked SSE response handling"""
+    original_get = client_with_db_override.get
+    
+    def mock_get(url, **kwargs):
+        # For SSE endpoints, return a controlled response
+        if url.startswith("/v1/") and "token=" in url:
+            channel_parts = url.split("/")
+            channel_type = channel_parts[2] if len(channel_parts) > 2 else None
+            
+            if channel_type in ["global", "user", "workspace", "conversation"]:
+                response = MockSSEResponse()
+                # Add test-specific modifications to the response if needed
+                return response
+                
+        # For all other endpoints, use the original get method
+        return original_get(url, **kwargs)
+    
+    monkeypatch.setattr(client_with_db_override, "get", mock_get)
+    return client_with_db_override
+```
+
+2. **Test Different Channel Types**:
+
+```python
+@pytest.mark.parametrize("channel_type,resource_id", [
+    ("global", "global"),
+    ("user", "user-123"),
+    ("workspace", "workspace-123"),
+    ("conversation", "conversation-123")
+])
+def test_sse_endpoint_contracts(sse_client, valid_token, channel_type, resource_id):
+    """Test the SSE endpoints for different channel types"""
+    token = valid_token
+    
+    # Test valid endpoint access
+    response = sse_client.get(f"/v1/{channel_type}/{resource_id}?token={token}")
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "text/event-stream"
+    
+    # Always close the response
+    response.close()
+```
+
+3. **Test Authentication and Authorization**:
+
+```python
+def test_sse_authentication(sse_client):
+    """Test SSE endpoint authentication"""
+    # Test without token
+    response = sse_client.get("/v1/global/global")
+    assert response.status_code == 422  # FastAPI validation error
+    
+    # Test with invalid token
+    response = sse_client.get("/v1/global/global?token=invalid-token")
+    assert response.status_code == 401
+    
+    # Test with expired token
+    response = sse_client.get("/v1/global/global?token=expired-token")
+    assert response.status_code == 401
+```
+
+4. **Test Resource Access Control**:
+
+```python
+def test_sse_resource_access(sse_client, valid_token):
+    """Test SSE resource access authorization"""
+    token = valid_token
+    
+    # Mock the SSE service to simulate authorization checks
+    # For a resource the user doesn't have access to
+    response = sse_client.get(f"/v1/workspace/unauthorized-workspace?token={token}")
+    assert response.status_code == 403
+    
+    # For a resource the user has access to
+    response = sse_client.get(f"/v1/workspace/authorized-workspace?token={token}")
+    assert response.status_code == 200
+    response.close()
+```
+
+5. **Test SSE Service Components Independently**:
+
+```python
+@pytest.mark.asyncio
+async def test_connection_manager():
+    """Test the SSE connection manager independently"""
+    manager = ConnectionManager()
+    
+    # Test connection registration
+    queue, conn_id = await manager.register_connection("conversation", "conv-123", "user-123")
+    assert conn_id is not None
+    assert queue is not None
+    
+    # Test sending events to the queue
+    event_data = {"message": "test"}
+    await manager.send_to_connections("conversation", "conv-123", "test_event", event_data)
+    
+    # Get a message from the queue (with timeout)
+    try:
+        message = await asyncio.wait_for(queue.get(), timeout=0.5)
+        assert message["event"] == "test_event"
+        assert message["data"] == event_data
+    except asyncio.TimeoutError:
+        pytest.fail("No message received from queue")
+    
+    # Test connection removal
+    await manager.remove_connection("conversation", "conv-123", conn_id)
+    
+    # Verify connection was removed
+    stats = manager.get_stats()
+    assert stats["channels"]["conversation"].get("conv-123", 0) == 0
+```
+
 ### Testing Server-Sent Events (SSE) Endpoints
 
 Testing SSE endpoints requires special care to avoid test hangs and race conditions:

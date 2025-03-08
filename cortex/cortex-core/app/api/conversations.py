@@ -22,7 +22,7 @@ from app.database.models import User, Workspace, Conversation
 from app.database.repositories import ConversationRepository, get_conversation_repository
 from app.api.auth import get_current_user
 from app.utils.logger import logger
-from app.api.sse import send_event_to_conversation, send_event_to_workspace
+from app.components.sse import get_sse_service
 
 router = APIRouter()
 
@@ -192,7 +192,8 @@ async def create_conversation(
 
     # Send SSE event for the new conversation in the background
     background_tasks.add_task(
-        send_event_to_workspace,
+        get_sse_service().connection_manager.send_event,
+        "workspace",
         str(workspace_id),
         "conversation_created",
         {
@@ -332,7 +333,8 @@ async def update_conversation(
 
     # Send SSE event for conversation update in the background
     background_tasks.add_task(
-        send_event_to_conversation,
+        get_sse_service().connection_manager.send_event,
+        "conversation",
         str(conversation_id),
         "conversation_update",
         {
@@ -403,7 +405,8 @@ async def delete_conversation(
 
     # Send SSE event for conversation deletion in the background
     background_tasks.add_task(
-        send_event_to_workspace,
+        get_sse_service().connection_manager.send_event,
+        "workspace",
         str(workspace_id),
         "conversation_deleted",
         {
@@ -523,7 +526,8 @@ async def add_message(
 
     # Send SSE event for the new message in the background
     background_tasks.add_task(
-        send_event_to_conversation,
+        get_sse_service().connection_manager.send_event,
+        "conversation",
         str(conversation_id),
         "message_received",
         {
@@ -614,7 +618,8 @@ async def stream_message(
     db.commit()
 
     # Send message_received event to all clients
-    asyncio.create_task(send_event_to_conversation(
+    asyncio.create_task(get_sse_service().connection_manager.send_event(
+        "conversation",
         conversation_id,
         "message_received",
         {

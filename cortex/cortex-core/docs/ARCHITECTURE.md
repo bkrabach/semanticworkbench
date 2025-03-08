@@ -64,7 +64,42 @@ The data layer contains the database models and connections. It:
 
 ### Event System
 
-The event system provides a publish-subscribe mechanism for loose coupling between components. Events represent things that have happened in the system.
+The event system provides a publish-subscribe mechanism for loose coupling between components. Events represent things that have happened in the system. The event system consists of:
+
+1. **Event Bus**: Core publish-subscribe mechanism for internal communication
+2. **Event Subscribers**: Components that listen for and react to events
+3. **SSE System**: Server-Sent Events module for real-time client communication
+
+#### SSE Architecture
+
+The SSE system follows a clean, modular design with a unified endpoint structure:
+
+```
+┌───────────────────────────────┐
+│       Unified SSE API         │ ← HTTP endpoints (/v1/{channel_type}/{resource_id})
+├───────────────────────────────┤
+│         SSE Service           │ ← Orchestration layer
+├───────────┬─────────┬─────────┤
+│Connection │   Auth  │  Event  │ ← Component layer
+│ Manager   │ Service │Subscriber│
+└───────────┴─────────┴─────────┘
+```
+
+This modular architecture provides:
+- Clean separation of concerns with specialized components
+- Improved testability through dependency injection
+- Easier maintenance and evolution
+- Consistent interface for all event types
+- Unified authentication and authorization
+
+The key advantages of this architecture include:
+
+1. **Unified Endpoint Pattern**: All SSE endpoints follow the consistent `/v1/{channel_type}/{resource_id}` pattern
+2. **Modularity**: Each component has a single responsibility and clear interfaces
+3. **Extensibility**: New channel types can be added without changing the API structure
+4. **Security**: Centralized authentication and authorization for all SSE connections
+5. **Performance**: Efficient connection management with proper resource cleanup
+6. **Observability**: Built-in statistics and monitoring capabilities
 
 ### Router
 

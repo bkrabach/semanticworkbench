@@ -22,9 +22,15 @@ def mock_event_system():
 
 @pytest.fixture
 def mock_send_event():
-    """Create a mock for the send_event_to_conversation function"""
-    with patch("app.components.conversation_channels.send_event_to_conversation") as mock:
-        yield mock
+    """Create a mock for the sse service connection manager"""
+    mock_connection_manager = AsyncMock()
+    mock_connection_manager.send_event = AsyncMock()
+    
+    mock_sse_service = AsyncMock()
+    mock_sse_service.connection_manager = mock_connection_manager
+    
+    with patch("app.components.conversation_channels.get_sse_service", return_value=mock_sse_service) as mock:
+        yield mock_connection_manager.send_event
 
 
 @pytest.fixture
@@ -120,12 +126,14 @@ async def test_handle_status_event(conversation_publisher, mock_send_event):
         payload=payload
     )
     
-    # Verify send_event_to_conversation was called with the right arguments
+    # Verify send_event was called with the right arguments
     mock_send_event.assert_called_once()
-    assert mock_send_event.call_args[0][0] == "test-conversation-id"
-    assert mock_send_event.call_args[0][1] == "status_update"
-    assert "message" in mock_send_event.call_args[0][2]
-    assert mock_send_event.call_args[0][2]["message"] == "Processing..."
+    # The new structure is: channel_type, resource_id, event_type, data
+    assert mock_send_event.call_args[0][0] == "conversation"  # channel_type
+    assert mock_send_event.call_args[0][1] == "test-conversation-id"  # resource_id
+    assert mock_send_event.call_args[0][2] == "status_update"  # event_type
+    assert "message" in mock_send_event.call_args[0][3]  # data
+    assert mock_send_event.call_args[0][3]["message"] == "Processing..."
 
 
 @pytest.mark.asyncio

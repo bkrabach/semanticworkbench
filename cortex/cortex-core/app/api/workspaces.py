@@ -8,7 +8,7 @@ import json
 from app.database.connection import get_db
 from app.database.models import User, Workspace
 from app.api.auth import get_current_user
-from app.api.sse import send_event_to_user
+from app.components.sse import get_sse_service
 
 router = APIRouter()
 
@@ -126,7 +126,8 @@ async def create_workspace(
 
     # Send event to user
     background_tasks.add_task(
-        send_event_to_user,
+        get_sse_service().connection_manager.send_event,
+        "user",
         str(user.id),
         "workspace_created",
         {

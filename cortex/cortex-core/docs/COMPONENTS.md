@@ -14,6 +14,7 @@ This document details the core components and interfaces of the Cortex Core syst
 - [Memory System Interface](#memory-system-interface)
 - [Domain Expert Interface](#domain-expert-interface)
 - [Circuit Breaker](#circuit-breaker)
+- [SSE System](#sse-system)
 
 ## Session Manager
 
@@ -878,6 +879,185 @@ except ServiceError as e:
 except Exception as e:
     # Handle other errors
     logger.error(f"Operation failed: {str(e)}")
+```
+
+## SSE System
+
+The SSE (Server-Sent Events) system provides real-time event streams to clients via a clean, modular architecture.
+
+### Architecture Overview
+
+The SSE system follows a clean, modular design:
+
+```
+┌───────────────────────────────┐
+│       Unified SSE API         │ ← HTTP endpoints
+├───────────────────────────────┤
+│         SSE Service           │ ← Orchestration layer
+├───────────┬─────────┬─────────┤
+│Connection │   Auth  │  Event  │ ← Component layer
+│ Manager   │ Service │Subscriber│
+└───────────┴─────────┴─────────┘
+```
+
+This modular architecture allows for:
+- Clean separation of concerns
+- Improved testability
+- Easier maintenance and evolution
+
+### SSE Components
+
+The SSE system consists of the following components:
+
+#### SSE API (Unified Endpoint)
+
+The unified SSE API endpoint provides a consistent interface for all event types. Key features:
+
+- Consistent endpoint pattern: `/v1/{channel_type}/{resource_id}`
+- Unified authentication via token parameter
+- Standardized error responses and status codes
+- Support for various channel types (global, user, workspace, conversation)
+
+```python
+@router.get("/{channel_type}/{resource_id}")
+async def events(
+    channel_type: str,
+    resource_id: str,
+    request: Request,
+    token: str,
+    sse_service = Depends(get_sse_service),
+    db: Session = Depends(get_db)
+):
+    """
+    Unified SSE endpoint for all event types
+    """
+    # Endpoint implementation...
+```
+
+#### SSE Service
+
+The SSE Service orchestrates the SSE components and provides a facade for the SSE functionality. Responsibilities:
+
+- Initialize and manage the component dependencies
+- Authenticate tokens and verify resource access
+- Coordinate connection registration and event delivery
+- Start special publishers for specific channel types (e.g., conversation)
+
+```python
+class SSEService:
+    """
+    Service coordinating SSE components and operations
+    """
+    def __init__(
+        self, 
+        connection_manager: ConnectionManager,
+        auth_service: AuthService,
+        event_subscriber: EventSubscriber
+    ):
+        self.connection_manager = connection_manager
+        self.auth_service = auth_service
+        self.event_subscriber = event_subscriber
+        
+    async def authenticate_token(self, token: str) -> Dict[str, Any]:
+        """Authenticate a token and return user info"""
+        # Implementation...
+        
+    async def verify_resource_access(self, user_info, channel_type, resource_id, db):
+        """Verify user has access to the resource"""
+        # Implementation...
+```
+
+#### Connection Manager
+
+The Connection Manager handles the lifecycle of SSE connections. Responsibilities:
+
+- Register and remove connections
+- Track active connections by channel type and resource
+- Generate SSE events for clients
+- Provide connection statistics
+- Send heartbeats to maintain connections
+
+```python
+class ConnectionManager:
+    """
+    Manages SSE connection lifecycle and event generation
+    """
+    def __init__(self):
+        self.connections = {
+            "global": [],
+            "user": {},
+            "workspace": {},
+            "conversation": {},
+        }
+        
+    async def register_connection(self, channel_type, resource_id, user_id):
+        """Register a new connection and return its queue and ID"""
+        # Implementation...
+        
+    async def remove_connection(self, channel_type, resource_id, connection_id):
+        """Remove a connection when client disconnects"""
+        # Implementation...
+        
+    async def generate_sse_events(self, queue):
+        """Generate SSE events from a queue for a client"""
+        # Implementation...
+        
+    def get_stats(self):
+        """Get connection statistics"""
+        # Implementation...
+```
+
+#### Auth Service
+
+The Auth Service handles authentication and authorization for SSE connections. Responsibilities:
+
+- Validate authentication tokens
+- Verify user permissions for resources
+- Enforce access controls for different channel types
+
+```python
+class AuthService:
+    """
+    Handles authentication and authorization for SSE connections
+    """
+    def __init__(self, security_manager=None):
+        self.security_manager = security_manager
+        
+    async def validate_token(self, token: str) -> Dict[str, Any]:
+        """Validate a token and return user information"""
+        # Implementation...
+        
+    async def check_resource_access(self, user_info, channel_type, resource_id, db):
+        """Check if user has access to the requested resource"""
+        # Implementation...
+```
+
+#### Event Subscriber
+
+The Event Subscriber connects to the Event System and routes events to the appropriate SSE channels. Responsibilities:
+
+- Subscribe to relevant events from the Event System
+- Map events to appropriate SSE channels
+- Format events for SSE delivery
+- Handle event routing and filtering
+
+```python
+class EventSubscriber:
+    """
+    Subscribes to the Event System and routes events to SSE channels
+    """
+    def __init__(self, event_system, connection_manager):
+        self.event_system = event_system
+        self.connection_manager = connection_manager
+        self.subscription_ids = []
+        
+    async def initialize(self):
+        """Subscribe to relevant events"""
+        # Implementation...
+        
+    async def handle_event(self, event_type, payload):
+        """Handle events from the event system and route to SSE clients"""
+        # Implementation...
 ```
 
 This document provides an overview of the key components and interfaces that make up the Cortex Core system. Each component is designed to be modular and extensible, allowing for easy replacement or enhancement as the system evolves.

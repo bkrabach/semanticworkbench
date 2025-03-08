@@ -514,110 +514,142 @@ Get messages in a conversation.
 
 ## Events API
 
-### Global Events
+Cortex Core uses Server-Sent Events (SSE) for real-time updates to clients. The Events API provides a unified endpoint pattern for all event types using a clean, modular architecture.
 
-Receive global events for the authenticated user.
+### Unified Events Endpoint
 
-**Endpoint**: `GET /events`
+**Endpoint**: `GET /v1/{channel_type}/{resource_id}`
 
-**Authentication**: Bearer token
-
-**Response**: Server-Sent Events stream with the following event types:
-
-- `connect`: Sent when the connection is established
-- `message`: General messages
-- `notification`: User notifications
-- `heartbeat`: Periodic heartbeat to keep the connection alive
-
-Example event:
-
-```
-event: connect
-data: {"connected": true, "timestamp_utc": "2023-01-15T12:00:00Z"}
-
-```
-
-### User Events
-
-Receive events for a specific user.
-
-**Endpoint**: `GET /users/{id}/events`
-
-**Authentication**: Bearer token
+**Authentication**: Query parameter token
 
 **Parameters**:
 
-- `id` (path): User ID (must match authenticated user)
+- `channel_type` (path): Type of events to subscribe to (one of: `global`, `user`, `workspace`, `conversation`)
+- `resource_id` (path): ID of the resource to subscribe to (not required for global events)
+- `token` (query): Authentication token
 
-**Response**: Server-Sent Events stream with the following event types:
-
-- `connect`: Sent when the connection is established
-- `notification`: User notifications
-- `heartbeat`: Periodic heartbeat to keep the connection alive
-
-### Workspace Events
-
-Receive events for a specific workspace.
-
-**Endpoint**: `GET /workspaces/{id}/events`
-
-**Authentication**: Bearer token
-
-**Parameters**:
-
-- `id` (path): Workspace ID
-
-**Response**: Server-Sent Events stream with the following event types:
+**Response**: Server-Sent Events stream with the following common event types:
 
 - `connect`: Sent when the connection is established
-- `workspace_update`: Workspace metadata updates
-- `conversation_created`: New conversation in the workspace
-- `conversation_deleted`: Conversation deleted from workspace
-- `heartbeat`: Periodic heartbeat to keep the connection alive
+- `heartbeat`: Periodic heartbeat to keep the connection alive (every 30 seconds)
+
+**Error Responses**:
+
+- `400 Bad Request`: Invalid channel type
+- `401 Unauthorized`: Invalid token
+- `403 Forbidden`: Not authorized to access the requested resource
+
+### Channel-Specific Events
+
+Depending on the channel type, you will receive different specialized events:
+
+#### Global Channel (`/v1/global/global`)
+
+- `notification`: General system notifications
+- `system_update`: System update information
 
 Example events:
 
 ```
 event: connect
-data: {"connected": true, "timestamp_utc": "2023-01-15T12:00:00Z"}
+data: {"connected": true}
+
+event: notification
+data: {"message": "New platform feature available", "timestamp_utc": "2023-01-15T12:00:00Z"}
+
+event: heartbeat
+data: {"timestamp_utc": "2023-01-15T12:00:30Z"}
+```
+
+#### User Channel (`/v1/user/{user_id}`)
+
+- `notification`: User-specific notifications
+- `preference_update`: User preference changes
+
+Example events:
+
+```
+event: connect
+data: {"connected": true}
+
+event: notification
+data: {"message": "You have a new message", "timestamp_utc": "2023-01-15T12:00:00Z"}
+
+event: heartbeat
+data: {"timestamp_utc": "2023-01-15T12:00:30Z"}
+```
+
+#### Workspace Channel (`/v1/workspace/{workspace_id}`)
+
+- `workspace_update`: Workspace metadata updates
+- `conversation_created`: New conversation in the workspace
+- `conversation_deleted`: Conversation deleted from workspace
+- `member_joined`: New member joined the workspace
+- `member_left`: Member left the workspace
+
+Example events:
+
+```
+event: connect
+data: {"connected": true}
 
 event: conversation_created
 data: {"id": "conversation-uuid", "title": "New Chat", "modality": "chat", "created_at_utc": "2023-01-15T12:00:00Z"}
 
+event: heartbeat
+data: {"timestamp_utc": "2023-01-15T12:00:30Z"}
 ```
 
-### Conversation Events
+#### Conversation Channel (`/v1/conversation/{conversation_id}`)
 
-Receive events for a specific conversation.
-
-**Endpoint**: `GET /conversations/{id}/events`
-
-**Authentication**: Bearer token
-
-**Parameters**:
-
-- `id` (path): Conversation ID
-
-**Response**: Server-Sent Events stream with the following event types:
-
-- `connect`: Sent when the connection is established
 - `message_received`: New message in the conversation
-- `typing_indicator`: Typing status updates
+- `status_update`: Status updates (like typing indicators)
 - `conversation_update`: Conversation metadata updates
-- `heartbeat`: Periodic heartbeat to keep the connection alive
 
 Example events:
 
 ```
 event: connect
-data: {"connected": true, "timestamp_utc": "2023-01-15T12:00:00Z"}
+data: {"connected": true}
 
-event: typing_indicator
-data: {"isTyping": true, "role": "assistant"}
+event: status_update
+data: {"status": "typing", "role": "assistant", "timestamp_utc": "2023-01-15T12:00:00Z"}
 
 event: message_received
 data: {"id": "message-uuid", "content": "Hello there!", "role": "assistant", "created_at_utc": "2023-01-15T12:00:05Z"}
 
+event: heartbeat
+data: {"timestamp_utc": "2023-01-15T12:00:30Z"}
+```
+
+### Connection Statistics
+
+Get statistics about active SSE connections.
+
+**Endpoint**: `GET /v1/stats`
+
+**Authentication**: Bearer token
+
+**Response**:
+
+```json
+{
+  "global": 5,
+  "channels": {
+    "user": {
+      "user-id-1": 1,
+      "user-id-2": 2
+    },
+    "workspace": {
+      "workspace-id-1": 3
+    },
+    "conversation": {
+      "conversation-id-1": 2,
+      "conversation-id-2": 1
+    }
+  },
+  "total": 14
+}
 ```
 
 ## Monitoring API
