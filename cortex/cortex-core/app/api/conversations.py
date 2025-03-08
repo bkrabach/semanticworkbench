@@ -753,32 +753,3 @@ async def simulate_assistant_response(conversation_id: str, user_message: str, d
         logger.error(f"Failed to process message for conversation {conversation_id}")
 
 
-def generate_demo_response(user_message: str) -> str:
-    """
-    Generate a simple demo response based on user input
-
-    Args:
-        user_message: Message from user
-
-    Returns:
-        Generated response
-    """
-    user_message = user_message.lower()
-
-    if "hello" in user_message or "hi" in user_message:
-        return "Hello! How can I help you today?"
-
-    if "how are you" in user_message:
-        return "I'm functioning well, thank you for asking! What can I assist you with today?"
-
-    if "help" in user_message:
-        return "I'd be happy to help. Could you provide more details about what you need assistance with?"
-
-    if "thank" in user_message:
-        return "You're welcome! Is there anything else I can help you with?"
-
-    if "bye" in user_message or "goodbye" in user_message:
-        return "Goodbye! Feel free to reach out if you need anything else."
-
-    # Default response
-    return "I've received your message. Is there anything specific you'd like to know or discuss?"

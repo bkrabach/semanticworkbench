@@ -132,7 +132,7 @@ async def login(credentials: UserCredentials, db: Session = Depends(get_db)):
 
                 # Create password hash (we already know secret exists in this condition)
                 if credentials.secret is None:
-                    logger.warning(f"Missing password for test user creation")
+                    logger.warning("Missing password for test user creation")
                     return AuthResponse(success=False, error="Password is required")
                     
                 password_hash = hashlib.sha256(
