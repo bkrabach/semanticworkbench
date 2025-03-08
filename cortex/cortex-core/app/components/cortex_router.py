@@ -222,7 +222,11 @@ class CortexRouter(RouterInterface):
         
         # Send via the event system
         event_name = f"output.{message.channel_type}.status"
-        await self.event_system.publish(event_name, status_message)
+        await self.event_system.publish(
+            event_type=event_name, 
+            data={"message": status_message}, 
+            source="cortex_router"
+        )
     
     async def _handle_respond_action(self, message: InputMessage, decision: RoutingDecision):
         """
@@ -258,7 +262,11 @@ class CortexRouter(RouterInterface):
         
         # Send via the event system
         event_name = f"output.{message.channel_type}.message"
-        await self.event_system.publish(event_name, response)
+        await self.event_system.publish(
+            event_type=event_name, 
+            data={"message": response}, 
+            source="cortex_router"
+        )
     
     async def _handle_process_action(self, message: InputMessage, decision: RoutingDecision):
         """
@@ -304,7 +312,11 @@ class CortexRouter(RouterInterface):
         
         # Send via the event system
         event_name = f"output.{message.channel_type}.message"
-        await self.event_system.publish(event_name, response)
+        await self.event_system.publish(
+            event_type=event_name, 
+            data={"message": response}, 
+            source="cortex_router"
+        )
     
     async def _handle_delegate_action(self, message: InputMessage, decision: RoutingDecision):
         """

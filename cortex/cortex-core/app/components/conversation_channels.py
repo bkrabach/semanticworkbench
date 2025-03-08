@@ -140,14 +140,19 @@ class ConversationOutputPublisher(OutputPublisherInterface):
         
         self.logger.info(f"Subscribed to events for conversation {self.conversation_id}")
     
-    async def _handle_message_event(self, event_name: str, data: OutputMessage):
+    async def _handle_message_event(self, event_type: str, payload):
         """
         Handle a message event
         
         Args:
-            event_name: Event name
-            data: Output message
+            event_type: Type of the event
+            payload: Event payload with full event data
         """
+        # Extract the output message from the event data
+        data = payload.data.get("message")
+        if not data or not isinstance(data, OutputMessage):
+            return
+            
         # Only handle messages for this channel
         if data.channel_id != self.channel_id:
             return
@@ -157,14 +162,19 @@ class ConversationOutputPublisher(OutputPublisherInterface):
         # Publish the message
         await self.publish(data)
     
-    async def _handle_status_event(self, event_name: str, data: OutputMessage):
+    async def _handle_status_event(self, event_type: str, payload):
         """
         Handle a status event
         
         Args:
-            event_name: Event name
-            data: Output message
+            event_type: Type of the event
+            payload: Event payload with full event data
         """
+        # Extract the output message from the event data
+        data = payload.data.get("message")
+        if not data or not isinstance(data, OutputMessage):
+            return
+            
         # Only handle messages for this channel
         if data.channel_id != self.channel_id:
             return

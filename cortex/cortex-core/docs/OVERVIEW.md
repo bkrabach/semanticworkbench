@@ -329,7 +329,29 @@ The caching system uses Redis with an in-memory fallback mechanism:
 
 ## Event System
 
-The Server-Sent Events (SSE) system provides real-time updates:
+The Event System in Cortex Core consists of two main parts: the internal event bus and the Server-Sent Events (SSE) for client communication.
+
+### Internal Event Bus
+
+The internal event system provides a decoupled communication mechanism between components:
+
+1. **Standardized Event Structure**:
+   - Each event has a consistent payload format including type, data, source, timestamp, and tracing IDs
+   - Events follow a hierarchical naming convention: `{domain}.{entity}.{action}`
+
+2. **Advanced Features**:
+   - **Event Tracing**: Track event chains across components using trace IDs
+   - **Event Correlation**: Link related events with correlation IDs
+   - **Pattern Matching**: Subscribe to events using flexible wildcard patterns
+   - **Error Isolation**: Errors in one subscriber don't affect others
+
+3. **Monitoring**:
+   - Comprehensive statistics through the `/monitoring/events/stats` endpoint
+   - Tracks events published, delivered, subscriber count, event types, errors, and more
+
+### Server-Sent Events (SSE)
+
+The SSE system provides real-time updates to clients:
 
 1. **Connection Management**:
    - Connections are tracked in memory by channel type

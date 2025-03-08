@@ -620,6 +620,38 @@ data: {"id": "message-uuid", "content": "Hello there!", "role": "assistant", "cr
 
 ```
 
+## Monitoring API
+
+### Event System Statistics
+
+Get statistics about the event system.
+
+**Endpoint**: `GET /monitoring/events/stats`
+
+**Authentication**: Bearer token
+
+**Response**:
+
+```json
+{
+  "events_published": 100,
+  "events_delivered": 95,
+  "subscriber_count": 5,
+  "event_types": {
+    "conversation.message.created": 50,
+    "user.session.started": 30,
+    "system.component.initialized": 20
+  },
+  "errors": 2,
+  "uptime_seconds": 3600,
+  "events_per_second": 0.028
+}
+```
+
+**Error Responses**:
+
+- `401 Unauthorized`: Invalid or expired token
+
 ## Health Check API
 
 ### Health Check

@@ -3,12 +3,16 @@ Cortex Architecture Core Interfaces
 Defines the core interfaces for the Cortex system's messaging architecture
 """
 
-from typing import Dict, List, Optional, Any, Protocol, Tuple, Callable
+from __future__ import annotations
+from typing import Dict, List, Optional, Any, Protocol, Tuple, Callable, TYPE_CHECKING
 from enum import Enum
 from abc import ABC, abstractmethod
 from pydantic import BaseModel, Field
 from datetime import datetime
 import uuid
+
+if TYPE_CHECKING:
+    from app.components.event_system import EventPayload
 
 
 # ===== Channel Types =====
@@ -132,13 +136,13 @@ class OutputPublisherInterface(Protocol):
 class EventCallback(Protocol):
     """Callback protocol for event system subscribers"""
     
-    async def __call__(self, event_name: str, data: Any) -> None:
+    async def __call__(self, event_type: str, payload: EventPayload) -> None:
         """
         Handle an event
         
         Args:
-            event_name: Name of the event
-            data: Event data
+            event_type: Type of the event
+            payload: Event payload with full event data
         """
         ...
 
@@ -152,13 +156,18 @@ class EventSystemInterface(Protocol):
     events and subscribing to event types.
     """
     
-    async def publish(self, event_name: str, data: Any) -> None:
+    async def publish(self, event_type: str, data: Dict[str, Any], source: str,
+                     trace_id: Optional[str] = None,
+                     correlation_id: Optional[str] = None) -> None:
         """
         Publish an event to all subscribers
         
         Args:
-            event_name: Name of the event
+            event_type: Type of the event (e.g., 'conversation.message.created')
             data: Event data
+            source: Component that generated the event
+            trace_id: Optional ID for tracing event chains
+            correlation_id: Optional ID to correlate related events
         """
         ...
     
@@ -167,11 +176,11 @@ class EventSystemInterface(Protocol):
         Subscribe to events matching a pattern
         
         Args:
-            event_pattern: Pattern to match event names (can use wildcards)
+            event_pattern: Pattern to match event types (can use wildcards)
             callback: Async function to call when matching events occur
             
         Returns:
-            Subscription ID
+            Subscription ID that can be used to unsubscribe
         """
         ...
     
@@ -184,6 +193,15 @@ class EventSystemInterface(Protocol):
             
         Returns:
             Boolean indicating success
+        """
+        ...
+    
+    async def get_stats(self) -> Dict[str, Any]:
+        """
+        Get statistics about event processing
+        
+        Returns:
+            Dictionary with event statistics
         """
         ...
 

@@ -108,6 +108,60 @@ pytest tests/test_auth.py
 
 # Run with coverage report
 pytest --cov=app tests/
+
+# Run only the event system tests
+pytest tests/components/test_event_system.py
+```
+
+#### Testing the Event System
+
+When testing the event system, consider these scenarios:
+
+1. **Basic Pub/Sub Testing**:
+   - Test publishing events and receiving them through subscribers
+   - Verify that event payloads are correctly delivered
+
+2. **Pattern Matching Testing**:
+   - Test wildcard patterns like "domain.*" and "*"
+   - Test exact matches and multi-level patterns
+
+3. **Error Handling Testing**:
+   - Verify that errors in one subscriber don't affect others
+   - Test error counting in statistics
+
+4. **Tracing and Correlation Testing**:
+   - Test that trace IDs are properly generated and propagated
+   - Verify correlation IDs link related events
+
+5. **Performance Testing**:
+   - Test with many subscribers
+   - Test concurrent event publishing
+   
+Example test for the event system:
+
+```python
+@pytest.mark.asyncio
+async def test_publish_subscribe(event_system):
+    # Setup
+    received_events = []
+    
+    async def callback(event_type, payload):
+        received_events.append(payload)
+    
+    # Subscribe to events
+    subscription_id = await event_system.subscribe("test.*", callback)
+    
+    # Publish an event
+    await event_system.publish(
+        event_type="test.event",
+        data={"key": "value"},
+        source="test_component"
+    )
+    
+    # Verify
+    assert len(received_events) == 1
+    assert received_events[0].event_type == "test.event"
+    assert received_events[0].data == {"key": "value"}
 ```
 
 ### Linting and Formatting

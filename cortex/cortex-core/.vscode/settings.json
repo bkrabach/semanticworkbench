@@ -61,6 +61,7 @@
     "uv.lock"
   ],
   "cSpell.words": [
+    "abstractmethod",
     "aiosqlite",
     "asyncio",
     "asyncpg",
@@ -68,6 +69,7 @@
     "datefmt",
     "dateutil",
     "dbname",
+    "docstrings",
     "dotenv",
     "excepthook",
     "fastapi",
@@ -80,10 +82,14 @@
     "levelname",
     "localtime",
     "MSAL",
+    "mypy",
     "preconfigured",
+    "pyproject",
+    "pytest",
     "qualname",
     "repr",
     "toplevel",
-    "uvicorn"
+    "uvicorn",
+    "venv"
   ]
 }

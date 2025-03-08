@@ -16,14 +16,14 @@ from app.database.connection import db
 from app.cache.redis_client import connect_redis, disconnect_redis
 
 # Import routers
-from app.api import auth, sse, workspaces, conversations
+from app.api import auth, sse, workspaces, conversations, monitoring
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
     Lifespan events handler for FastAPI
-    - Startup: Connect to database, cache
+    - Startup: Connect to database, cache, initialize components
     - Shutdown: Cleanup resources
     """
     # Startup
@@ -34,6 +34,11 @@ async def lifespan(app: FastAPI):
 
     # Connect to Redis
     await connect_redis()
+    
+    # Initialize and store event system in app state
+    from app.components.event_system import get_event_system
+    app.state.event_system = get_event_system()
+    logger.info("Event System initialized")
 
     # Additional startup initialization could be added here
 
@@ -114,10 +119,9 @@ app.include_router(auth.router, prefix="/auth", tags=["Authentication"])
 app.include_router(sse.router, tags=["Events"])
 app.include_router(workspaces.router, tags=["Workspaces"])
 app.include_router(conversations.router, tags=["Conversations"])
+app.include_router(monitoring.router, prefix="/monitoring", tags=["Monitoring"])
 
 # Include additional routers as they are implemented
-# app.include_router(workspaces.router, prefix="/workspaces", tags=["Workspaces"])
-# app.include_router(conversations.router, tags=["Conversations"])
 # app.include_router(integrations.router, prefix="/integrations", tags=["Integrations"])
 
 

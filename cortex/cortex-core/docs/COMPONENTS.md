@@ -91,33 +91,151 @@ app.include_router(sse_router, prefix="", tags=["Events"])
 
 ## Event System
 
-The Event System provides a decoupled message bus for communication between components.
+The Event System provides a decoupled message bus for communication between components, enabling standardized events with tracing, correlation, and monitoring capabilities.
 
 ### Responsibilities
 
 - Enable communication between components without direct coupling
-- Support publishing events to subscribers
-- Allow components to subscribe to event patterns
+- Support publishing events to subscribers with standardized payloads
+- Allow components to subscribe to event patterns with wildcard support
 - Provide a way to unsubscribe from events
+- Track event statistics and provide monitoring capabilities
+- Support event tracing and correlation
+- Ensure error isolation between subscribers
+
+### Core Features
+
+- **Standardized Event Payloads**: Consistent structure for all events with source, timestamp, and tracing information
+- **Event Tracing**: Each event carries a trace ID to track event chains across components
+- **Event Correlation**: Related events can be linked through correlation IDs
+- **Pattern-Based Routing**: Subscribe to event types with flexible wildcard patterns
+- **Concurrent Processing**: Efficient handling of multiple subscribers with asyncio
+- **Error Resilience**: Subscriber errors don't affect other subscribers
+- **Monitoring**: Comprehensive statistics for observability
+
+### Event Naming Convention
+
+The Event System follows a hierarchical naming convention to enable intuitive pattern matching:
+
+`{domain}.{entity}.{action}`
+
+Examples:
+- `conversation.message.created`
+- `user.session.started`
+- `workspace.document.updated`
+- `system.component.initialized`
 
 ### Implementation Details
+
+#### Event Payload
+
+```python
+class EventPayload(BaseModel):
+    """
+    Standardized structure for all events in the system
+    
+    Attributes:
+        event_type: Type of the event (e.g., 'conversation.message.created')
+        data: Event-specific data payload
+        source: Component that generated the event
+        timestamp: Unix timestamp of when the event was created
+        trace_id: ID for tracing event chains (automatically generated if not provided)
+        correlation_id: Optional ID to correlate related events
+    """
+    event_type: str
+    data: Dict[str, Any]
+    source: str
+    timestamp: float = Field(default_factory=time.time)
+    trace_id: Optional[str] = None
+    correlation_id: Optional[str] = None
+```
+
+#### Event System Interface
 
 ```python
 class EventSystemInterface(Protocol):
     """Interface for the event system that connects components"""
     
-    async def publish(self, event_name: str, data: Any) -> None:
-        """Publish an event to all subscribers"""
-        pass
+    async def publish(self, event_type: str, data: Dict[str, Any], source: str,
+                     trace_id: Optional[str] = None,
+                     correlation_id: Optional[str] = None) -> None:
+        """
+        Publish an event to all subscribers
+        
+        Args:
+            event_type: Type of the event (e.g., 'conversation.message.created')
+            data: Event data
+            source: Component that generated the event
+            trace_id: Optional ID for tracing event chains
+            correlation_id: Optional ID to correlate related events
+        """
+        ...
     
     async def subscribe(self, event_pattern: str, callback: EventCallback) -> str:
-        """Subscribe to events matching a pattern"""
-        pass
+        """
+        Subscribe to events matching a pattern
+        
+        Args:
+            event_pattern: Pattern to match event types (can use wildcards)
+            callback: Async function to call when matching events occur
+            
+        Returns:
+            Subscription ID that can be used to unsubscribe
+        """
+        ...
     
     async def unsubscribe(self, subscription_id: str) -> bool:
-        """Unsubscribe from events"""
-        pass
+        """
+        Unsubscribe from events
+        
+        Args:
+            subscription_id: ID returned from subscribe
+            
+        Returns:
+            Boolean indicating success
+        """
+        ...
+    
+    async def get_stats(self) -> Dict[str, Any]:
+        """
+        Get statistics about event processing
+        
+        Returns:
+            Dictionary with event statistics
+        """
+        ...
 ```
+
+#### Event Callback Protocol
+
+```python
+class EventCallback(Protocol):
+    """Callback protocol for event system subscribers"""
+    
+    async def __call__(self, event_type: str, payload: EventPayload) -> None:
+        """
+        Handle an event
+        
+        Args:
+            event_type: Type of the event
+            payload: Event payload with full event data
+        """
+        ...
+```
+
+### Monitoring
+
+The Event System provides statistics for monitoring through the `/monitoring/events/stats` endpoint, including:
+
+- Total events published
+- Total events delivered
+- Number of subscribers
+- Event type breakdown
+- Error count
+- Events per second
+- System uptime
+
+This data is valuable for observability, performance monitoring, and diagnosing issues in the event system.
 
 ## Cortex Router
 
