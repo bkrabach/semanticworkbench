@@ -5,6 +5,7 @@ Welcome to the Cortex Core documentation. This directory contains comprehensive 
 ## Core Documentation
 
 - [**Overview**](OVERVIEW.md) - Master reference for system architecture and design
+- [**Architecture**](ARCHITECTURE.md) - Detailed architectural principles and patterns
 
 ## API and Integration
 

@@ -370,3 +370,110 @@ The CI pipeline runs:
 - Write unit tests for new functionality
 - Keep components modular and focused on a single responsibility
 - Use dependency injection for better testability
+
+## Architecture Guidelines
+
+### Layered Architecture
+
+```
+┌─────────────────┐
+│   API Layer     │ ← HTTP concerns only
+├─────────────────┤
+│  Service Layer  │ ← Business logic
+├─────────────────┤
+│ Repository Layer│ ← Data access
+├─────────────────┤
+│   Data Layer    │ ← Database/ORM
+└─────────────────┘
+```
+
+This project follows a layered architecture to maintain separation of concerns:
+
+- **API Layer**: Handles HTTP requests/responses, validation, authentication
+- **Service Layer**: Contains business logic, orchestrates operations
+- **Repository Layer**: Abstracts data access patterns
+- **Data Layer**: ORM models, database connections
+
+### Repository Pattern
+
+We use the Repository Pattern to abstract database access:
+
+```python
+# Definition (interfaces)
+class UserRepository(ABC):
+    @abstractmethod
+    def get_by_id(self, user_id: str) -> Optional[User]:
+        pass
+        
+    @abstractmethod
+    def create(self, email: str, name: str) -> User:
+        pass
+
+# Implementation (concrete classes)
+class SQLAlchemyUserRepository(UserRepository):
+    def __init__(self, db_session: Session):
+        self.db = db_session
+        
+    def get_by_id(self, user_id: str) -> Optional[User]:
+        return self.db.query(User).filter(User.id == user_id).first()
+        
+    def create(self, email: str, name: str) -> User:
+        user = User(email=email, name=name)
+        self.db.add(user)
+        self.db.commit()
+        self.db.refresh(user)
+        return user
+
+# Factory function for dependency injection
+def get_user_repository(db: Session = Depends(get_db)) -> UserRepository:
+    return SQLAlchemyUserRepository(db)
+```
+
+### Benefits of Repository Pattern
+
+1. **Separation of Concerns**: API endpoints focus on HTTP interaction, while repositories handle data operations
+2. **Testability**: Repositories can be mocked for testing API endpoints without complex DB mocking
+3. **Flexibility**: Allows for easier DB backend changes in the future
+4. **Consistency**: Provides consistent data access patterns across the codebase
+
+### Common Anti-patterns to Avoid
+
+1. **Mixing SQL queries with business logic**: Keep data access contained within repositories
+2. **Direct JSON string manipulation in API layer**: Handle serialization consistently
+3. **Heavy database logic in API handlers**: Move this to repositories
+4. **Complex mocking in tests**: Mock at interface boundaries, not implementation details
+
+### Testing with Repository Pattern
+
+```python
+# Create a mock repository
+mock_repo = MagicMock(spec=UserRepository)
+mock_repo.get_by_id.return_value = User(id="123", name="Test User")
+
+# Patch the repository dependency
+with patch('app.api.users.get_user_repository', return_value=mock_repo):
+    response = client.get("/users/123")
+    assert response.status_code == 200
+    assert response.json()["name"] == "Test User"
+```
+
+### Code Review Checklist
+
+Before approving a PR, check:
+
+- [ ] Is business logic separate from data access?
+- [ ] Are JSON manipulations encapsulated in appropriate layers?
+- [ ] Are tests mocking at interface boundaries, not implementation details?
+- [ ] Is there proper error handling between layers?
+- [ ] Is there clear separation between API handlers and business logic?
+- [ ] Are database operations contained within repositories?
+
+### Refactoring Strategy for Legacy Code
+
+When encountering code that doesn't follow these patterns:
+
+1. **Identify seams**: Find natural boundaries where you can introduce interfaces
+2. **Extract repositories**: Move data access into repository classes
+3. **Extract services**: Move business logic into service classes
+4. **Update tests**: Rewrite tests to target public interfaces, not implementation details
+5. **Introduce interfaces**: Define clear interfaces between components

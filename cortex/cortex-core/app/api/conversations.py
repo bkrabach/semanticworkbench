@@ -16,11 +16,18 @@ from app.utils.json_helpers import DateTimeEncoder
 
 from app.database.connection import get_db
 from app.database.models import User, Workspace, Conversation
+from app.database.repositories import ConversationRepository, get_conversation_repository
 from app.api.auth import get_current_user
 from app.utils.logger import logger
 from app.api.sse import send_event_to_conversation, send_event_to_workspace
 
 router = APIRouter()
+
+# Dependencies
+
+def get_repository(db: Session = Depends(get_db)) -> ConversationRepository:
+    """Get the conversation repository"""
+    return get_conversation_repository(db)
 
 # Request and response models
 
@@ -86,7 +93,8 @@ async def list_conversations(
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
     user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    repository: ConversationRepository = Depends(get_repository)
 ):
     """
     List conversations in a workspace
@@ -97,6 +105,7 @@ async def list_conversations(
         offset: Number of conversations to skip
         user: Authenticated user
         db: Database session
+        repository: Conversation repository
 
     Returns:
         List of conversations
@@ -111,11 +120,7 @@ async def list_conversations(
         raise HTTPException(status_code=404, detail="Workspace not found")
 
     # Get conversations for the workspace
-    conversations = db.query(Conversation).filter(
-        Conversation.workspace_id == workspace_id
-    ).order_by(
-        Conversation.last_active_at_utc.desc()
-    ).offset(offset).limit(limit).all()
+    conversations = repository.get_conversations_by_workspace(workspace_id, limit, offset)
     
     # Process each conversation to handle the JSON fields
     processed_conversations = []
@@ -142,13 +147,14 @@ async def list_conversations(
     return processed_conversations
 
 
-@router.post("/workspaces/{workspace_id}/conversations", response_model=ConversationResponse)
+@router.post("/workspaces/{workspace_id}/conversations", response_model=ConversationResponse, status_code=201)
 async def create_conversation(
     workspace_id: str,
     conversation: ConversationCreate,
     background_tasks: BackgroundTasks,
     user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    repository: ConversationRepository = Depends(get_repository)
 ):
     """
     Create a new conversation in a workspace
@@ -159,6 +165,7 @@ async def create_conversation(
         background_tasks: FastAPI background tasks
         user: Authenticated user
         db: Database session
+        repository: Conversation repository
 
     Returns:
         Newly created conversation
@@ -172,33 +179,13 @@ async def create_conversation(
     if not workspace:
         raise HTTPException(status_code=404, detail="Workspace not found")
 
-    # Create new conversation with timezone-aware UTC datetime
-    now = datetime.now(timezone.utc)
-    metadata = conversation.metadata or {}
-
-    # Convert metadata to JSON string
-    metadata_json = json.dumps(metadata)
-
-    new_conversation = Conversation(
-        id=str(uuid.uuid4()),
+    # Create conversation using repository
+    new_conversation = repository.create_conversation(
         workspace_id=workspace_id,
         title=conversation.title,
         modality=conversation.modality,
-        created_at_utc=now,
-        last_active_at_utc=now,
-        entries="[]",
-        meta_data=metadata_json
+        metadata=conversation.metadata or {}
     )
-
-    db.add(new_conversation)
-    db.commit()
-    db.refresh(new_conversation)
-
-    # Update workspace last_active_at_utc
-    workspace = db.query(Workspace).filter(Workspace.id == workspace_id).first()
-    if workspace:
-        setattr(workspace, 'last_active_at_utc', now)
-        db.commit()
 
     # Send SSE event for the new conversation in the background
     background_tasks.add_task(
@@ -238,7 +225,8 @@ async def create_conversation(
 async def get_conversation(
     conversation_id: str,
     user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    repository: ConversationRepository = Depends(get_repository)
 ):
     """
     Get conversation details
@@ -247,11 +235,12 @@ async def get_conversation(
         conversation_id: Conversation ID
         user: Authenticated user
         db: Database session
+        repository: Conversation repository
 
     Returns:
         Conversation details
     """
-    # Get conversation with access check
+    # Get conversation with access check (still need to do join across tables for access check)
     conversation = db.query(Conversation).join(Workspace).filter(
         Conversation.id == conversation_id,
         Workspace.user_id == user.id
@@ -259,6 +248,9 @@ async def get_conversation(
 
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversation not found")
+        
+    # Get conversation details using repository
+    conversation = repository.get_conversation_by_id(conversation_id)
 
     # Parse JSON strings and return validated model
     metadata = {}
@@ -281,13 +273,14 @@ async def get_conversation(
     })
 
 
-@router.put("/conversations/{conversation_id}", response_model=ConversationResponse)
+@router.patch("/conversations/{conversation_id}", response_model=ConversationResponse)
 async def update_conversation(
     conversation_id: str,
     update_data: ConversationUpdate,
     background_tasks: BackgroundTasks,
     user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    repository: ConversationRepository = Depends(get_repository)
 ):
     """
     Update conversation details
@@ -298,6 +291,7 @@ async def update_conversation(
         background_tasks: FastAPI background tasks
         user: Authenticated user
         db: Database session
+        repository: Conversation repository
 
     Returns:
         Updated conversation
@@ -311,29 +305,15 @@ async def update_conversation(
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
-    # Update conversation fields
-    if update_data.title is not None:
-        setattr(conversation, 'title', update_data.title)
-
-    if update_data.metadata is not None:
-        # Parse existing metadata
-        try:
-            existing_metadata = json.loads(str(getattr(conversation, 'meta_data')))
-        except json.JSONDecodeError:
-            existing_metadata = {}
-
-        # Update with new metadata
-        existing_metadata.update(update_data.metadata)
-        setattr(conversation, 'meta_data', json.dumps(existing_metadata))
-
-    # Update last_active_at_utc with timezone-aware UTC datetime
-    setattr(conversation, 'last_active_at_utc', datetime.now(timezone.utc))
-
-    db.commit()
-    db.refresh(conversation)
+    # Update conversation using repository
+    updated_conversation = repository.update_conversation(
+        conversation_id=conversation_id,
+        title=update_data.title,
+        metadata=update_data.metadata
+    )
 
     # Parse metadata for the event
-    meta_data_value = getattr(conversation, 'meta_data')
+    meta_data_value = getattr(updated_conversation, 'meta_data')
     meta_data_str = str(meta_data_value) if meta_data_value is not None else "{}"
     try:
         metadata = json.loads(meta_data_str)
@@ -346,21 +326,21 @@ async def update_conversation(
         str(conversation_id),
         "conversation_update",
         {
-            "id": str(getattr(conversation, 'id')),
-            "title": str(getattr(conversation, 'title')),
-            "last_active_at_utc": getattr(conversation, 'last_active_at_utc').isoformat(),
+            "id": str(getattr(updated_conversation, 'id')),
+            "title": str(getattr(updated_conversation, 'title')),
+            "last_active_at_utc": getattr(updated_conversation, 'last_active_at_utc').isoformat(),
             "metadata": metadata
         }
     )
 
     # Parse JSON strings and return validated model
     return ConversationResponse.model_validate({
-        "id": conversation.id,
-        "title": conversation.title,
-        "modality": conversation.modality,
-        "workspace_id": conversation.workspace_id,
-        "created_at": conversation.created_at_utc,
-        "last_active_at": conversation.last_active_at_utc,
+        "id": updated_conversation.id,
+        "title": updated_conversation.title,
+        "modality": updated_conversation.modality,
+        "workspace_id": updated_conversation.workspace_id,
+        "created_at": updated_conversation.created_at_utc,
+        "last_active_at": updated_conversation.last_active_at_utc,
         "metadata": metadata
     })
 
@@ -370,7 +350,8 @@ async def delete_conversation(
     conversation_id: str,
     background_tasks: BackgroundTasks,
     user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    repository: ConversationRepository = Depends(get_repository)
 ):
     """
     Delete a conversation
@@ -380,6 +361,7 @@ async def delete_conversation(
         background_tasks: FastAPI background tasks
         user: Authenticated user
         db: Database session
+        repository: Conversation repository
 
     Returns:
         Success message
@@ -395,9 +377,11 @@ async def delete_conversation(
 
     workspace_id = conversation.workspace_id
 
-    # Delete the conversation
-    db.delete(conversation)
-    db.commit()
+    # Delete the conversation using repository
+    success = repository.delete_conversation(conversation_id)
+    
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to delete conversation")
 
     # Send SSE event for conversation deletion in the background
     background_tasks.add_task(
@@ -418,7 +402,8 @@ async def get_conversation_messages(
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0),
     user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    repository: ConversationRepository = Depends(get_repository)
 ):
     """
     Get messages in a conversation
@@ -429,6 +414,7 @@ async def get_conversation_messages(
         offset: Number of messages to skip
         user: Authenticated user
         db: Database session
+        repository: Conversation repository
 
     Returns:
         List of messages
@@ -442,20 +428,12 @@ async def get_conversation_messages(
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
-    # Parse entries from conversation
-    try:
-        entries = json.loads(str(getattr(conversation, 'entries')))
-    except json.JSONDecodeError:
-        entries = []
-
-    # Apply pagination (reversing to get newest first, then reversing back)
-    entries.reverse()
-    paginated_entries = entries[offset:offset+limit]
-    paginated_entries.reverse()  # Back to chronological order
+    # Get messages using repository
+    entries = repository.get_messages(conversation_id, limit, offset)
 
     # Convert entries to response format
     messages = []
-    for entry in paginated_entries:
+    for entry in entries:
         # Get timestamp from created_at_utc field or use current UTC time
         timestamp = entry.get("created_at_utc", datetime.now(timezone.utc))
         
@@ -478,13 +456,14 @@ async def get_conversation_messages(
     return messages
 
 
-@router.post("/conversations/{conversation_id}/messages", response_model=MessageResponse)
+@router.post("/conversations/{conversation_id}/messages", response_model=MessageResponse, status_code=201)
 async def add_message(
     conversation_id: str,
     message: MessageCreate,
     background_tasks: BackgroundTasks,
     user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    repository: ConversationRepository = Depends(get_repository)
 ):
     """
     Add a message to a conversation
@@ -495,6 +474,7 @@ async def add_message(
         background_tasks: FastAPI background tasks
         user: Authenticated user
         db: Database session
+        repository: Conversation repository
 
     Returns:
         Newly created message
@@ -508,32 +488,20 @@ async def add_message(
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
-    # Create new message with timezone-aware UTC datetime
-    message_id = str(uuid.uuid4())
-    now = datetime.now(timezone.utc)
+    # Create message using repository
+    entry = repository.add_message(
+        conversation_id=conversation_id,
+        content=message.content,
+        role=message.role,
+        metadata=message.metadata
+    )
+    
+    if not entry:
+        raise HTTPException(status_code=500, detail="Failed to add message")
 
-    # Create message entry
-    new_entry = {
-        "id": message_id,
-        "content": message.content,
-        "role": message.role,
-        "created_at_utc": now,  # Store as datetime object
-        "metadata": message.metadata or {}
-    }
-
-    # Parse and update entries
-    try:
-        entries = json.loads(str(getattr(conversation, 'entries')))
-    except json.JSONDecodeError:
-        entries = []
-
-    entries.append(new_entry)
-
-    # Update conversation - use custom encoder for datetime objects
-    setattr(conversation, 'entries', json.dumps(entries, cls=DateTimeEncoder))
-    setattr(conversation, 'last_active_at_utc', now)
-
-    db.commit()
+    # For serialization in the event
+    message_id = entry["id"]
+    now = datetime.fromisoformat(entry["created_at_utc"]) if isinstance(entry["created_at_utc"], str) else entry["created_at_utc"]
 
     # Send SSE event for the new message in the background
     background_tasks.add_task(
@@ -544,7 +512,7 @@ async def add_message(
             "id": str(message_id),
             "content": str(message.content),
             "role": str(message.role),
-            "created_at_utc": now.isoformat(),  # Convert to ISO string for transport
+            "created_at_utc": now.isoformat() if isinstance(now, datetime) else now,
             "metadata": message.metadata or {}
         }
     )
@@ -722,10 +690,11 @@ async def simulate_assistant_response(conversation_id: str, user_message: str, d
         user_message: Message from user
         db: Database session
     """
+    # Get repository
+    repository = get_conversation_repository(db)
+    
     # Get conversation to get workspace_id
-    conversation = db.query(Conversation).filter(
-        Conversation.id == conversation_id
-    ).first()
+    conversation = repository.get_conversation_by_id(conversation_id)
     
     if not conversation:
         logger.warning(f"Conversation {conversation_id} not found")

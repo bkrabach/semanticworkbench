@@ -239,41 +239,23 @@ class ConversationOutputPublisher(OutputPublisherInterface):
             message: The message to persist
             db: Database session
         """
-        # Get the conversation
-        conversation = db.query(Conversation).filter(
-            Conversation.id == self.conversation_id
-        ).first()
+        # Use repository to persist the message
+        from app.database.repositories import get_conversation_repository
         
-        if not conversation:
-            self.logger.warning(f"Conversation {self.conversation_id} not found")
+        repository = get_conversation_repository(db)
+        
+        # Create message using repository
+        entry = repository.add_message(
+            conversation_id=self.conversation_id,
+            content=message.content,
+            role="assistant",  # Hardcoded for now
+            metadata=message.metadata
+        )
+        
+        if not entry:
+            self.logger.warning(f"Failed to persist message to conversation {self.conversation_id}")
             return
             
-        # Parse entries
-        try:
-            entries_str = str(getattr(conversation, 'entries')) if getattr(conversation, 'entries') else "[]"
-            entries = json.loads(entries_str)
-        except json.JSONDecodeError:
-            entries = []
-            
-        # Add new entry
-        entries.append({
-            "id": message.message_id,
-            "content": message.content,
-            "role": "assistant",  # Hardcoded for now
-            "created_at_utc": message.timestamp.isoformat(),
-            "metadata": message.metadata
-        })
-        
-        # Update conversation using ORM
-        entries_json = json.dumps(entries, cls=DateTimeEncoder)
-        
-        # Using setattr to handle ORM Column attributes
-        setattr(conversation, 'entries', entries_json)
-        setattr(conversation, 'last_active_at_utc', message.timestamp)
-        
-        # Commit to DB
-        db.commit()
-        
         self.logger.info(f"Persisted message {message.message_id} to conversation {self.conversation_id}")
     
     def get_channel_id(self) -> str:
