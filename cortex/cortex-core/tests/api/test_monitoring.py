@@ -17,11 +17,31 @@ def test_client():
     return TestClient(app)
 
 
-class AsyncMockWithStats(AsyncMock):
-    """Mock event system with predefined stats"""
+@pytest.fixture
+def client_with_event_system_override(mock_event_system):
+    """Create a test client with event system dependency override"""
+    # Import get_event_system to override it
+    from app.api.monitoring import get_event_system
     
-    async def get_stats(self):
-        """Return predefined stats"""
+    # Override the get_event_system dependency
+    app.dependency_overrides[get_event_system] = lambda: mock_event_system
+    
+    # Create a client with the override
+    client = TestClient(app)
+    
+    yield client
+    
+    # Clean up after test
+    app.dependency_overrides = {}
+
+
+@pytest.fixture
+def mock_event_system():
+    """Create a mock event system with predefined stats"""
+    mock_system = AsyncMock(spec=EventSystem)
+    
+    # Configure the mock to return predefined stats
+    async def mock_get_stats():
         return {
             "events_published": 100,
             "events_delivered": 95,
@@ -35,30 +55,28 @@ class AsyncMockWithStats(AsyncMock):
             "uptime_seconds": 3600,
             "events_per_second": 0.028
         }
-
-
-def test_get_event_stats(test_client):
-    """Test the event stats endpoint with a mock"""
-    # Create a mock with preconfigured stats response
-    mock_system = AsyncMockWithStats(spec=EventSystem)
     
-    # Patch the event system function
-    with patch("app.api.monitoring.get_event_system", return_value=mock_system):
-        # Make the request
-        response = test_client.get("/monitoring/events/stats")
-        
-        # Verify the response
-        assert response.status_code == 200
-        data = response.json()
-        
-        # Check that we have the expected keys in the response
-        assert "events_published" in data
-        assert "events_delivered" in data
-        assert "subscriber_count" in data
-        assert "event_types" in data
-        assert "errors" in data
-        assert "uptime_seconds" in data
-        assert "events_per_second" in data
+    mock_system.get_stats.side_effect = mock_get_stats
+    return mock_system
+
+
+def test_get_event_stats(client_with_event_system_override, mock_event_system):
+    """Test the event stats endpoint with a dependency override"""
+    # Make the request using client with event system override
+    response = client_with_event_system_override.get("/monitoring/events/stats")
+    
+    # Verify the response
+    assert response.status_code == 200
+    data = response.json()
+    
+    # Check that we have the expected keys in the response
+    assert "events_published" in data
+    assert "events_delivered" in data
+    assert "subscriber_count" in data
+    assert "event_types" in data
+    assert "errors" in data
+    assert "uptime_seconds" in data
+    assert "events_per_second" in data
 
 
 @pytest.mark.asyncio
@@ -121,8 +139,11 @@ async def test_monitoring_api_with_real_event_system():
     for i in range(5):
         await event_system.publish(f"api.test.event{i}", {"index": i}, "test_source")
     
-    # Patch the get_event_system function to return our instance
-    with patch("app.api.monitoring.get_event_system", return_value=event_system):
+    # Set up dependency override for this test
+    from app.api.monitoring import get_event_system
+    app.dependency_overrides[get_event_system] = lambda: event_system
+    
+    try:
         # Create a test client
         client = TestClient(app)
         
@@ -134,8 +155,7 @@ async def test_monitoring_api_with_real_event_system():
         data = response.json()
         
         # Check that stats reflect our activity
-        # Note: Event system is recreated when the API is called, so it won't have our events
-        # Just check the basic structure is correct
+        # With proper dependency override, the stats should include our events
         assert "events_published" in data
         assert "events_delivered" in data 
         assert "subscriber_count" in data
@@ -143,6 +163,13 @@ async def test_monitoring_api_with_real_event_system():
         assert "errors" in data
         assert "uptime_seconds" in data
         assert "events_per_second" in data
+        
+        # Now we can more confidently check the actual values
+        assert data["events_published"] == 5
+        assert data["subscriber_count"] == 1
+    finally:
+        # Clean up dependency override
+        app.dependency_overrides = {}
 
 
 @pytest.mark.asyncio

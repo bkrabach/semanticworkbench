@@ -113,6 +113,52 @@ pytest --cov=app tests/
 pytest tests/components/test_event_system.py
 ```
 
+### Testing Best Practices
+
+#### FastAPI Endpoint Testing
+
+When testing FastAPI endpoints, use dependency overrides rather than patching:
+
+```python
+# BAD APPROACH (patching)
+def test_login(test_client, mock_db):
+    with patch("app.api.auth.get_db", return_value=mock_db):
+        response = test_client.post("/auth/login", json={"username": "test"})
+        assert response.status_code == 200
+
+# GOOD APPROACH (dependency overrides)
+@pytest.fixture
+def client_with_db_override(mock_db):
+    """Create a test client with DB dependency override"""
+    app.dependency_overrides[get_db] = lambda: mock_db
+    client = TestClient(app)
+    yield client
+    app.dependency_overrides = {}
+
+def test_login(client_with_db_override):
+    response = client_with_db_override.post("/auth/login", json={"username": "test"})
+    assert response.status_code == 200
+```
+
+Key principles for effective API testing:
+
+1. **Use dependency overrides**: Override FastAPI's dependency injection system rather than patching functions.
+2. **Create specific fixtures**: Create fixtures that set up dependencies and clean up after tests.
+3. **Handle async properly**: Use `@pytest.mark.asyncio` for async functions and properly await results.
+4. **Clean up after tests**: Use `try/finally` or fixture yield patterns to clean up overrides.
+5. **Mock at the right level**: Mock database sessions, not individual queries when possible.
+
+#### Testing Async Components
+
+For async components, always use the `asyncio` pytest plugin:
+
+```python
+@pytest.mark.asyncio
+async def test_async_function():
+    result = await async_function()
+    assert result is not None
+```
+
 #### Testing the Event System
 
 When testing the event system, consider these scenarios:

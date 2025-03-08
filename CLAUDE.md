@@ -38,3 +38,21 @@
 - This is a modern platform focused on clean design and maintainability
 - Always consider scalability and performance in your implementation
 - Follow established patterns in the codebase for consistency
+
+## Testing Best Practices
+
+- Use dependency overrides for FastAPI tests, not patching:
+  ```python
+  # Good approach (use this)
+  app.dependency_overrides[get_db] = lambda: mock_db
+  
+  # Bad approach (avoid this)
+  with patch("app.api.auth.get_db", return_value=mock_db):
+      ...
+  ```
+- Create fixtures that properly clean up resources
+- Always use `@pytest.mark.asyncio` for testing async functions
+- Test fastAPI endpoints using TestClient with dependency overrides
+- Clear all overrides after tests using try/finally or yield fixtures
+- Mock database sessions, not individual queries
+- Create test-specific fixtures for commonly used dependencies

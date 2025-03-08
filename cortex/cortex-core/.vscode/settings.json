@@ -72,6 +72,7 @@
     "docstrings",
     "dotenv",
     "excepthook",
+    "excinfo",
     "fastapi",
     "fernet",
     "flushall",

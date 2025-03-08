@@ -138,7 +138,8 @@ See the [CLIENT_INTEGRATION_GUIDE.md](./CLIENT_INTEGRATION_GUIDE.md) for details
 
 For more detailed information, refer to:
 
-- [Development Guide](./DEVELOPMENT.md) - For contributors and developers
-- [API Reference](./API_REFERENCE.md) - API endpoint documentation
-- [Configuration](./CONFIGURATION.md) - Detailed configuration options
-- [Client Integration Guide](./CLIENT_INTEGRATION_GUIDE.md) - Guide for client application developers
+- [Development Guide](./docs/DEVELOPMENT.md) - For contributors and developers
+- [API Reference](./docs/API_REFERENCE.md) - API endpoint documentation
+- [Configuration](./docs/CONFIGURATION.md) - Detailed configuration options
+- [Client Integration Guide](./docs/CLIENT_INTEGRATION_GUIDE.md) - Guide for client application developers
+- [Testing Guide](./docs/TESTING.md) - Best practices for testing
