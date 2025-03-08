@@ -8,8 +8,8 @@ This guide explains how to use the Model Context Protocol (MCP) for internal ser
 
 - [Overview](#overview)
 - [MCP in the Cortex Ecosystem](#mcp-in-the-cortex-ecosystem)
-- [Setting Up MCP](#setting-up-mcp)
-- [Implementing MCP for Domain Experts](#implementing-mcp-for-domain-experts)
+- [Setting Up MCP with Python SDK](#setting-up-mcp-with-python-sdk)
+- [Implementing MCP for Domain Experts using FastMCP](#implementing-mcp-for-domain-experts-using-fastmcp)
 - [Implementing MCP for External Tools](#implementing-mcp-for-external-tools)
 - [Security Considerations](#security-considerations)
 - [Testing and Debugging](#testing-and-debugging)
@@ -65,7 +65,7 @@ In this architecture:
 3. Domain Experts and External Tools implement MCP endpoints
 4. No direct MCP communication occurs between clients and the core system
 
-## Setting Up MCP
+## Setting Up MCP with Python SDK
 
 ### Configuration
 
@@ -94,342 +94,395 @@ MCP_ENDPOINT_VSCODE="http://localhost:5002|vscode"
 MCP_ENDPOINTS='[{"name":"code_assistant","endpoint":"http://localhost:5000","type":"code_assistant"},{"name":"research","endpoint":"http://localhost:5001","type":"research"},{"name":"vscode","endpoint":"http://localhost:5002","type":"vscode"}]'
 ```
 
-### Basic MCP Integration
+### Using the Python MCP SDK
 
-To implement a basic MCP client for internal services:
+Cortex uses the official Python MCP SDK for all MCP client/server implementations. This provides a standardized implementation with all the required functionality.
+
+The MCP SDK is included in the project dependencies in pyproject.toml.
+
+#### MCP Client Implementation with Python SDK
+
+To implement an MCP client using the Python SDK:
 
 ```python
-import aiohttp
-import json
-import uuid
-from typing import Dict, Any, Optional
+from mcp.client import McpClient
+import asyncio
 import logging
+from typing import Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
 
-class McpClient:
-    """MCP client for internal service communication"""
+class CortexMcpClient:
+    """Wrapper for MCP client using the official Python SDK"""
 
     def __init__(self, endpoint: str, service_name: str):
         self.endpoint = endpoint
         self.service_name = service_name
-        self.session = None
-        self.initialized = False
+        self.client = None
 
     async def connect(self):
-        """Establish connection and initialize MCP session"""
-        if self.session is None:
-            self.session = aiohttp.ClientSession()
+        """Create and initialize the MCP client"""
+        if self.client is None:
+            # Create the client with SSE transport for HTTP endpoints
+            self.client = McpClient(
+                client_info={"name": f"cortex-{self.service_name}", "version": "0.1.0"},
+                transport_options={"url": self.endpoint}
+            )
+            
+            # Initialize the client
+            await self.client.initialize()
 
-        # Initialize MCP session
-        init_payload = {
-            "jsonrpc": "2.0",
-            "id": str(uuid.uuid4()),
-            "method": "initialize",
-            "params": {
-                "clientInfo": {
-                    "name": f"cortex-{self.service_name}",
-                    "version": "0.1.0"
-                },
-                "capabilities": {
-                    "resources": {},
-                    "tools": {}
-                }
-            }
-        }
-
-        async with self.session.post(self.endpoint, json=init_payload) as response:
-            if response.status != 200:
-                error_text = await response.text()
-                logger.error(f"Failed to initialize MCP: {error_text}")
-                raise Exception(f"MCP initialization failed: {response.status}")
-
-            init_response = await response.json()
-
-            if "error" in init_response:
-                logger.error(f"MCP initialization error: {init_response['error']}")
-                raise Exception(f"MCP initialization error: {init_response['error']['message']}")
-
-            self.initialized = True
-
-            # Send initialized notification
-            init_notification = {
-                "jsonrpc": "2.0",
-                "method": "initialized",
-                "params": {}
-            }
-
-            await self.session.post(self.endpoint, json=init_notification)
-
-            return init_response
-
-    async def request(self, method: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """Send request to MCP server"""
-        if not self.initialized:
+    async def list_tools(self) -> Dict[str, Any]:
+        """List available tools from the MCP server"""
+        if not self.client:
             await self.connect()
-
-        request_id = str(uuid.uuid4())
-        payload = {
-            "jsonrpc": "2.0",
-            "id": request_id,
-            "method": method,
-            "params": params or {}
-        }
-
-        async with self.session.post(self.endpoint, json=payload) as response:
-            if response.status != 200:
-                error_text = await response.text()
-                logger.error(f"MCP request failed: {error_text}")
-                raise Exception(f"MCP request failed: {response.status}")
-
-            result = await response.json()
-
-            if "error" in result:
-                logger.error(f"MCP error: {result['error']}")
-                raise Exception(f"MCP error: {result['error']['message']}")
-
-            return result["result"]
-
-    async def send_notification(self, method: str, params: Optional[Dict[str, Any]] = None):
-        """Send notification to MCP server (no response expected)"""
-        if not self.initialized:
+            
+        return await self.client.tools_list()
+    
+    async def call_tool(self, name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
+        """Call a tool on the MCP server"""
+        if not self.client:
             await self.connect()
-
-        payload = {
-            "jsonrpc": "2.0",
-            "method": method,
-            "params": params or {}
-        }
-
-        await self.session.post(self.endpoint, json=payload)
+            
+        return await self.client.tools_call(name=name, arguments=arguments)
+    
+    async def read_resource(self, uri: str) -> Dict[str, Any]:
+        """Read a resource from the MCP server"""
+        if not self.client:
+            await self.connect()
+            
+        return await self.client.resources_read(uri=uri)
 
     async def close(self):
-        """Close the MCP session"""
-        if self.session:
-            # Send shutdown request
-            try:
-                await self.request("shutdown", {})
-            except Exception as e:
-                logger.warning(f"Error during MCP shutdown: {e}")
-
-            # Send exit notification
-            try:
-                await self.send_notification("exit")
-            except Exception as e:
-                logger.warning(f"Error during MCP exit: {e}")
-
-            # Close session
-            await self.session.close()
-            self.session = None
-            self.initialized = False
+        """Close the MCP client"""
+        if self.client:
+            await self.client.shutdown()
+            self.client = None
 ```
 
-## Implementing MCP for Domain Experts
+#### Integration Hub Implementation
 
-Domain Expert services should implement the MCP server protocol to receive requests from Cortex Core.
-
-### Server Implementation Example
-
-Here's a basic example of an MCP server for a domain expert:
+The Integration Hub should use the MCP Client to communicate with Domain Expert services:
 
 ```python
-from fastapi import FastAPI, Request, Response
-import json
-import uuid
+# app/components/integration_hub.py
+from typing import Dict, Any, List
+import logging
+from app.config import get_settings
+from mcp.client import McpClient
+
+logger = logging.getLogger(__name__)
+
+class IntegrationHub:
+    """Manages connections to Domain Expert services via MCP"""
+    
+    def __init__(self):
+        self.settings = get_settings()
+        self.clients: Dict[str, McpClient] = {}
+        
+    async def startup(self):
+        """Initialize connections to all configured MCP endpoints"""
+        for endpoint in self.settings.mcp.endpoints:
+            try:
+                client = McpClient(
+                    client_info={"name": f"cortex-integration-hub", "version": "0.1.0"},
+                    transport_options={"url": endpoint["endpoint"]}
+                )
+                await client.initialize()
+                self.clients[endpoint["name"]] = client
+                logger.info(f"Connected to MCP endpoint: {endpoint['name']}")
+            except Exception as e:
+                logger.error(f"Failed to connect to MCP endpoint {endpoint['name']}: {str(e)}")
+                
+    async def shutdown(self):
+        """Close all MCP connections"""
+        for name, client in self.clients.items():
+            try:
+                await client.shutdown()
+                logger.info(f"Closed connection to MCP endpoint: {name}")
+            except Exception as e:
+                logger.error(f"Error closing MCP connection to {name}: {str(e)}")
+    
+    async def invoke_expert(self, expert_name: str, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
+        """Invoke a tool on a specific domain expert"""
+        if expert_name not in self.clients:
+            raise ValueError(f"Unknown domain expert: {expert_name}")
+            
+        client = self.clients[expert_name]
+        return await client.tools_call(name=tool_name, arguments=arguments)
+```
+
+## Implementing MCP for Domain Experts using FastMCP
+
+Domain Expert services should implement MCP servers using the FastMCP API from the Python SDK, which greatly simplifies implementation.
+
+### FastMCP Server Implementation Example
+
+Here's how to implement an MCP server using FastMCP:
+
+```python
+from mcp.server.fastmcp import FastMCP
 from typing import Dict, Any, List, Optional
 import asyncio
 
-app = FastAPI()
+# Create the FastMCP server
+mcp = FastMCP("Code Assistant Expert")
 
-# In-memory storage for simplicity (use a proper database in production)
-active_sessions = {}
-available_tools = {
-    "code_analysis": {
-        "name": "code_analysis",
-        "description": "Analyze code for patterns and issues",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "code": {"type": "string"},
-                "language": {"type": "string"}
-            },
-            "required": ["code"]
-        }
-    }
-}
-
-@app.post("/")
-async def handle_mcp_request(request: Request):
-    """Handle incoming MCP requests"""
-    try:
-        # Parse JSON-RPC request
-        data = await request.json()
-
-        # Handle method
-        if "method" in data:
-            method = data["method"]
-            params = data.get("params", {})
-
-            # Check if it's a request (has ID) or notification
-            if "id" in data:
-                # It's a request
-                request_id = data["id"]
-
-                if method == "initialize":
-                    result = handle_initialize(params, request_id)
-                elif method == "tools/list":
-                    result = handle_list_tools()
-                elif method == "tools/call":
-                    result = await handle_call_tool(params)
-                elif method == "shutdown":
-                    result = {}
-                else:
-                    return create_error_response(request_id, -32601, f"Method not found: {method}")
-
-                return create_success_response(request_id, result)
-            else:
-                # It's a notification
-                if method == "initialized":
-                    # Nothing to do
-                    pass
-                elif method == "exit":
-                    # Cleanup
-                    pass
-
-                # Notifications don't need a response
-                return Response(status_code=204)
-        else:
-            return Response(status_code=400, content=json.dumps({"error": "Invalid JSON-RPC message"}))
-    except Exception as e:
-        # Internal error
-        if "id" in data:
-            return create_error_response(data["id"], -32603, f"Internal error: {str(e)}")
-        else:
-            return Response(status_code=500, content=json.dumps({"error": str(e)}))
-
-def handle_initialize(params: Dict[str, Any], request_id: str) -> Dict[str, Any]:
-    """Handle initialize request"""
-    # Create a new session
-    session_id = str(uuid.uuid4())
-    active_sessions[session_id] = {
-        "client_info": params.get("clientInfo", {}),
-        "capabilities": params.get("capabilities", {})
-    }
-
-    # Return server capabilities
-    return {
-        "serverInfo": {
-            "name": "code-assistant-expert",
-            "version": "0.1.0"
+# Define tools using decorators
+@mcp.tool(
+    description="Analyze code for patterns and issues",
+    schema={
+        "type": "object",
+        "properties": {
+            "code": {"type": "string", "description": "Code to analyze"},
+            "language": {"type": "string", "description": "Programming language"}
         },
-        "capabilities": {
-            "tools": {}
-        }
+        "required": ["code"]
     }
-
-def handle_list_tools() -> Dict[str, Any]:
-    """Handle tools/list request"""
+)
+async def code_analysis(code: str, language: str = "unknown") -> Dict[str, Any]:
+    """Analyze code for patterns and issues"""
+    # For demonstration - in a real system, this would do actual analysis
+    
+    # Simulate some processing time
+    await asyncio.sleep(1)
+    
     return {
-        "tools": list(available_tools.values())
+        "content": [
+            {
+                "type": "text",
+                "text": f"Analysis of {language} code (length: {len(code)}):\n\n1. Complexity: Medium\n2. Potential issues: None detected\n3. Recommendation: Code looks good!"
+            }
+        ]
     }
 
-async def handle_call_tool(params: Dict[str, Any]) -> Dict[str, Any]:
-    """Handle tools/call request"""
-    tool_name = params.get("name")
-    arguments = params.get("arguments", {})
+# Define a resource
+@mcp.resource("documentation://{topic}")
+async def get_documentation(topic: str) -> str:
+    """Get documentation for a specific topic"""
+    topics = {
+        "python": "# Python Documentation\n\nThis is sample Python documentation.",
+        "javascript": "# JavaScript Documentation\n\nThis is sample JavaScript documentation."
+    }
+    
+    return topics.get(topic, f"No documentation available for {topic}")
 
-    if tool_name not in available_tools:
-        raise Exception(f"Tool not found: {tool_name}")
+# Define a prompt template
+@mcp.prompt()
+def code_review_prompt(language: str, code: str) -> str:
+    """Create a code review prompt template"""
+    return f"""Please review this {language} code:
 
-    if tool_name == "code_analysis":
-        # For demonstration - in a real system, this would do actual analysis
-        code = arguments.get("code", "")
-        language = arguments.get("language", "unknown")
+```{language}
+{code}
+```
 
-        # Simulate some processing time
-        await asyncio.sleep(1)
+Provide a detailed analysis including:
+1. Code quality
+2. Potential bugs
+3. Performance issues
+4. Security concerns
+5. Suggestions for improvement
+"""
 
-        return {
-            "content": [
-                {
-                    "type": "text",
-                    "text": f"Analysis of {language} code (length: {len(code)}):\n\n1. Complexity: Medium\n2. Potential issues: None detected\n3. Recommendation: Code looks good!"
-                }
-            ]
-        }
+if __name__ == "__main__":
+    # Run the server with desired transport (stdio or http)
+    # For HTTP server with SSE transport
+    mcp.run(transport="sse", host="0.0.0.0", port=5000)
+    
+    # Alternatively, for standard I/O communication
+    # mcp.run(transport="stdio")
+```
 
-    # If we get here, tool exists but is not implemented
-    raise Exception(f"Tool implementation not found: {tool_name}")
+### Integrating FastMCP with FastAPI
 
-def create_success_response(request_id: str, result: Dict[str, Any]) -> Response:
-    """Create a success response"""
-    return Response(
-        content=json.dumps({
-            "jsonrpc": "2.0",
-            "id": request_id,
-            "result": result
-        }),
-        media_type="application/json"
-    )
+For more complex services, you can integrate FastMCP with FastAPI:
 
-def create_error_response(request_id: str, code: int, message: str, data: Optional[Any] = None) -> Response:
-    """Create an error response"""
-    error = {
-        "code": code,
-        "message": message
+```python
+from mcp.server.fastmcp import FastMCP
+from fastapi import FastAPI, Request, Response, Depends, HTTPException
+import asyncio
+from typing import Dict, Any
+
+# Create FastAPI app
+app = FastAPI(title="Code Assistant Expert Service")
+
+# Create FastMCP instance
+mcp = FastMCP("Code Assistant Expert")
+
+@mcp.tool()
+async def code_analysis(code: str, language: str = "unknown") -> Dict[str, Any]:
+    """Analyze code for patterns and issues"""
+    # Implementation as above
+    return {
+        "content": [
+            {
+                "type": "text",
+                "text": f"Analysis of {language} code (length: {len(code)}):\n\n1. Complexity: Medium\n2. Potential issues: None detected\n3. Recommendation: Code looks good!"
+            }
+        ]
     }
 
-    if data is not None:
-        error["data"] = data
+# Add MCP endpoint to FastAPI
+@app.post("/mcp")
+async def handle_mcp_request(request: Request):
+    """Endpoint for MCP requests"""
+    body = await request.json()
+    result = await mcp.handle_request(body)
+    return Response(content=result, media_type="application/json")
 
-    return Response(
-        content=json.dumps({
-            "jsonrpc": "2.0",
-            "id": request_id,
-            "error": error
-        }),
-        media_type="application/json"
-    )
+# Regular FastAPI endpoints for other functions
+@app.get("/health")
+async def health_check():
+    return {"status": "ok"}
 
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=5000)
 ```
 
+### Using MCP Lifecycle Management
+
+FastMCP supports lifecycle management for resources:
+
+```python
+from mcp.server.fastmcp import FastMCP
+from contextlib import asynccontextmanager
+import aiohttp
+
+@asynccontextmanager
+async def lifespan(mcp: FastMCP):
+    # Setup code
+    session = aiohttp.ClientSession()
+    mcp.state.http_session = session
+    
+    yield  # Server runs here
+    
+    # Cleanup code
+    await session.close()
+
+# Create FastMCP with lifespan
+mcp = FastMCP("Code Assistant Expert", lifespan=lifespan)
+
+@mcp.tool()
+async def fetch_documentation(url: str) -> str:
+    """Fetch documentation from URL"""
+    # Use shared HTTP session from state
+    async with mcp.state.http_session.get(url) as response:
+        return await response.text()
+```
+
 ## Implementing MCP for External Tools
 
 External tools like VS Code extensions can also implement MCP to integrate with Cortex Core.
 
-### Resource Sharing
+### Resource Sharing with Python SDK
 
-MCP enables sharing of resources such as files, code snippets, or other content:
+MCP enables sharing of resources such as files, code snippets, or other content. Using the Python SDK:
 
 ```python
-# Example of listing resources
-resources = await mcp_client.request("resources/list")
+# List available resources
+resources = await mcp_client.resources_list()
 
-# Example of reading a resource
-resource_content = await mcp_client.request("resources/read", {
-    "uri": "file:///path/to/file.py"
-})
+# Read a resource
+resource_content = await mcp_client.resources_read(uri="file:///path/to/file.py")
+
+# Subscribe to resource updates (if supported)
+resource_sub = await mcp_client.resources_subscribe(
+    uri="workspace:///current-file.py", 
+    callback=lambda content: print(f"Resource updated: {len(content)} bytes")
+)
 ```
 
-### Tool Invocation
+### Tool Invocation with Python SDK
 
 Domain experts can expose tools that can be invoked by Cortex Core:
 
 ```python
 # List available tools
-tools = await mcp_client.request("tools/list")
+tools_list = await mcp_client.tools_list()
 
 # Invoke a tool
-result = await mcp_client.request("tools/call", {
-    "name": "code_analysis",
-    "arguments": {
+result = await mcp_client.tools_call(
+    name="code_analysis",
+    arguments={
         "code": "def hello():\n    print('Hello, world!')",
         "language": "python"
     }
-})
+)
+
+# Parse the result
+if "content" in result:
+    for item in result["content"]:
+        if item["type"] == "text":
+            print(item["text"])
+```
+
+### Implementing VS Code Extension with MCP
+
+For VS Code extensions, you can use the TypeScript SDK, but it follows similar patterns:
+
+```typescript
+import { McpServer, McpResource, McpTool } from 'mcp-typescript';
+import * as vscode from 'vscode';
+
+// Create resource handlers
+const fileResource = new McpResource({
+  uriPattern: 'vscode:///file/{path}',
+  read: async (params: { path: string }) => {
+    // Get content from VS Code
+    const uri = vscode.Uri.file(params.path);
+    const content = await vscode.workspace.fs.readFile(uri);
+    return content.toString();
+  }
+});
+
+// Create tool handlers
+const searchTool = new McpTool({
+  name: 'vscode.search',
+  description: 'Search files in VS Code',
+  schema: {
+    type: 'object',
+    properties: {
+      query: { type: 'string' },
+      includePattern: { type: 'string' }
+    },
+    required: ['query']
+  },
+  handler: async ({ query, includePattern }) => {
+    // Implement search using VS Code API
+    const results = await vscode.workspace.findFiles(
+      includePattern || '**/*',
+      null
+    );
+    
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `Found ${results.length} files matching "${query}"`
+        }
+      ]
+    };
+  }
+});
+
+// Create and start MCP server
+const server = new McpServer({
+  name: 'VS Code Extension',
+  version: '1.0.0'
+});
+
+server.registerResource(fileResource);
+server.registerTool(searchTool);
+
+export function activate(context: vscode.ExtensionContext) {
+  // Start HTTP server for MCP
+  const httpServer = server.listen(5002);
+  context.subscriptions.push({
+    dispose: () => httpServer.close()
+  });
+}
 ```
 
 ## Security Considerations
@@ -463,50 +516,100 @@ When implementing MCP for internal services:
 
 ### MCP Testing Utilities
 
-You can use the MCP Inspector for testing and debugging MCP integrations:
+The Python SDK includes the MCP Inspector for testing and debugging MCP integrations:
 
 ```bash
-# Install MCP Inspector
-pip install mcp-inspector
+# Start the MCP Inspector (already included in dependencies)
+python -m mcp.inspector
 
 # Run MCP Inspector
-mcp-inspector --port 8080
+python -m mcp.inspector --port 8080
 ```
 
-### Testing MCP Servers
+### Testing FastMCP Servers
 
-To test an MCP server implementation:
+The FastMCP API includes testing utilities that make testing MCP servers simpler:
 
 ```python
-import asyncio
-from mcp_client import McpClient
+import pytest
+from mcp.server.fastmcp import FastMCP
+from mcp.testing import create_test_client
 
-async def test_mcp_server():
-    client = McpClient("http://localhost:5000", "test-client")
+# Define your FastMCP server
+mcp = FastMCP("Test Service")
 
-    try:
-        # Initialize connection
-        init_result = await client.connect()
-        print(f"Initialization result: {init_result}")
+@mcp.tool()
+async def echo(text: str) -> str:
+    return f"Echo: {text}"
 
-        # List tools
-        tools = await client.request("tools/list")
-        print(f"Available tools: {tools}")
+# Test using the testing client
+@pytest.mark.asyncio
+async def test_echo_tool():
+    # Create a test client for the MCP server
+    async with create_test_client(mcp) as client:
+        # Call the tool
+        result = await client.tools_call(
+            name="echo",
+            arguments={"text": "Hello, world!"}
+        )
+        
+        # Verify the result
+        assert result == "Echo: Hello, world!"
+        
+        # List available tools
+        tools = await client.tools_list()
+        assert len(tools["tools"]) == 1
+        assert tools["tools"][0]["name"] == "echo"
+```
 
-        # Call a tool
-        result = await client.request("tools/call", {
+### Integration Testing with FastAPI
+
+For testing FastMCP integrated with FastAPI:
+
+```python
+from fastapi.testclient import TestClient
+from mcp.testing import create_mcp_request
+import json
+
+# Create the FastAPI test client
+test_client = TestClient(app)
+
+def test_mcp_endpoint():
+    # Create an MCP request
+    request_data = create_mcp_request(
+        method="tools/call",
+        params={
             "name": "code_analysis",
             "arguments": {
                 "code": "def test(): pass",
                 "language": "python"
             }
-        })
-        print(f"Tool result: {result}")
-    finally:
-        # Close connection
-        await client.close()
-
-asyncio.run(test_mcp_server())
+        }
+    )
+    
+    # Send to the FastAPI endpoint
+    response = test_client.post("/mcp", json=request_data)
+    
+    # Verify response
+    assert response.status_code == 200
+    result = response.json()
+    assert "result" in result
+    assert "content" in result["result"]
 ```
+
+### Development Mode
+
+FastMCP supports a development mode that provides additional debugging and introspection:
+
+```python
+# Run in development mode
+mcp.run(transport="sse", host="0.0.0.0", port=5000, dev_mode=True)
+```
+
+In development mode, FastMCP provides:
+- Additional logging of request/response details
+- Automatic schema validation errors with detailed messages
+- Introspection endpoints for tools and resources
+- Performance metrics for tool execution
 
 Remember, MCP is for internal service-to-service communication only. Client applications should use the REST API and SSE as described in the [Client Integration Guide](./CLIENT_INTEGRATION_GUIDE.md).

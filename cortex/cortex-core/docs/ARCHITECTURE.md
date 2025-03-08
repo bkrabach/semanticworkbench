@@ -101,6 +101,37 @@ The key advantages of this architecture include:
 5. **Performance**: Efficient connection management with proper resource cleanup
 6. **Observability**: Built-in statistics and monitoring capabilities
 
+### Integration Hub and MCP Architecture
+
+The Integration Hub manages communication between Cortex Core and Domain Expert services using the Model Context Protocol (MCP):
+
+```
+┌────────────────────┐           ┌────────────────────┐
+│    Cortex Core     │           │   Domain Experts   │
+│                    │◄────────►│                    │
+│ ┌────────────────┐ │           │ ┌────────────────┐ │
+│ │Integration Hub │ │   MCP     │ │  FastMCP API   │ │
+│ │with MCP Client │◄┼──────────┼►│  Server         │ │
+│ └────────────────┘ │           │ └────────────────┘ │
+└────────────────────┘           └────────────────────┘
+```
+
+The Integration Hub:
+
+1. **MCP Client Implementation**: Uses the Python MCP SDK client to communicate with domain expert services
+2. **Service Discovery**: Manages connections to configured MCP endpoints 
+3. **Tool Invocation**: Provides a unified interface for invoking tools on domain expert services
+4. **Resource Access**: Facilitates access to resources exposed by domain expert services
+
+Domain Expert services implement MCP servers using the FastMCP API from the Python SDK, which provides:
+
+1. **Decorator-based Tools**: Simple definition of tools using Python decorators
+2. **Type-safe Interfaces**: Automatic validation of parameters using Python type annotations
+3. **Resource Templating**: URI-template based resource definitions
+4. **Lifecycle Management**: Proper setup and teardown of resources
+
+The FastMCP API significantly simplifies implementing MCP servers while ensuring protocol compliance and type safety.
+
 ### Router
 
 The router dispatches incoming requests to the appropriate handlers based on the message type and context.
@@ -184,16 +215,28 @@ For API tests, we mock repositories rather than database interactions, allowing 
 4. Event is published to notify clients
 5. API layer returns the created message
 
-## Recent Architectural Improvements
+## Key Architectural Patterns
 
-In March 2025, we refactored the conversations API to use the Repository Pattern, which:
+### Repository Pattern Implementation
 
-1. Separated data access concerns from API logic
-2. Made tests more robust by eliminating brittle JSON serialization mocks
-3. Improved error handling with repository-specific error returns
-4. Created a cleaner, more maintainable codebase
+The conversations API uses the Repository Pattern, which:
 
-This approach should be followed for all new features and when refactoring existing code.
+1. Separates data access concerns from API logic
+2. Makes tests robust by eliminating brittle JSON serialization mocks
+3. Improves error handling with repository-specific error returns
+4. Creates a cleaner, more maintainable codebase
+
+### MCP Integration with FastMCP
+
+The system uses the Python SDK with FastMCP for all MCP implementations:
+
+1. **Simplified Domain Expert Integration**: The FastMCP decorator-based API reduces boilerplate and improves clarity
+2. **Type-Safe Interfaces**: Parameter validation using Python type annotations provides early error detection
+3. **Improved Testing**: The MCP SDK's testing utilities make tests more reliable and easier to write
+4. **Consistent Protocol Implementation**: Using the SDK ensures consistent protocol compliance
+5. **Better Documentation**: Clear examples and patterns improve developer onboarding
+
+These approaches should be followed for all new features and development work.
 
 ## Architecture Decision Records
 

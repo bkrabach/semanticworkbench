@@ -399,40 +399,168 @@ class ContextManager:
         pass
 ```
 
-### Integration Hub (Planned)
+### Integration Hub
 
-The Integration Hub will facilitate communication with external services and tools, managing MCP client/server interactions.
+The Integration Hub facilitates communication with Domain Expert services and external tools using the Model Context Protocol (MCP). It acts as an MCP client to connect to various services that implement MCP servers.
 
-#### Planned Responsibilities
+#### Responsibilities
 
-- Implement the MCP client/server protocol
-- Manage connections to external tools and services
-- Route data between the core system and external components
-- Handle protocol translation when necessary
+- Implement MCP client using the Python SDK
+- Manage connections to domain expert services and tools
+- Route requests and tools between Cortex Core and expert services
+- Handle resource access for file sharing and context
 
-#### Proposed Interface
+#### Implementation with Python MCP SDK
 
 ```python
+# app/components/integration_hub.py
+from typing import Dict, Any, List, Optional
+import logging
+from contextlib import asynccontextmanager
+from mcp.client import McpClient
+from app.config import get_settings
+from app.utils.logger import get_logger
+
+logger = get_logger(__name__)
+
 class IntegrationHub:
-    async def register_integration(self, integration: Integration) -> None:
-        """Register a new external integration"""
-        pass
+    """Manages connections to Domain Expert services via MCP"""
+    
+    def __init__(self):
+        self.settings = get_settings()
+        self.clients: Dict[str, McpClient] = {}
+        
+    async def startup(self):
+        """Initialize connections to all configured MCP endpoints"""
+        for endpoint in self.settings.mcp.endpoints:
+            try:
+                client = McpClient(
+                    client_info={"name": "cortex-integration-hub", "version": "0.1.0"},
+                    transport_options={"url": endpoint["endpoint"]}
+                )
+                await client.initialize()
+                self.clients[endpoint["name"]] = client
+                logger.info(f"Connected to MCP endpoint: {endpoint['name']}")
+            except Exception as e:
+                logger.error(f"Failed to connect to MCP endpoint {endpoint['name']}: {str(e)}")
+                
+    async def shutdown(self):
+        """Close all MCP connections"""
+        for name, client in self.clients.items():
+            try:
+                await client.shutdown()
+                logger.info(f"Closed connection to MCP endpoint: {name}")
+            except Exception as e:
+                logger.error(f"Error closing MCP connection to {name}: {str(e)}")
+    
+    async def list_experts(self) -> List[str]:
+        """List all available domain experts"""
+        return list(self.clients.keys())
+    
+    async def list_expert_tools(self, expert_name: str) -> Dict[str, Any]:
+        """List all tools available from a specific domain expert"""
+        if expert_name not in self.clients:
+            raise ValueError(f"Unknown domain expert: {expert_name}")
+            
+        client = self.clients[expert_name]
+        return await client.tools_list()
+    
+    async def invoke_expert_tool(self, expert_name: str, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
+        """Invoke a tool on a specific domain expert"""
+        if expert_name not in self.clients:
+            raise ValueError(f"Unknown domain expert: {expert_name}")
+            
+        client = self.clients[expert_name]
+        return await client.tools_call(name=tool_name, arguments=arguments)
+    
+    async def read_expert_resource(self, expert_name: str, uri: str) -> Dict[str, Any]:
+        """Read a resource from a specific domain expert"""
+        if expert_name not in self.clients:
+            raise ValueError(f"Unknown domain expert: {expert_name}")
+            
+        client = self.clients[expert_name]
+        return await client.resources_read(uri=uri)
+```
 
-    async def get_integration(self, integration_id: str) -> Optional[Integration]:
-        """Get an integration by ID"""
-        pass
+#### Domain Expert Implementation with FastMCP
 
-    async def forward_request(self, integration_id: str, request: Any) -> Any:
-        """Forward a request to an external integration"""
-        pass
+Domain Expert services implement MCP servers using the FastMCP API from the Python SDK:
 
-    async def handle_external_request(self, integration_id: str, request: Any) -> Any:
-        """Handle incoming requests from external integrations"""
-        pass
+```python
+# code_assistant/main.py
+from mcp.server.fastmcp import FastMCP
+from typing import Dict, Any, List
+import asyncio
 
-    async def list_integrations(self) -> List[Integration]:
-        """List all active integrations"""
-        pass
+# Create the FastMCP server
+mcp = FastMCP("Code Assistant Expert")
+
+@mcp.tool(
+    description="Generate code based on a description",
+    schema={
+        "type": "object",
+        "properties": {
+            "description": {"type": "string", "description": "Description of code to generate"},
+            "language": {"type": "string", "description": "Programming language"}
+        },
+        "required": ["description", "language"]
+    }
+)
+async def generate_code(description: str, language: str) -> Dict[str, Any]:
+    """Generate code based on a description"""
+    # Implementation calls an LLM to generate code
+    
+    code = f"// Generated {language} code for: {description}\n"
+    if language.lower() == "python":
+        code = f"# Generated Python code for: {description}\n\ndef main():\n    print('Hello, world!')\n\nif __name__ == '__main__':\n    main()"
+    
+    return {
+        "content": [
+            {
+                "type": "text",
+                "text": code
+            }
+        ]
+    }
+
+# Run the server
+if __name__ == "__main__":
+    mcp.run(transport="sse", host="0.0.0.0", port=5000)
+```
+
+#### Integration in FastAPI Application
+
+```python
+# app/main.py
+from fastapi import FastAPI, Depends
+from app.components.integration_hub import IntegrationHub
+
+app = FastAPI()
+
+# Create Integration Hub instance
+integration_hub = IntegrationHub()
+
+@app.on_event("startup")
+async def startup_event():
+    await integration_hub.startup()
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    await integration_hub.shutdown()
+
+# Dependency to get Integration Hub
+async def get_integration_hub():
+    return integration_hub
+
+# API endpoints that use Integration Hub
+@app.post("/experts/{expert_name}/tools/{tool_name}")
+async def invoke_expert_tool(
+    expert_name: str,
+    tool_name: str,
+    arguments: Dict[str, Any],
+    hub: IntegrationHub = Depends(get_integration_hub)
+):
+    return await hub.invoke_expert_tool(expert_name, tool_name, arguments)
 ```
 
 ## Workspace and Conversation Management
