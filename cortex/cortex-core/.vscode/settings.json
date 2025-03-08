@@ -87,6 +87,7 @@
     "ondelete",
     "onupdate",
     "preconfigured",
+    "pydantic",
     "pyproject",
     "pytest",
     "qualname",
@@ -94,7 +95,9 @@
     "sessionmaker",
     "setnx",
     "sharings",
+    "sqlalchemy",
     "stringifying",
+    "testpaths",
     "toplevel",
     "uvicorn",
     "venv"

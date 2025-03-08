@@ -11,6 +11,12 @@
 - Type-check: `mypy`
 - Test: `python -m pytest`
 - Single test: `python -m pytest tests/test_file.py::test_function -v`
+- Install Dev Dependencies: `uv add --dev <package>` (e.g., for type stubs: `uv add --dev types-python-jose`)
+
+## Important Development Practices
+
+- Never work around missing packages or type stubs - always ask to have them properly installed as dev dependencies
+- For type checking issues, install the appropriate type stubs rather than modifying code to bypass errors
 
 ## Code Style
 
@@ -38,6 +44,33 @@
 - This is a modern platform focused on clean design and maintainability
 - Always consider scalability and performance in your implementation
 - Follow established patterns in the codebase for consistency
+
+## Project Documentation Guidelines
+
+When exploring any project, always check for these documentation files:
+
+### Core Documentation
+- `README.md` - Project overview, setup instructions, and basic usage
+- `ARCHITECTURE.md` - System architecture, design patterns, and component interactions
+- `DEVELOPMENT.md` - Development workflow, tools, and practices
+- `CONTRIBUTING.md` - Guidelines for contributing to the project
+
+### Technical Documentation
+- `docs/` directory - Detailed documentation for various aspects of the system
+- `API.md` or `API_REFERENCE.md` - API documentation
+- `DEPLOYMENT.md` - Deployment procedures and environments
+- `TESTING.md` - Testing strategies and procedures
+
+### Configuration and Setup
+- `.env.example` - Example environment variables
+- `docker-compose.yml` - Container configuration
+- `pyproject.toml` / `package.json` - Dependencies and project metadata
+
+### Standards and Conventions
+- `STYLE_GUIDE.md` - Code style guidelines
+- `CODE_OF_CONDUCT.md` - Community standards
+
+Always prioritize official project documentation over assumptions. Reference these files when making design decisions to ensure alignment with project standards.
 
 ## Testing Best Practices
 
