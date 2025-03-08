@@ -5,21 +5,14 @@ Conversation API endpoints for Cortex Core
 from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
-from sqlalchemy import text
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field
 import uuid
 from datetime import datetime, timezone
 import json
 import asyncio
-from json import JSONEncoder
 
-# Custom JSON encoder to handle datetime objects
-class DateTimeEncoder(JSONEncoder):
-    def default(self, o):
-        if isinstance(o, datetime):
-            return o.isoformat()
-        return super().default(o)
+from app.utils.json_helpers import DateTimeEncoder
 
 from app.database.connection import get_db
 from app.database.models import User, Workspace, Conversation
@@ -220,6 +213,15 @@ async def create_conversation(
     )
 
     # Parse JSON strings and return validated model
+    metadata = {}
+    if new_conversation.meta_data is not None:
+        try:
+            meta_data_str = str(new_conversation.meta_data)
+            if meta_data_str and meta_data_str != "{}":
+                metadata = json.loads(meta_data_str)
+        except (json.JSONDecodeError, TypeError):
+            pass
+            
     return ConversationResponse.model_validate({
         "id": new_conversation.id,
         "title": new_conversation.title,
@@ -227,7 +229,7 @@ async def create_conversation(
         "workspace_id": new_conversation.workspace_id,
         "created_at": new_conversation.created_at_utc,
         "last_active_at": new_conversation.last_active_at_utc,
-        "metadata": json.loads(new_conversation.meta_data) if new_conversation.meta_data else {}
+        "metadata": metadata
     })
 
 
@@ -258,6 +260,15 @@ async def get_conversation(
         raise HTTPException(status_code=404, detail="Conversation not found")
 
     # Parse JSON strings and return validated model
+    metadata = {}
+    if conversation.meta_data is not None:
+        try:
+            meta_data_str = str(conversation.meta_data)
+            if meta_data_str and meta_data_str != "{}":
+                metadata = json.loads(meta_data_str)
+        except (json.JSONDecodeError, TypeError):
+            pass
+            
     return ConversationResponse.model_validate({
         "id": conversation.id,
         "title": conversation.title,
@@ -265,7 +276,7 @@ async def get_conversation(
         "workspace_id": conversation.workspace_id,
         "created_at": conversation.created_at_utc,
         "last_active_at": conversation.last_active_at_utc,
-        "metadata": json.loads(conversation.meta_data) if conversation.meta_data else {}
+        "metadata": metadata
     })
 
 

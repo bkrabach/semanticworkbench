@@ -6,22 +6,14 @@ import uuid
 from datetime import datetime, timezone
 import json
 from pydantic.json import pydantic_encoder
-from json import JSONEncoder
-
 from app.database.connection import get_db
 from app.database.models import User, Workspace
 from app.api.auth import get_current_user
 from app.utils.logger import logger
 from app.api.sse import send_event_to_user
+from app.utils.json_helpers import DateTimeEncoder
 
 router = APIRouter()
-
-# Custom JSON encoder to handle datetime objects
-class DateTimeEncoder(JSONEncoder):
-    def default(self, o):
-        if isinstance(o, datetime):
-            return o.isoformat()
-        return super().default(o)
 
 # Request and response models
 
@@ -70,9 +62,19 @@ async def list_workspaces(
     # Process each workspace to handle the JSON fields
     processed_workspaces = []
     for workspace in workspaces:
-        # Parse JSON strings to dictionaries
-        config_str = str(workspace.config) if workspace.config else "{}"
-        meta_data_str = str(workspace.meta_data) if workspace.meta_data else "{}"
+        # Parse JSON strings to dictionaries safely
+        config_str = "{}"
+        meta_data_str = "{}"
+        
+        if workspace.config is not None:
+            config_str = str(workspace.config)
+            if not config_str:
+                config_str = "{}"
+                
+        if workspace.meta_data is not None:
+            meta_data_str = str(workspace.meta_data)
+            if not meta_data_str:
+                meta_data_str = "{}"
         
         try:
             config = json.loads(config_str)
@@ -138,8 +140,18 @@ async def create_workspace(
     )
 
     # Parse JSON strings and return validated model
-    config_str = str(new_workspace.config) if new_workspace.config else "{}"
-    meta_data_str = str(new_workspace.meta_data) if new_workspace.meta_data else "{}"
+    config_str = "{}"
+    meta_data_str = "{}"
+    
+    if new_workspace.config is not None:
+        config_str = str(new_workspace.config)
+        if not config_str:
+            config_str = "{}"
+            
+    if new_workspace.meta_data is not None:
+        meta_data_str = str(new_workspace.meta_data)
+        if not meta_data_str:
+            meta_data_str = "{}"
     
     try:
         config = json.loads(config_str)

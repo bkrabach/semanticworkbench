@@ -10,7 +10,6 @@ import asyncio
 import json
 import uuid
 from datetime import datetime, timezone
-from json import JSONEncoder
 from fastapi import Query
 from app.components.security_manager import get_current_user_or_none
 from app.components.tokens import verify_jwt_token
@@ -21,15 +20,9 @@ from app.config import settings
 from app.database.connection import get_db
 from app.database.models import User, Workspace, Conversation
 from app.utils.logger import logger
+from app.utils.json_helpers import DateTimeEncoder
 
 router = APIRouter()
-
-# Custom JSON encoder to handle datetime objects
-class DateTimeEncoder(JSONEncoder):
-    def default(self, o):
-        if isinstance(o, datetime):
-            return o.isoformat()
-        return super().default(o)
 
 # In-memory store for active SSE connections
 active_connections = {
@@ -469,7 +462,9 @@ async def admin_connections(user: User = Depends(get_current_user)):
     """
     # Check if user is admin
     # This is a placeholder - implement your own admin check
-    is_admin = user.email.endswith("@admin.com")
+    is_admin = False
+    if user.email is not None:
+        is_admin = str(user.email).endswith("@admin.com")
 
     if not is_admin:
         raise HTTPException(status_code=403, detail="Admin access required")

@@ -10,27 +10,19 @@ from typing import Optional, List, Any, Dict
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta, timezone
 import uuid
-from json import JSONEncoder
-
 from app.database.connection import get_db
 from app.database.models import User, ApiKey
 from app.config import settings
 from app.utils.logger import logger
 from app.components.security_manager import SecurityManager
 from app.components.tokens import TokenData, generate_jwt_token, verify_jwt_token
+from app.utils.json_helpers import DateTimeEncoder
 
 # Create router
 router = APIRouter()
 
 # Initialize security manager
 security_manager = SecurityManager()
-
-# Custom JSON encoder to handle datetime objects
-class DateTimeEncoder(JSONEncoder):
-    def default(self, o):
-        if isinstance(o, datetime):
-            return o.isoformat()
-        return super().default(o)
 
 # Request and response models
 class UserCredentials(BaseModel):
@@ -140,7 +132,11 @@ async def login(credentials: UserCredentials, db: Session = Depends(get_db)):
             ):
                 import hashlib
 
-                # Create password hash
+                # Create password hash (we already know secret exists in this condition)
+                if credentials.secret is None:
+                    logger.warning(f"Missing password for test user creation")
+                    return AuthResponse(success=False, error="Password is required")
+                    
                 password_hash = hashlib.sha256(
                     credentials.secret.encode()).hexdigest()
 
@@ -183,6 +179,10 @@ async def login(credentials: UserCredentials, db: Session = Depends(get_db)):
 
             # Verify password
             import hashlib
+
+            if credentials.secret is None:
+                logger.warning(f"Missing password for user: {credentials.identifier}")
+                return AuthResponse(success=False, error="Password is required")
 
             password_hash = hashlib.sha256(
                 credentials.secret.encode()).hexdigest()

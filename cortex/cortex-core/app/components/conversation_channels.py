@@ -8,7 +8,7 @@ from typing import Dict, Any, Optional
 from uuid import uuid4
 from datetime import datetime, timezone
 
-from sqlalchemy import text
+from app.utils.json_helpers import DateTimeEncoder
 from app.interfaces.router import (
     InputReceiverInterface,
     OutputPublisherInterface,
@@ -69,12 +69,15 @@ class ConversationInputReceiver(InputReceiverInterface):
         metadata = kwargs.get('metadata', {})
         db = kwargs.get('db')
         
-        # Format the message
+        # Format the message with safe content handling
+        # If content is None, provide an empty string to avoid type errors
+        safe_content = "" if content is None else str(content)
+        
         message = InputMessage(
             message_id=str(uuid4()),
             channel_id=self.channel_id,
             channel_type=ChannelType.CONVERSATION,
-            content=content,
+            content=safe_content,
             user_id=user_id,
             workspace_id=workspace_id,
             conversation_id=self.conversation_id,
@@ -259,8 +262,9 @@ class ConversationOutputPublisher(OutputPublisherInterface):
             "metadata": message.metadata
         })
         
-        # Update conversation
+        # Update conversation using ORM
         entries_json = json.dumps(entries, cls=DateTimeEncoder)
+        
         conversation.entries = entries_json
         conversation.last_active_at_utc = message.timestamp
         
@@ -288,14 +292,6 @@ class ConversationOutputPublisher(OutputPublisherInterface):
                 
         self.subscriptions = []
         self.logger.info(f"Cleaned up publisher for conversation {self.conversation_id}")
-
-
-# Custom JSON encoder for datetime objects
-class DateTimeEncoder(json.JSONEncoder):
-    def default(self, o):
-        if isinstance(o, datetime):
-            return o.isoformat()
-        return super().default(o)
 
 
 # Global registry of output publishers

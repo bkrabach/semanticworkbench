@@ -3,8 +3,18 @@ Helper functions for JSON serialization/deserialization with database storage
 """
 
 import json
+from datetime import datetime
 from typing import Any, Dict, List, Optional, TypeVar, Generic, Type, Union
 from app.utils.logger import logger
+
+
+# Custom JSON encoder for datetime objects
+class DateTimeEncoder(json.JSONEncoder):
+    """JSON encoder that handles datetime objects by converting them to ISO format"""
+    def default(self, o):
+        if isinstance(o, datetime):
+            return o.isoformat()
+        return super().default(o)
 
 T = TypeVar("T")
 

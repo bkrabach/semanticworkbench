@@ -23,6 +23,13 @@ logger.setLevel(getattr(logging, LOG_LEVEL))
 
 
 # Define log format
+class ExtendedLogRecord(logging.LogRecord):
+    """Extended LogRecord with extra attribute"""
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.extra = {}
+
+
 class CustomFormatter(logging.Formatter):
     """Custom formatter that adds timestamp and handles extra fields"""
 
@@ -96,6 +103,9 @@ request_file_handler.setFormatter(formatter)
 # Add handler to request logger
 request_logger.addHandler(request_file_handler)
 
+
+# Register our custom log record factory
+logging.setLogRecordFactory(ExtendedLogRecord)
 
 # Set up exception handling
 def handle_exception(exc_type, exc_value, exc_traceback):
