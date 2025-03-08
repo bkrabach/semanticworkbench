@@ -69,7 +69,7 @@ In this architecture:
 3. Domain Experts and External Tools implement MCP endpoints
 4. No direct MCP communication occurs between clients and the core system
 
-## Setting Up MCP with Python SDK
+## Setting Up MCP with Python SDK ✅
 
 ### Configuration
 
@@ -104,121 +104,116 @@ Cortex uses the official Python MCP SDK for all MCP client/server implementation
 
 The MCP SDK is included in the project dependencies in pyproject.toml.
 
-#### MCP Client Implementation with Python SDK
+#### MCP Client Implementation with Python SDK ✅
 
-To implement an MCP client using the Python SDK:
+The MCP client implementation has been successfully completed, with enhancements over the basic pattern.
+
+The implemented version includes:
+- Proper session management with ClientSession
+- Type safety improvements
+- Circuit breaker pattern for resilient communication
+- Comprehensive error handling
+- Smart conversion of return values from different formats
+- A singleton pattern for system-wide access
 
 ```python
-from mcp.client import McpClient
-import asyncio
-import logging
-from typing import Dict, Any, Optional
-
-logger = logging.getLogger(__name__)
-
+# Implementation highlights from app/components/integration_hub.py
 class CortexMcpClient:
     """Wrapper for MCP client using the official Python SDK"""
 
     def __init__(self, endpoint: str, service_name: str):
         self.endpoint = endpoint
         self.service_name = service_name
-        self.client = None
+        self.client: Optional[ClientSession] = None
 
-    async def connect(self):
-        """Create and initialize the MCP client"""
-        if self.client is None:
-            # Create the client with SSE transport for HTTP endpoints
-            self.client = McpClient(
-                client_info={"name": f"cortex-{self.service_name}", "version": "0.1.0"},
-                transport_options={"url": self.endpoint}
-            )
+    async def connect(self) -> None:
+        """Connect to the MCP server"""
+        if self.client is not None:
+            # Already connected
+            return
             
-            # Initialize the client
-            await self.client.initialize()
+        # Create ClientSession and initialize connection
+        # ...
 
     async def list_tools(self) -> Dict[str, Any]:
         """List available tools from the MCP server"""
-        if not self.client:
-            await self.connect()
-            
-        return await self.client.tools_list()
+        # ...
     
     async def call_tool(self, name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """Call a tool on the MCP server"""
-        if not self.client:
-            await self.connect()
-            
-        return await self.client.tools_call(name=name, arguments=arguments)
+        # ...
     
     async def read_resource(self, uri: str) -> Dict[str, Any]:
         """Read a resource from the MCP server"""
-        if not self.client:
-            await self.connect()
-            
-        return await self.client.resources_read(uri=uri)
+        # ...
 
-    async def close(self):
+    async def close(self) -> None:
         """Close the MCP client"""
-        if self.client:
-            await self.client.shutdown()
-            self.client = None
+        # ...
 ```
 
-#### Integration Hub Implementation
+#### Integration Hub Implementation ✅
 
-The Integration Hub should use the MCP Client to communicate with Domain Expert services:
+The Integration Hub implementation has been completed, with additional features beyond the basic example:
+
+- Circuit breaker pattern to handle service failures gracefully
+- More robust error handling
+- Additional utility methods for expert discovery and resource access
+- Singleton pattern for consistent, system-wide access
 
 ```python
-# app/components/integration_hub.py
-from typing import Dict, Any, List
-import logging
-from app.config import get_settings
-from mcp.client import McpClient
-
-logger = logging.getLogger(__name__)
-
 class IntegrationHub:
     """Manages connections to Domain Expert services via MCP"""
     
-    def __init__(self):
-        self.settings = get_settings()
-        self.clients: Dict[str, McpClient] = {}
+    def __init__(self) -> None:
+        self.settings = settings
+        self.clients: Dict[str, CortexMcpClient] = {}
+        self.circuit_breakers: Dict[str, CircuitBreaker] = {}
         
-    async def startup(self):
+    async def startup(self) -> None:
         """Initialize connections to all configured MCP endpoints"""
-        for endpoint in self.settings.mcp.endpoints:
-            try:
-                client = McpClient(
-                    client_info={"name": f"cortex-integration-hub", "version": "0.1.0"},
-                    transport_options={"url": endpoint["endpoint"]}
-                )
-                await client.initialize()
-                self.clients[endpoint["name"]] = client
-                logger.info(f"Connected to MCP endpoint: {endpoint['name']}")
-            except Exception as e:
-                logger.error(f"Failed to connect to MCP endpoint {endpoint['name']}: {str(e)}")
+        # ...
                 
-    async def shutdown(self):
+    async def shutdown(self) -> None:
         """Close all MCP connections"""
-        for name, client in self.clients.items():
-            try:
-                await client.shutdown()
-                logger.info(f"Closed connection to MCP endpoint: {name}")
-            except Exception as e:
-                logger.error(f"Error closing MCP connection to {name}: {str(e)}")
+        # ...
     
-    async def invoke_expert(self, expert_name: str, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
+    async def list_experts(self) -> List[str]:
+        """List all available domain experts"""
+        # ...
+    
+    async def list_expert_tools(self, expert_name: str) -> Dict[str, Any]:
+        """List all tools available from a specific domain expert"""
+        # ...
+    
+    async def invoke_expert_tool(
+        self, expert_name: str, tool_name: str, arguments: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Invoke a tool on a specific domain expert"""
-        if expert_name not in self.clients:
-            raise ValueError(f"Unknown domain expert: {expert_name}")
-            
-        client = self.clients[expert_name]
-        return await client.tools_call(name=tool_name, arguments=arguments)
+        # ...
+    
+    async def read_expert_resource(self, expert_name: str, uri: str) -> Dict[str, Any]:
+        """Read a resource from a specific domain expert"""
+        # ...
+
+
+# Singleton instance
+_integration_hub: Optional[IntegrationHub] = None
+
+
+def get_integration_hub() -> IntegrationHub:
+    """Get the singleton IntegrationHub instance"""
+    global _integration_hub
+    if _integration_hub is None:
+        _integration_hub = IntegrationHub()
+    return _integration_hub
 ```
 
-## Implementing MCP for Domain Experts using FastMCP
+## Implementing MCP for Domain Experts using FastMCP ⏳
 
 Domain Expert services should implement MCP servers using the FastMCP API from the Python SDK, which greatly simplifies implementation.
+
+> **TO BE IMPLEMENTED:** This section describes the next step in the MCP integration process. The infrastructure for connecting to Domain Experts is in place, but no Domain Expert services have been implemented yet in the codebase.
 
 ### FastMCP Server Implementation Example
 
@@ -376,9 +371,11 @@ async def fetch_documentation(url: str) -> str:
         return await response.text()
 ```
 
-## Implementing MCP for External Tools
+## Implementing MCP for External Tools ⏳
 
 External tools like VS Code extensions can also implement MCP to integrate with Cortex Core.
+
+> **TO BE IMPLEMENTED:** This section describes future plans for extending the MCP integration to external tools. The infrastructure for connecting to external tools is in place via the Integration Hub, but no external tool implementations have been created yet.
 
 ### Resource Sharing with Python SDK
 
@@ -489,9 +486,11 @@ export function activate(context: vscode.ExtensionContext) {
 }
 ```
 
-## Security Considerations
+## Security Considerations ⏳
 
 When implementing MCP for internal services:
+
+> **TO BE IMPLEMENTED:** This section describes security measures that should be implemented for MCP services. Currently, only basic authentication through FastAPI's dependency system is in place. Advanced security measures like API keys and mutual TLS are not yet implemented.
 
 1. **Authentication**:
 
@@ -516,7 +515,9 @@ When implementing MCP for internal services:
    - Monitor for unusual patterns or abuse
    - Implement rate limiting for protection
 
-## Testing and Debugging
+## Testing and Debugging ⏳
+
+> **PARTIALLY IMPLEMENTED:** Basic testing infrastructure for the Integration Hub is in place with good test coverage, but the specialized MCP testing utilities described below have not yet been integrated.
 
 ### MCP Testing Utilities
 
