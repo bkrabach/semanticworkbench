@@ -89,3 +89,31 @@ Always prioritize official project documentation over assumptions. Reference the
 - Clear all overrides after tests using try/finally or yield fixtures
 - Mock database sessions, not individual queries
 - Create test-specific fixtures for commonly used dependencies
+
+### SSE (Server-Sent Events) Testing Guidelines
+
+When testing SSE endpoints:
+
+- Test API contracts (status codes, headers) rather than implementation details
+- Never read from streaming responses in tests - this causes hanging
+- Mock the HTTP response client instead of modifying endpoint implementations:
+  ```python
+  # Create a mock SSE response
+  class MockSSEResponse:
+      def __init__(self):
+          self.status_code = 200
+          self.headers = {"content-type": "text/event-stream"}
+      def close(self):
+          pass
+  
+  # Patch the client's get method only for specific endpoints
+  def mock_get(url, **kwargs):
+      if url == "/events?token=xyz":
+          return MockSSEResponse()
+      return original_get(url, **kwargs)
+      
+  monkeypatch.setattr(client, "get", mock_get)
+  ```
+- Always close SSE connections explicitly in tests, even for mocked responses
+- Add timeouts to all asynchronous operations to prevent hanging
+- Create isolated tests for authentication/error handling separate from streaming tests

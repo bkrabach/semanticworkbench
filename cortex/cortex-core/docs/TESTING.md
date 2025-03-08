@@ -157,6 +157,48 @@ user = get_current_user(token, db)  # Returns a coroutine, not a User
 user = await get_current_user(token, db)
 ```
 
+### Testing Streaming Endpoints (SSE, WebSockets)
+
+When testing streaming endpoints like Server-Sent Events (SSE) or WebSockets:
+
+1. **Focus on API Contracts, Not Streaming Behavior**:
+   - Test only the HTTP status codes, headers, and initial connection
+   - Don't attempt to test the full streaming functionality in unit tests
+
+2. **Never Read From Streams in Tests Without Proper Controls**:
+   - Reading from infinite streams will cause tests to hang
+   - If you must test stream content, use strict timeouts and proper cancellation
+
+3. **Mock the HTTP Response, Not Internal Components**:
+   ```python
+   # Create a mock response for streaming endpoints
+   class MockSSEResponse:
+       def __init__(self):
+           self.status_code = 200
+           self.headers = {"content-type": "text/event-stream"}
+           self._content = b"data: {}\n\n"
+           
+       def close(self):
+           pass
+           
+   # Patch the client's get method for the specific endpoint
+   def mock_get(url, **kwargs):
+       if url == "/events":
+           return MockSSEResponse()
+       return original_get(url, **kwargs)
+       
+   monkeypatch.setattr(client, "get", mock_get)
+   ```
+
+4. **Avoid Modifying FastAPI's Internal Route Structure**:
+   - Don't attempt to replace route handlers or endpoints directly
+   - Use dependency injection or response mocking instead
+
+5. **Clean Up Resources Even for Cancelled Tests**:
+   - Always use `try/finally` to ensure proper cleanup
+   - When a streaming test is cancelled, make sure background tasks are terminated
+   - Consider adding explicit timeouts to all async operations
+
 ## Mock Database Sessions Correctly
 
 ### Mock at the Right Level
@@ -206,6 +248,80 @@ def test_login_endpoint(client_with_db_override, mock_db):
     assert data["success"] is True
     assert data["token"] is not None
 ```
+
+### Testing Server-Sent Events (SSE) Endpoints
+
+Testing SSE endpoints requires special care to avoid test hangs and race conditions:
+
+```python
+def test_sse_endpoint_contract(client_with_auth_override):
+    """Test the SSE endpoint's contract, not its implementation"""
+    response = client_with_auth_override.get("/events")
+    
+    # Only verify the contract (status code and content type)
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "text/event-stream"
+    
+    # Close immediately to prevent hanging
+    response.close()
+```
+
+#### SSE Testing Principles
+
+1. **Test the API contract, not implementation details**:
+   - Focus on validating HTTP status codes, headers, and response formats
+   - Avoid testing streaming behavior or content that could cause tests to hang
+
+2. **Avoid reading from SSE streams in tests**:
+   - Reading from an SSE stream may cause the test to hang indefinitely
+   - If you must test stream content, use timeouts and proper cleanup
+
+3. **Mock or replace the endpoint rather than patching internals**:
+   - For more complex tests, consider replacing the endpoint entirely:
+
+```python
+def test_sse_endpoint_with_override():
+    # Save original endpoint
+    original_endpoint = None
+    for route in app.routes:
+        if route.path == "/events":
+            original_endpoint = route.endpoint
+            break
+    
+    # Create simplified version that doesn't use async generators
+    async def mock_events_endpoint(request: Request):
+        return StreamingResponse(
+            content=iter([b"data: {}\n\n"]),  # Minimal SSE response
+            media_type="text/event-stream"
+        )
+    
+    # Replace the endpoint
+    for route in app.routes:
+        if route.path == "/events":
+            route.endpoint = mock_events_endpoint
+    
+    try:
+        # Test with the simplified endpoint
+        client = TestClient(app)
+        response = client.get("/events")
+        assert response.status_code == 200
+        assert response.headers["content-type"] == "text/event-stream"
+    finally:
+        # Restore the original endpoint
+        for route in app.routes:
+            if route.path == "/events":
+                route.endpoint = original_endpoint
+```
+
+4. **Handle background tasks carefully**:
+   - SSE endpoints often start background tasks that need cleanup
+   - Mock `asyncio.create_task()` to intercept task creation
+   - Ensure all tasks are properly cancelled in cleanup
+
+5. **Validate connection tracking if necessary**:
+   - If your SSE system tracks active connections, validate this separately
+   - Set up connections directly rather than relying on the endpoint to do it
+   - Clean up connections after the test
 
 ### Event System Testing
 

@@ -31,18 +31,46 @@ active_connections = {
 # to fix issues with async generators
 
 
-async def send_heartbeats(queue: asyncio.Queue):
+async def send_heartbeats(queue: asyncio.Queue, heartbeat_interval: float = 30.0):
     """
     Send periodic heartbeats to keep the connection alive
 
     Args:
         queue: Event queue for the connection
+        heartbeat_interval: Time in seconds between heartbeats (default: 30.0)
     """
-    while True:
-        await asyncio.sleep(30)
-        await queue.put(
-            {"event": "heartbeat", "data": {"timestamp_utc": datetime.now(timezone.utc).isoformat()}}
-        )
+    # Initialize sleep_task to avoid unbound variable errors
+    sleep_task = None
+    
+    try:
+        while True:
+            try:
+                # Create a task that will let us detect cancellation
+                # while making heartbeat sending cancellable
+                sleep_task = asyncio.create_task(asyncio.sleep(heartbeat_interval))
+                await sleep_task
+                
+                # Send heartbeat
+                timestamp = datetime.now(timezone.utc).isoformat()
+                heartbeat_data = {
+                    "event": "heartbeat", 
+                    "data": {"timestamp_utc": timestamp}
+                }
+                await queue.put(heartbeat_data)
+                
+            except asyncio.CancelledError:
+                # Cancel pending sleep if any
+                if sleep_task and not sleep_task.done():
+                    sleep_task.cancel()
+                
+                # Re-raise to exit the loop
+                raise
+                
+    except asyncio.CancelledError:
+        # Properly handle task cancellation with logging
+        logger.debug("Heartbeat task cancelled")
+        # Don't put any more events in the queue
+        raise  # Re-raise to properly propagate the cancellation
 
 
 async def broadcast_to_channel(

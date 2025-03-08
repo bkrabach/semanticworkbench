@@ -27,12 +27,12 @@ class ConversationRepository(ABC):
         pass
         
     @abstractmethod
-    def create_conversation(self, workspace_id: str, title: str, modality: str, metadata: Dict) -> Conversation:
+    def create_conversation(self, workspace_id: str, title: str, modality: str, metadata: Optional[Dict[str, Any]] = None) -> Conversation:
         """Create a new conversation"""
         pass
         
     @abstractmethod
-    def update_conversation(self, conversation_id: str, title: Optional[str] = None, metadata: Optional[Dict] = None) -> Conversation:
+    def update_conversation(self, conversation_id: str, title: Optional[str] = None, metadata: Optional[Dict[str, Any]] = None) -> Optional[Conversation]:
         """Update a conversation"""
         pass
         
@@ -42,12 +42,12 @@ class ConversationRepository(ABC):
         pass
         
     @abstractmethod
-    def get_messages(self, conversation_id: str, limit: int, offset: int) -> List[Dict]:
+    def get_messages(self, conversation_id: str, limit: int, offset: int) -> List[Dict[str, Any]]:
         """Get messages from a conversation with pagination"""
         pass
         
     @abstractmethod
-    def add_message(self, conversation_id: str, content: str, role: str, metadata: Optional[Dict] = None) -> Dict:
+    def add_message(self, conversation_id: str, content: str, role: str, metadata: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
         """Add a message to a conversation"""
         pass
 
@@ -70,7 +70,7 @@ class SQLAlchemyConversationRepository(ConversationRepository):
             Conversation.last_active_at_utc.desc()
         ).offset(offset).limit(limit).all()
         
-    def create_conversation(self, workspace_id: str, title: str, modality: str, metadata: Dict = None) -> Conversation:
+    def create_conversation(self, workspace_id: str, title: str, modality: str, metadata: Optional[Dict[str, Any]] = None) -> Conversation:
         """Create a new conversation"""
         now = datetime.now(timezone.utc)
         metadata_json = json.dumps(metadata or {})
@@ -98,7 +98,7 @@ class SQLAlchemyConversationRepository(ConversationRepository):
             
         return new_conversation
         
-    def update_conversation(self, conversation_id: str, title: Optional[str] = None, metadata: Optional[Dict] = None) -> Conversation:
+    def update_conversation(self, conversation_id: str, title: Optional[str] = None, metadata: Optional[Dict[str, Any]] = None) -> Optional[Conversation]:
         """Update a conversation"""
         conversation = self.get_conversation_by_id(conversation_id)
         if not conversation:
@@ -138,7 +138,7 @@ class SQLAlchemyConversationRepository(ConversationRepository):
         
         return True
         
-    def get_messages(self, conversation_id: str, limit: int, offset: int) -> List[Dict]:
+    def get_messages(self, conversation_id: str, limit: int, offset: int) -> List[Dict[str, Any]]:
         """Get messages from a conversation with pagination"""
         conversation = self.get_conversation_by_id(conversation_id)
         if not conversation:
@@ -156,7 +156,7 @@ class SQLAlchemyConversationRepository(ConversationRepository):
         
         return paginated_entries
         
-    def add_message(self, conversation_id: str, content: str, role: str, metadata: Optional[Dict] = None) -> Dict:
+    def add_message(self, conversation_id: str, content: str, role: str, metadata: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
         """Add a message to a conversation"""
         conversation = self.get_conversation_by_id(conversation_id)
         if not conversation:

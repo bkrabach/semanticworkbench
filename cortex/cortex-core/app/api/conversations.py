@@ -254,13 +254,16 @@ async def get_conversation(
 
     # Parse JSON strings and return validated model
     metadata = {}
-    if conversation.meta_data is not None:
+    if conversation is not None and getattr(conversation, 'meta_data', None) is not None:
         try:
             meta_data_str = str(conversation.meta_data)
             if meta_data_str and meta_data_str != "{}":
                 metadata = json.loads(meta_data_str)
         except (json.JSONDecodeError, TypeError):
             pass
+            
+    if conversation is None:
+        raise HTTPException(status_code=404, detail="Conversation not found")
             
     return ConversationResponse.model_validate({
         "id": conversation.id,
@@ -333,6 +336,10 @@ async def update_conversation(
         }
     )
 
+    # Check if conversation was updated successfully
+    if updated_conversation is None:
+        raise HTTPException(status_code=404, detail="Conversation not found or could not be updated")
+        
     # Parse JSON strings and return validated model
     return ConversationResponse.model_validate({
         "id": updated_conversation.id,
