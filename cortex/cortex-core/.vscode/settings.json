@@ -26,7 +26,6 @@
     "editor.defaultFormatter": "esbenp.prettier-vscode",
     "editor.formatOnSave": true
   },
-  "python.analysis.autoFormatStrings": true,
   "python.analysis.autoImportCompletions": true,
   "python.analysis.diagnosticMode": "workspace",
   "python.analysis.fixAll": ["source.unusedImports"],
@@ -43,7 +42,6 @@
       "source.formatDocument": "explicit"
     }
   },
-  "ruff.nativeServer": "on",
   "search.exclude": {
     "**/.venv": true,
     "**/.data": true,
@@ -78,6 +76,8 @@
     "localtime",
     "MSAL",
     "qualname",
-    "repr"
+    "repr",
+    "toplevel",
+    "uvicorn"
   ]
 }

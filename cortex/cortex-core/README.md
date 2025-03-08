@@ -131,7 +131,7 @@ See the [CLIENT_INTEGRATION_GUIDE.md](./CLIENT_INTEGRATION_GUIDE.md) for details
 
 5. Start the server:
    ```bash
-   uv run -m app.main
+   uv run uvicorn app.main:app
    ```
 
 ## Documentation
@@ -142,7 +142,3 @@ For more detailed information, refer to:
 - [API Reference](./API_REFERENCE.md) - API endpoint documentation
 - [Configuration](./CONFIGURATION.md) - Detailed configuration options
 - [Client Integration Guide](./CLIENT_INTEGRATION_GUIDE.md) - Guide for client application developers
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

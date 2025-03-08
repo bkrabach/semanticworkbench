@@ -13,11 +13,81 @@
       "path": "."
     }
   ],
+  "settings": {
+    "markdown.validate.enabled": true,
+    "ruff.configuration": "${workspaceFolder}/../ruff.toml",
+    "ruff.interpreter": ["${workspaceFolder}/../.venv"],
+    "ruff.importStrategy": "useBundled",
+    "ruff.nativeServer": "on",
+    "[python]": {
+      "editor.defaultFormatter": "charliermarsh.ruff"
+    },
+    "better-comments.highlightPlainText": true,
+    "better-comments.multilineComments": true,
+    "better-comments.tags": [
+      {
+        "tag": "!",
+        "color": "#FF2D00",
+        "strikethrough": false,
+        "underline": false,
+        "backgroundColor": "transparent",
+        "bold": false,
+        "italic": false
+      },
+      {
+        "tag": "?",
+        "color": "#3498DB",
+        "strikethrough": false,
+        "underline": false,
+        "backgroundColor": "transparent",
+        "bold": false,
+        "italic": false
+      },
+      {
+        "tag": "//",
+        "color": "#474747",
+        "strikethrough": true,
+        "underline": false,
+        "backgroundColor": "transparent",
+        "bold": false,
+        "italic": false
+      },
+      {
+        "tag": "todo",
+        "color": "#FF8C00",
+        "strikethrough": false,
+        "underline": false,
+        "backgroundColor": "transparent",
+        "bold": false,
+        "italic": false
+      },
+      {
+        "tag": "fixme",
+        "color": "#FF2D00",
+        "strikethrough": false,
+        "underline": false,
+        "backgroundColor": "transparent",
+        "bold": false,
+        "italic": false
+      },
+      {
+        "tag": "*",
+        "color": "#98C379",
+        "strikethrough": false,
+        "underline": false,
+        "backgroundColor": "transparent",
+        "bold": false,
+        "italic": false
+      }
+    ],
+    "cSpell.ignorePaths": ["*.code-workspace"]
+  },
   "extensions": {
     "recommendations": [
       "GitHub.copilot",
       "github.codespaces",
       "aaron-bond.better-comments",
+      "bierner.markdown-mermaid",
       "charliermarsh.ruff",
       "dbaeumer.vscode-eslint",
       "epivision.vscode-file-header",
