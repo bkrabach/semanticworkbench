@@ -26,6 +26,9 @@ obj
 dist
 build
 
+# Testing
+.coverage
+
 # Logs
 logs
 *.log

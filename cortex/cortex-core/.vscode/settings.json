@@ -80,6 +80,7 @@
     "levelname",
     "localtime",
     "MSAL",
+    "preconfigured",
     "qualname",
     "repr",
     "toplevel",
