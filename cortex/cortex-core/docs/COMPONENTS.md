@@ -406,9 +406,12 @@ The Integration Hub facilitates communication with Domain Expert services and ex
 #### Responsibilities
 
 - Implement MCP client using the Python SDK
-- Manage connections to domain expert services and tools
-- Route requests and tools between Cortex Core and expert services
+- Register and manage connections to domain expert services
+- Execute tools from domain experts with proper error handling
+- Enable discovery of available tools and capabilities
 - Handle resource access for file sharing and context
+- Implement robust error handling and retries for domain expert communication
+- Maintain compatibility with the MCP protocol specification
 
 #### Implementation with Python MCP SDK
 

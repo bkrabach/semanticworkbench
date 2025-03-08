@@ -103,7 +103,7 @@ The key advantages of this architecture include:
 
 ### Integration Hub and MCP Architecture
 
-The Integration Hub manages communication between Cortex Core and Domain Expert services using the Model Context Protocol (MCP):
+The Integration Hub manages communication between Cortex Core and Domain Expert services using the Model Context Protocol (MCP). This is a central component of the platform's architecture for service-to-service communication:
 
 ```
 ┌────────────────────┐           ┌────────────────────┐
@@ -116,12 +116,13 @@ The Integration Hub manages communication between Cortex Core and Domain Expert 
 └────────────────────┘           └────────────────────┘
 ```
 
-The Integration Hub:
+The Integration Hub provides:
 
 1. **MCP Client Implementation**: Uses the Python MCP SDK client to communicate with domain expert services
-2. **Service Discovery**: Manages connections to configured MCP endpoints 
-3. **Tool Invocation**: Provides a unified interface for invoking tools on domain expert services
+2. **Tool Execution Framework**: Registers, discovers and executes tools provided by domain experts
+3. **Service Discovery**: Manages connections to configured MCP endpoints 
 4. **Resource Access**: Facilitates access to resources exposed by domain expert services
+5. **Error Handling**: Implements robust error handling and retries for domain expert communication
 
 Domain Expert services implement MCP servers using the FastMCP API from the Python SDK, which provides:
 
@@ -130,7 +131,7 @@ Domain Expert services implement MCP servers using the FastMCP API from the Pyth
 3. **Resource Templating**: URI-template based resource definitions
 4. **Lifecycle Management**: Proper setup and teardown of resources
 
-The FastMCP API significantly simplifies implementing MCP servers while ensuring protocol compliance and type safety.
+MCP's role is critical for implementing specialized domain expert services, providing a clean separation between Cortex Core and the various expert services that enhance its capabilities.
 
 ### Router
 

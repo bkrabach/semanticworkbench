@@ -18,7 +18,7 @@ from app.cache.redis_client import connect_redis, disconnect_redis
 from app.exceptions import CortexException
 
 # Import routers
-from app.api import auth, sse, workspaces, conversations, monitoring
+from app.api import auth, sse, workspaces, conversations, monitoring, integrations
 
 
 @asynccontextmanager
@@ -52,10 +52,27 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"Error initializing SSE service: {e}")
 
+    # Initialize Integration Hub for MCP connections
+    try:
+        from app.components.integration_hub import get_integration_hub
+        app.state.integration_hub = get_integration_hub()
+        await app.state.integration_hub.startup()
+        logger.info("Integration Hub initialized")
+    except Exception as e:
+        logger.error(f"Error initializing Integration Hub: {e}")
+
     yield
 
     # Shutdown
     logger.info("Shutting down Cortex Core")
+
+    # Clean up Integration Hub
+    try:
+        if hasattr(app.state, "integration_hub"):
+            await app.state.integration_hub.shutdown()
+            logger.info("Integration Hub cleaned up")
+    except Exception as e:
+        logger.error(f"Error cleaning up Integration Hub: {e}")
 
     # Clean up SSE service
     try:
@@ -230,9 +247,7 @@ app.include_router(sse.router, tags=["Events"])  # No prefix - the router alread
 app.include_router(workspaces.router, tags=["Workspaces"])
 app.include_router(conversations.router, tags=["Conversations"])
 app.include_router(monitoring.router, prefix="/monitoring", tags=["Monitoring"])
-
-# Include additional routers as they are implemented
-# app.include_router(integrations.router, prefix="/integrations", tags=["Integrations"])
+app.include_router(integrations.router, prefix="/integrations", tags=["Integrations"])
 
 
 # Define entry point for running the application

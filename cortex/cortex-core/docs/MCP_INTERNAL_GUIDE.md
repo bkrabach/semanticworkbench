@@ -22,12 +22,16 @@ Model Context Protocol (MCP) is a standardized protocol for communication betwee
 - External tool integrations (VS Code, M365 Apps, etc.)
 - Specialized AI services
 
-MCP provides a structured way for these services to:
+MCP is a critical component of the platform architecture that enables a modular design where specialized domain expertise can be developed and maintained independently from the core system.
+
+The protocol provides a structured way for these services to:
 
 - Share resources and context
 - Invoke tools and capabilities
 - Manage prompts and templates
 - Collect semantic information
+- Facilitate communication between specialized components
+- Enable extensibility through standardized interfaces
 
 ## MCP in the Cortex Ecosystem
 
