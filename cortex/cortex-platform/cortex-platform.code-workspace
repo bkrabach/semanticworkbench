@@ -79,8 +79,7 @@
         "bold": false,
         "italic": false
       }
-    ],
-    "cSpell.ignorePaths": ["*.code-workspace"]
+    ]
   },
   "extensions": {
     "recommendations": [

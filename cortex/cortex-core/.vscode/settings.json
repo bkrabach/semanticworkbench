@@ -32,6 +32,9 @@
   "python.analysis.inlayHints.functionReturnTypes": true,
   "python.analysis.typeCheckingMode": "standard",
   "python.defaultInterpreterPath": "${workspaceFolder}/.venv",
+  "python.testing.pytestArgs": ["tests"],
+  "python.testing.unittestEnabled": false,
+  "python.testing.pytestEnabled": true,
   "[python]": {
     "editor.defaultFormatter": "charliermarsh.ruff",
     "editor.formatOnSave": true,
@@ -49,6 +52,8 @@
   },
   // For use with optional extension: "streetsidesoftware.code-spell-checker"
   "cSpell.ignorePaths": [
+    ".gitignore",
+    ".vscode",
     ".venv",
     "node_modules",
     "package-lock.json",
