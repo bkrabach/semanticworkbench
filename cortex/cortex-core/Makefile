@@ -6,6 +6,10 @@ PYTHON ?= python
 UV ?= uv
 PIP = $(UV) pip
 
+# Run the service
+dev:
+	$(UV) run uvicorn app.main:app
+
 # Run database migrations
 migrate:
 	$(PYTHON) -m alembic upgrade head
