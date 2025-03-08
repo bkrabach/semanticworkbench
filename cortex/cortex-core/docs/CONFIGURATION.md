@@ -94,6 +94,24 @@ MEMORY_RETENTION_DAYS=30
 MEMORY_MAX_ITEMS=5000
 ```
 
+### Server-Sent Events (SSE) Configuration
+
+Settings for real-time event streaming.
+
+| Parameter                 | Description                          | Default Value | Environment Variable           |
+| ------------------------- | ------------------------------------ | ------------- | ------------------------------ |
+| heartbeat_interval        | Heartbeat interval in seconds        | `30`          | `SSE_HEARTBEAT_INTERVAL`       |
+| max_connections_per_client| Max connections per client           | `5`           | `SSE_MAX_CONNECTIONS_PER_CLIENT`|
+| debug                     | Enable SSE debugging                 | `false`       | `SSE_DEBUG`                    |
+
+Example:
+
+```
+SSE_HEARTBEAT_INTERVAL=15
+SSE_MAX_CONNECTIONS_PER_CLIENT=10
+SSE_DEBUG=true
+```
+
 ### MCP (Model Context Protocol) Configuration
 
 Settings for MCP integrations.
@@ -161,6 +179,11 @@ SERVER_LOG_LEVEL="info"
 MEMORY_TYPE="whiteboard"
 MEMORY_RETENTION_DAYS=90
 MEMORY_MAX_ITEMS=10000
+
+# Server-Sent Events
+SSE_HEARTBEAT_INTERVAL=30
+SSE_MAX_CONNECTIONS_PER_CLIENT=5
+SSE_DEBUG=false
 
 # MCP Integration
 MCP_ENDPOINT_VSCODE="http://localhost:5000|vscode"

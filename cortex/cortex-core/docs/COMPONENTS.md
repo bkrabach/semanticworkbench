@@ -13,6 +13,7 @@ This document details the core components and interfaces of the Cortex Core syst
 - [Security Manager](#security-manager)
 - [Memory System Interface](#memory-system-interface)
 - [Domain Expert Interface](#domain-expert-interface)
+- [Circuit Breaker](#circuit-breaker)
 
 ## Session Manager
 
@@ -767,6 +768,116 @@ class DomainExpertInterface(ABC):
     def get_capabilities(self) -> ExpertCapabilities:
         """Get the capabilities of this domain expert"""
         pass
+```
+
+## Circuit Breaker
+
+The Circuit Breaker pattern prevents cascading failures by protecting services from repeated calls to failing operations. It automatically breaks the circuit when failure thresholds are reached and gradually attempts recovery.
+
+### Responsibilities
+
+- Protect services from repeated failures
+- Prevent cascading service failures
+- Fail fast when services are down
+- Gradually attempt recovery with half-open state
+- Provide monitoring and error tracking
+
+### States
+
+The Circuit Breaker has three states:
+
+1. **CLOSED**: Normal operation. Requests pass through to the service. Failed requests increment the failure counter.
+2. **OPEN**: Failure threshold exceeded. Requests fail immediately without calling the service, saving resources.
+3. **HALF_OPEN**: Recovery attempt. After a timeout, allows a test request to pass. Success restores normal operation, failure keeps the circuit open.
+
+### Implementation Details
+
+```python
+class CircuitBreaker:
+    """
+    Implementation of the Circuit Breaker pattern for service resilience
+    """
+    
+    def __init__(
+        self, 
+        name: str, 
+        failure_threshold: int = 5, 
+        recovery_timeout: float = 30.0
+    ):
+        self.name = name
+        self.failure_threshold = failure_threshold
+        self.recovery_timeout = recovery_timeout
+        self.failure_count = 0
+        self.last_failure_time = 0.0
+        self.state = CircuitState.CLOSED
+        
+    async def execute(self, func: Callable[..., Awaitable[T]], *args: Any, **kwargs: Any) -> T:
+        """
+        Execute a function with circuit breaker protection
+        """
+        # Check if circuit is open
+        if self.state == CircuitState.OPEN:
+            if time.time() - self.last_failure_time > self.recovery_timeout:
+                logger.info(f"Circuit {self.name} transitioning to HALF_OPEN")
+                self.state = CircuitState.HALF_OPEN
+            else:
+                raise ServiceError(
+                    detail=f"Service {self.name} is unavailable",
+                    code="SERVICE_UNAVAILABLE",
+                    status_code=503
+                )
+        
+        try:
+            # Execute the function
+            result = await func(*args, **kwargs)
+            
+            # Success, reset if in half-open state
+            if self.state == CircuitState.HALF_OPEN:
+                self.failure_count = 0
+                self.state = CircuitState.CLOSED
+                logger.info(f"Circuit {self.name} recovered")
+            
+            return result
+        
+        except Exception as e:
+            # Track failure
+            self.failure_count += 1
+            self.last_failure_time = time.time()
+            
+            # Trip the circuit if threshold reached
+            if self.state == CircuitState.CLOSED and self.failure_count >= self.failure_threshold:
+                self.state = CircuitState.OPEN
+                logger.warning(f"Circuit {self.name} tripped open after {self.failure_count} failures")
+            
+            # Re-raise the exception
+            raise
+```
+
+### Usage Example
+
+The Circuit Breaker is particularly useful for protecting external service calls, database operations, and any component that may fail. In Cortex Core, it's used for SSE conversation publishers:
+
+```python
+# Initialize circuit breaker
+conversation_publisher_cb = CircuitBreaker(
+    "conversation_publisher", 
+    failure_threshold=3,
+    recovery_timeout=60.0
+)
+
+# Use it to protect an operation
+try:
+    result = await conversation_publisher_cb.execute(
+        get_conversation_publisher, 
+        conversation_id
+    )
+    # Handle successful result
+except ServiceError as e:
+    # Handle service unavailability
+    logger.error(f"Service unavailable: {str(e)}")
+except Exception as e:
+    # Handle other errors
+    logger.error(f"Operation failed: {str(e)}")
 ```
 
 This document provides an overview of the key components and interfaces that make up the Cortex Core system. Each component is designed to be modular and extensible, allowing for easy replacement or enhancement as the system evolves.

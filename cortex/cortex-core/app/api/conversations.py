@@ -13,6 +13,9 @@ import json
 import asyncio
 
 from app.utils.json_helpers import DateTimeEncoder
+from app.exceptions import (
+    ResourceNotFoundError
+)
 
 from app.database.connection import get_db
 from app.database.models import User, Workspace, Conversation
@@ -59,7 +62,7 @@ class MessageResponse(BaseModel):
     role: str
     created_at_utc: datetime  # UTC timestamp for message creation
     metadata: Optional[Dict[str, Any]] = None
-    
+
     model_config = {
         "json_encoders": {
             # Ensure datetime is serialized to ISO format
@@ -77,7 +80,7 @@ class ConversationResponse(BaseModel):
     created_at: datetime
     last_active_at: datetime
     metadata: Dict[str, Any] = Field(default_factory=dict)
-    
+
     model_config = {
         "from_attributes": True,
         "json_encoders": {
@@ -121,7 +124,7 @@ async def list_conversations(
 
     # Get conversations for the workspace
     conversations = repository.get_conversations_by_workspace(workspace_id, limit, offset)
-    
+
     # Process each conversation to handle the JSON fields
     processed_conversations = []
     for conversation in conversations:
@@ -132,7 +135,7 @@ async def list_conversations(
             metadata = json.loads(meta_data_str)
         except json.JSONDecodeError:
             metadata = {}
-        
+
         conversation_dict = {
             "id": str(conversation.id),
             "title": str(conversation.title),
@@ -143,7 +146,7 @@ async def list_conversations(
             "metadata": metadata
         }
         processed_conversations.append(ConversationResponse.model_validate(conversation_dict))
-    
+
     return processed_conversations
 
 
@@ -209,7 +212,7 @@ async def create_conversation(
                 metadata = json.loads(meta_data_str)
         except (json.JSONDecodeError, TypeError):
             pass
-            
+
     return ConversationResponse.model_validate({
         "id": new_conversation.id,
         "title": new_conversation.title,
@@ -248,7 +251,7 @@ async def get_conversation(
 
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversation not found")
-        
+
     # Get conversation details using repository
     conversation = repository.get_conversation_by_id(conversation_id)
 
@@ -261,10 +264,14 @@ async def get_conversation(
                 metadata = json.loads(meta_data_str)
         except (json.JSONDecodeError, TypeError):
             pass
-            
+
     if conversation is None:
-        raise HTTPException(status_code=404, detail="Conversation not found")
-            
+        raise ResourceNotFoundError(
+            detail="Conversation not found",
+            resource_type="conversation",
+            resource_id=conversation_id
+        )
+
     return ConversationResponse.model_validate({
         "id": conversation.id,
         "title": conversation.title,
@@ -322,7 +329,7 @@ async def update_conversation(
         metadata = json.loads(meta_data_str)
     except json.JSONDecodeError:
         metadata = {}
-    
+
     # Send SSE event for conversation update in the background
     background_tasks.add_task(
         send_event_to_conversation,
@@ -338,8 +345,12 @@ async def update_conversation(
 
     # Check if conversation was updated successfully
     if updated_conversation is None:
-        raise HTTPException(status_code=404, detail="Conversation not found or could not be updated")
-        
+        raise ResourceNotFoundError(
+            detail="Conversation not found or could not be updated",
+            resource_type="conversation",
+            resource_id=conversation_id
+        )
+
     # Parse JSON strings and return validated model
     return ConversationResponse.model_validate({
         "id": updated_conversation.id,
@@ -386,7 +397,7 @@ async def delete_conversation(
 
     # Delete the conversation using repository
     success = repository.delete_conversation(conversation_id)
-    
+
     if not success:
         raise HTTPException(status_code=500, detail="Failed to delete conversation")
 
@@ -443,7 +454,7 @@ async def get_conversation_messages(
     for entry in entries:
         # Get timestamp from created_at_utc field or use current UTC time
         timestamp = entry.get("created_at_utc", datetime.now(timezone.utc))
-        
+
         # Convert string timestamps to datetime objects if needed
         if isinstance(timestamp, str):
             try:
@@ -451,7 +462,7 @@ async def get_conversation_messages(
             except ValueError:
                 # If parsing fails, use current timezone-aware UTC datetime
                 timestamp = datetime.now(timezone.utc)
-        
+
         messages.append(MessageResponse(
             id=entry.get("id", ""),
             content=entry.get("content", ""),
@@ -502,7 +513,7 @@ async def add_message(
         role=message.role,
         metadata=message.metadata
     )
-    
+
     if not entry:
         raise HTTPException(status_code=500, detail="Failed to add message")
 
@@ -621,19 +632,19 @@ async def stream_message(
     conversation = db.query(Conversation).filter(
         Conversation.id == conversation_id
     ).first()
-    
+
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversation not found")
-    
+
     # Set up the input receiver and output publisher for this conversation
     from app.components.conversation_channels import ConversationInputReceiver, get_conversation_publisher
-    
+
     # Ensure there's an output publisher for this conversation
     await get_conversation_publisher(conversation_id)
-    
+
     # Create input receiver to send message to the router
     input_receiver = ConversationInputReceiver(conversation_id)
-    
+
     # Send the message to the router (fire and forget)
     await input_receiver.receive_input(
         content=message.content,
@@ -641,30 +652,30 @@ async def stream_message(
         metadata=message.metadata,
         db=db
     )
-    
+
     # This is the generator function that will handle streaming
     # Note: The actual content will come from the router via the event system later
     async def stream_response():
         """Generator function for client streaming interface"""
         message_id = str(uuid.uuid4())
-        
+
         # Simulate initial role message for the client
         yield f"data: {json.dumps({'choices': [{'delta': {'role': 'assistant'}}]})}\n\n"
-        
+
         # For now, we'll simulate the streaming content here
         # In a real implementation, we'd get this from the router
         await asyncio.sleep(0.5)
-        
+
         # Send "thinking" message
         yield f"data: {json.dumps({'choices': [{'delta': {'content': '...'}, 'index': 0}]})}\n\n"
-        
+
         # Keep the connection open for a bit to demonstrate
         # that the router will respond asynchronously
         await asyncio.sleep(1)
-        
+
         # Indicate that the client should wait for server-sent events
         yield f"data: {json.dumps({'choices': [{'delta': {'content': ' [Waiting for response...]'}, 'index': 0}]})}\n\n"
-        
+
         # Send end of stream
         final_data = {
             "id": message_id,
@@ -673,7 +684,7 @@ async def stream_message(
             "choices": [{"delta": {}, "finish_reason": "listen_for_sse", "index": 0}]
         }
         yield f"data: {json.dumps(final_data)}\n\n"
-    
+
     # Return streaming response
     return StreamingResponse(
         stream_response(),
@@ -691,7 +702,7 @@ async def stream_message(
 async def simulate_assistant_response(conversation_id: str, user_message: str, db: Session):
     """
     Send a message to the Cortex Router for processing
-    
+
     Args:
         conversation_id: Conversation ID
         user_message: Message from user
@@ -699,30 +710,30 @@ async def simulate_assistant_response(conversation_id: str, user_message: str, d
     """
     # Get repository
     repository = get_conversation_repository(db)
-    
+
     # Get conversation to get workspace_id
     conversation = repository.get_conversation_by_id(conversation_id)
-    
+
     if not conversation:
         logger.warning(f"Conversation {conversation_id} not found")
         return
-    
+
     # Ensure there's an output publisher and input receiver for this conversation
     from app.components.conversation_channels import ConversationInputReceiver, get_conversation_publisher
-    
+
     # Set up the output publisher
     await get_conversation_publisher(conversation_id)
-    
+
     # Create or get an input receiver
     input_receiver = ConversationInputReceiver(conversation_id)
-    
+
     # Send the message to the router via the input receiver
     success = await input_receiver.receive_input(
         content=user_message,
         workspace_id=str(getattr(conversation, 'workspace_id')),
         db=db
     )
-    
+
     if success:
         logger.info(f"Message received for conversation {conversation_id}")
     else:

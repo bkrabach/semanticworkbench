@@ -119,6 +119,30 @@ BaseException
         └── InternalError
 ```
 
+### Using Custom Exceptions
+
+All API endpoints should use these custom exceptions rather than FastAPI's HTTPException for consistent error handling:
+
+```python
+from app.exceptions import ResourceNotFoundError, AuthorizationError
+
+@router.get("/resources/{resource_id}")
+async def get_resource(resource_id: str):
+    resource = repository.get_by_id(resource_id)
+    
+    if resource is None:
+        # Use custom exception instead of HTTPException
+        raise ResourceNotFoundError(
+            detail=f"Resource with ID {resource_id} not found",
+            resource_type="resource",
+            resource_id=resource_id
+        )
+    
+    return resource
+```
+
+The application has global exception handlers that convert these exceptions to properly formatted HTTP responses with consistent structure, status codes, and tracing information.
+
 ## Exception Handling in FastAPI
 
 Cortex Core uses FastAPI's exception handling mechanisms:

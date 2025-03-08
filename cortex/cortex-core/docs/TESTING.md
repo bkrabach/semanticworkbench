@@ -169,35 +169,98 @@ When testing streaming endpoints like Server-Sent Events (SSE) or WebSockets:
    - Reading from infinite streams will cause tests to hang
    - If you must test stream content, use strict timeouts and proper cancellation
 
-3. **Mock the HTTP Response, Not Internal Components**:
+3. **Use a Comprehensive Mock Response Class**:
    ```python
-   # Create a mock response for streaming endpoints
    class MockSSEResponse:
+       """A mock SSE response that won't cause tests to hang"""
        def __init__(self):
            self.status_code = 200
-           self.headers = {"content-type": "text/event-stream"}
+           self.headers = {
+               "content-type": "text/event-stream",
+               "cache-control": "no-cache",
+               "connection": "keep-alive"
+           }
            self._content = b"data: {}\n\n"
-           
+           self._closed = False
+
+       def __enter__(self):
+           return self
+
+       def __exit__(self, *args):
+           self.close()
+
        def close(self):
-           pass
-           
-   # Patch the client's get method for the specific endpoint
-   def mock_get(url, **kwargs):
-       if url == "/events":
-           return MockSSEResponse()
-       return original_get(url, **kwargs)
-       
-   monkeypatch.setattr(client, "get", mock_get)
+           self._closed = True
+
+       def json(self):
+           raise ValueError("Cannot call json() on a streaming response")
+
+       # For iterator protocol
+       def __iter__(self):
+           yield self._content
+
+       def iter_lines(self):
+           yield self._content
    ```
 
-4. **Avoid Modifying FastAPI's Internal Route Structure**:
-   - Don't attempt to replace route handlers or endpoints directly
-   - Use dependency injection or response mocking instead
+4. **Create a Dedicated SSE Test Client**:
+   ```python
+   @pytest.fixture
+   def sse_test_client(monkeypatch):
+       """Test client that safely tests SSE endpoints without hanging"""
+       client = TestClient(app)
+       original_get = client.get
+       
+       # Patch get method to return mock responses for SSE endpoints
+       def mock_get(url, **kwargs):
+           if "/events" in url and "token=" in url:
+               # For any SSE endpoint with a token, return a mock response
+               token = url.split("token=")[1].split("&")[0] if "token=" in url else None
+               if token:
+                   try:
+                       # Verify token is valid
+                       payload = jwt.decode(token, settings.security.jwt_secret, algorithms=["HS256"])
+                       
+                       # For user-specific endpoint, check the user ID matches
+                       if "/users/" in url:
+                           url_user_id = url.split("/users/")[1].split("/")[0]
+                           token_user_id = payload.get("user_id")
+                           
+                           # If user IDs don't match, let the endpoint handle the authorization error
+                           if url_user_id != token_user_id:
+                               return original_get(url, **kwargs)
+                       
+                       # Valid token and matching user ID (if applicable)
+                       return MockSSEResponse()
+                   except Exception:
+                       # If token is invalid, let the endpoint handle it
+                       pass
+           # For all other requests, use original implementation
+           return original_get(url, **kwargs)
+       
+       monkeypatch.setattr(client, "get", mock_get)
+       return client
+   ```
 
-5. **Clean Up Resources Even for Cancelled Tests**:
+5. **Separate Integration and Connection Management Tests**:
+   - Test API contracts with mocked responses
+   - Test connection tracking logic separately
+   - Use the Circuit Breaker pattern for components that might fail
+
+6. **Clean Up Resources Even for Cancelled Tests**:
    - Always use `try/finally` to ensure proper cleanup
    - When a streaming test is cancelled, make sure background tasks are terminated
-   - Consider adding explicit timeouts to all async operations
+   - Use backups of active connection maps for test isolation
+   - Add explicit timeouts to all async operations
+
+7. **Use Contemporary Timezone-Aware DateTime Handling**:
+   ```python
+   # Instead of
+   timestamp = datetime.utcnow()
+   
+   # Use
+   timestamp = datetime.now(timezone.utc)
+   ```
 
 ## Mock Database Sessions Correctly
 
@@ -276,52 +339,88 @@ def test_sse_endpoint_contract(client_with_auth_override):
    - Reading from an SSE stream may cause the test to hang indefinitely
    - If you must test stream content, use timeouts and proper cleanup
 
-3. **Mock or replace the endpoint rather than patching internals**:
-   - For more complex tests, consider replacing the endpoint entirely:
+3. **Use a dedicated test client with mocked responses**:
+   ```python
+   def test_sse_conversation_events_endpoint(sse_test_client, valid_token):
+       """Test conversation events endpoint"""
+       token, user_id = valid_token
+       conversation_id = str(uuid.uuid4())
+       
+       # Test with valid token
+       response = sse_test_client.get(f"/conversations/{conversation_id}/events?token={token}")
+       assert response.status_code == 200
+       assert response.headers["content-type"] == "text/event-stream"
+       
+       # Always close SSE connections in tests
+       response.close()
+   ```
 
-```python
-def test_sse_endpoint_with_override():
-    # Save original endpoint
-    original_endpoint = None
-    for route in app.routes:
-        if route.path == "/events":
-            original_endpoint = route.endpoint
-            break
-    
-    # Create simplified version that doesn't use async generators
-    async def mock_events_endpoint(request: Request):
-        return StreamingResponse(
-            content=iter([b"data: {}\n\n"]),  # Minimal SSE response
-            media_type="text/event-stream"
-        )
-    
-    # Replace the endpoint
-    for route in app.routes:
-        if route.path == "/events":
-            route.endpoint = mock_events_endpoint
-    
-    try:
-        # Test with the simplified endpoint
-        client = TestClient(app)
-        response = client.get("/events")
-        assert response.status_code == 200
-        assert response.headers["content-type"] == "text/event-stream"
-    finally:
-        # Restore the original endpoint
-        for route in app.routes:
-            if route.path == "/events":
-                route.endpoint = original_endpoint
-```
+4. **Test connection tracking separately from HTTP behaviors**:
+   ```python
+   @pytest.mark.asyncio
+   async def test_sse_connection_tracking(clean_connections):
+       """Test that connections are properly tracked and cleaned up"""
+       # Add a test connection
+       conversation_id = str(uuid.uuid4())
+       connection_id = str(uuid.uuid4())
+       user_id = str(uuid.uuid4())
+       queue = asyncio.Queue()
+       
+       if conversation_id not in clean_connections["conversations"]:
+           clean_connections["conversations"][conversation_id] = []
+       
+       clean_connections["conversations"][conversation_id].append({
+           "id": connection_id,
+           "user_id": user_id,
+           "queue": queue
+       })
+       
+       # Verify connection was added
+       assert len(clean_connections["conversations"][conversation_id]) == 1
+       
+       # Remove the connection
+       clean_connections["conversations"][conversation_id] = [
+           conn for conn in clean_connections["conversations"][conversation_id]
+           if conn["id"] != connection_id
+       ]
+       
+       # Verify connection was removed
+       assert len(clean_connections["conversations"][conversation_id]) == 0
+   ```
 
-4. **Handle background tasks carefully**:
-   - SSE endpoints often start background tasks that need cleanup
-   - Mock `asyncio.create_task()` to intercept task creation
-   - Ensure all tasks are properly cancelled in cleanup
+5. **Handle background tasks and heartbeats carefully**:
+   - SSE endpoints often start background tasks for heartbeats
+   - Use the Circuit Breaker pattern to avoid cascading failures in tests
+   - Ensure all tasks are properly cancelled in cleanup blocks
+   - Add explicit timeouts to heartbeat intervals for tests
 
-5. **Validate connection tracking if necessary**:
-   - If your SSE system tracks active connections, validate this separately
-   - Set up connections directly rather than relying on the endpoint to do it
-   - Clean up connections after the test
+6. **Use fixtures to create clean connection states**:
+   ```python
+   @pytest.fixture
+   def clean_connections():
+       """Create a clean set of connections for the test"""
+       # Save original connections
+       original = {
+           "global": active_connections["global"].copy(),
+           "users": {k: v.copy() for k, v in active_connections["users"].items()},
+           "workspaces": {k: v.copy() for k, v in active_connections["workspaces"].items()},
+           "conversations": {k: v.copy() for k, v in active_connections["conversations"].items()},
+       }
+       
+       # Clear connections for the test
+       active_connections["global"].clear()
+       active_connections["users"].clear()
+       active_connections["workspaces"].clear()
+       active_connections["conversations"].clear()
+       
+       yield active_connections
+       
+       # Restore original connections
+       active_connections["global"] = original["global"]
+       active_connections["users"] = original["users"]
+       active_connections["workspaces"] = original["workspaces"]
+       active_connections["conversations"] = original["conversations"]
+   ```
 
 ### Event System Testing
 

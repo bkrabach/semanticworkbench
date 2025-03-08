@@ -12,9 +12,18 @@ from datetime import datetime, timezone
 from fastapi import Query
 from app.api.auth import get_current_user
 from app.config import settings
+from app.exceptions import ServiceError
+from app.utils.circuit_breaker import CircuitBreaker
 
 from app.database.models import User
 from app.utils.logger import logger
+
+# Initialize circuit breakers
+conversation_publisher_cb = CircuitBreaker(
+    "conversation_publisher",
+    failure_threshold=3,
+    recovery_timeout=60.0
+)
 
 router = APIRouter()
 
@@ -31,41 +40,46 @@ active_connections = {
 # to fix issues with async generators
 
 
-async def send_heartbeats(queue: asyncio.Queue, heartbeat_interval: float = 30.0):
+async def send_heartbeats(queue: asyncio.Queue, heartbeat_interval: Optional[float] = None):
     """
     Send periodic heartbeats to keep the connection alive
 
     Args:
         queue: Event queue for the connection
-        heartbeat_interval: Time in seconds between heartbeats (default: 30.0)
+        heartbeat_interval: Time in seconds between heartbeats.
+                          If None, uses the value from application settings.
     """
+    # Use config value if not explicitly provided
+    interval = heartbeat_interval if heartbeat_interval is not None else settings.sse.heartbeat_interval
+    logger.debug(f"Starting heartbeat task with interval {interval}s")
+
     # Initialize sleep_task to avoid unbound variable errors
     sleep_task = None
-    
+
     try:
         while True:
             try:
                 # Create a task that will let us detect cancellation
                 # while making heartbeat sending cancellable
-                sleep_task = asyncio.create_task(asyncio.sleep(heartbeat_interval))
+                sleep_task = asyncio.create_task(asyncio.sleep(interval))
                 await sleep_task
-                
+
                 # Send heartbeat
                 timestamp = datetime.now(timezone.utc).isoformat()
                 heartbeat_data = {
-                    "event": "heartbeat", 
+                    "event": "heartbeat",
                     "data": {"timestamp_utc": timestamp}
                 }
                 await queue.put(heartbeat_data)
-                
+
             except asyncio.CancelledError:
                 # Cancel pending sleep if any
                 if sleep_task and not sleep_task.done():
                     sleep_task.cancel()
-                
+
                 # Re-raise to exit the loop
                 raise
-                
+
     except asyncio.CancelledError:
         # Properly handle task cancellation with logging
         logger.debug("Heartbeat task cancelled")
@@ -154,15 +168,15 @@ def get_active_connection_count() -> Dict[str, Any]:
     users_count = {}
     for user_id, connections in active_connections["users"].items():
         users_count[user_id] = len(connections)
-        
+
     workspaces_count = {}
     for workspace_id, connections in active_connections["workspaces"].items():
         workspaces_count[workspace_id] = len(connections)
-        
+
     conversations_count = {}
     for conversation_id, connections in active_connections["conversations"].items():
         conversations_count[conversation_id] = len(connections)
-    
+
     return {
         "global": len(active_connections["global"]),
         "users": users_count,
@@ -190,7 +204,7 @@ async def global_events(
     # Just verify token minimally
     if not token:
         raise HTTPException(status_code=401, detail="No token provided")
-    
+
     # Manually decode token just to get user_id without using get_db
     try:
         from jose import jwt
@@ -201,15 +215,15 @@ async def global_events(
     except Exception as e:
         logger.error(f"Token error: {e}")
         raise HTTPException(status_code=401, detail="Invalid token")
-    
+
     logger.info(f"SSE connection established for user_id={user_id}")
-    
+
     # Define a simple generator function that doesn't use async generators
     async def sse_events():
         # Initial connection message
         connection_msg = f"event: connect\ndata: {json.dumps({'connected': True})}\n\n"
         yield connection_msg
-        
+
         # Simple heartbeat loop
         i = 0
         while i < 100:  # Limit to avoid infinite loops
@@ -217,7 +231,7 @@ async def global_events(
             heartbeat_msg = f"event: heartbeat\ndata: {json.dumps({'timestamp': datetime.utcnow().isoformat()})}\n\n"
             yield heartbeat_msg
             i += 1
-    
+
     # Return a simple streaming response without complex queue handling
     return StreamingResponse(
         sse_events(),
@@ -250,7 +264,7 @@ async def user_events(
     # Just verify token minimally
     if not token:
         raise HTTPException(status_code=401, detail="No token provided")
-    
+
     # Manually decode token just to get user_id without using get_db
     try:
         from jose import jwt
@@ -258,22 +272,22 @@ async def user_events(
         token_user_id = payload.get("user_id")
         if not token_user_id:
             raise HTTPException(status_code=401, detail="Invalid token")
-            
+
         # Simple authorization check
         if token_user_id != user_id:
             raise HTTPException(status_code=403, detail="Not authorized to access this user's events")
     except Exception as e:
         logger.error(f"Token error: {e}")
         raise HTTPException(status_code=401, detail="Invalid token")
-    
+
     logger.info(f"User SSE connection established for user_id={user_id}")
-    
+
     # Define a simple generator function that doesn't use async generators
     async def sse_events():
         # Initial connection message
         connection_msg = f"event: connect\ndata: {json.dumps({'connected': True})}\n\n"
         yield connection_msg
-        
+
         # Simple heartbeat loop
         i = 0
         while i < 100:  # Limit to avoid infinite loops
@@ -281,7 +295,7 @@ async def user_events(
             heartbeat_msg = f"event: heartbeat\ndata: {json.dumps({'timestamp': datetime.utcnow().isoformat()})}\n\n"
             yield heartbeat_msg
             i += 1
-    
+
     # Return a simple streaming response without complex queue handling
     return StreamingResponse(
         sse_events(),
@@ -314,7 +328,7 @@ async def workspace_events(
     # Just verify token minimally
     if not token:
         raise HTTPException(status_code=401, detail="No token provided")
-    
+
     # Manually decode token just to get user_id without using get_db
     try:
         from jose import jwt
@@ -322,21 +336,21 @@ async def workspace_events(
         token_user_id = payload.get("user_id")
         if not token_user_id:
             raise HTTPException(status_code=401, detail="Invalid token")
-            
+
         # NOTE: For now, skip workspace authorization check
         # In a real situation, we'd verify the user has access to this workspace
     except Exception as e:
         logger.error(f"Token error in workspace events: {e}")
         raise HTTPException(status_code=401, detail="Invalid token")
-    
+
     logger.info(f"Workspace SSE connection established: user={token_user_id}, workspace={workspace_id}")
-    
+
     # Define a simple generator function that doesn't use async generators
     async def sse_events():
         # Initial connection message
         connection_msg = f"event: connect\ndata: {json.dumps({'connected': True})}\n\n"
         yield connection_msg
-        
+
         # Simple heartbeat loop
         i = 0
         while i < 100:  # Limit to avoid infinite loops
@@ -344,13 +358,13 @@ async def workspace_events(
             heartbeat_msg = f"event: heartbeat\ndata: {json.dumps({'timestamp': datetime.utcnow().isoformat()})}\n\n"
             yield heartbeat_msg
             i += 1
-    
+
     # Return a simple streaming response without complex queue handling
     return StreamingResponse(
         sse_events(),
         media_type="text/event-stream",
         headers={
-            "Cache-Control": "no-cache", 
+            "Cache-Control": "no-cache",
             "Connection": "keep-alive",
         }
     )
@@ -377,7 +391,7 @@ async def conversation_events(
     # Just verify token minimally
     if not token:
         raise HTTPException(status_code=401, detail="No token provided")
-    
+
     # Manually decode token just to get user_id without using get_db
     try:
         from jose import jwt
@@ -385,32 +399,40 @@ async def conversation_events(
         token_user_id = payload.get("user_id")
         if not token_user_id:
             raise HTTPException(status_code=401, detail="Invalid token")
-            
+
         # NOTE: For now, skip conversation authorization check
         # In a real situation, we'd verify the user has access to this conversation
     except Exception as e:
         logger.error(f"Token error in conversation events: {e}")
         raise HTTPException(status_code=401, detail="Invalid token")
-    
+
     logger.info(f"Conversation SSE connection established: user={token_user_id}, conversation={conversation_id}")
-    
-    # Ensure there's an output publisher for this conversation
+
+    # Ensure there's an output publisher for this conversation using circuit breaker
     try:
         # Import here to avoid circular imports
         from app.components.conversation_channels import get_conversation_publisher
-        # Start this in a background task to avoid blocking
-        asyncio.create_task(get_conversation_publisher(conversation_id))
+
+        # Execute the publisher through the circuit breaker
+        try:
+            # Start this in a background task that's protected by the circuit breaker
+            asyncio.create_task(
+                conversation_publisher_cb.execute(get_conversation_publisher, conversation_id)
+            )
+        except ServiceError as e:
+            # Log the error but continue - connection still works but publisher might not
+            logger.error(f"Publisher service unavailable: {str(e)}")
     except Exception as e:
         logger.error(f"Error initializing output publisher: {e}")
-    
+
     # Create a queue for this connection
     queue = asyncio.Queue()
     connection_id = str(uuid.uuid4())
-    
+
     # Initialize conversations dictionary if it doesn't exist
     if conversation_id not in active_connections["conversations"]:
         active_connections["conversations"][conversation_id] = []
-    
+
     # Add this connection to the active connections for this conversation
     connection_info = {
         "id": connection_id,
@@ -420,28 +442,28 @@ async def conversation_events(
     }
     active_connections["conversations"][conversation_id].append(connection_info)
     logger.info(f"Added SSE connection {connection_id} for conversation {conversation_id}")
-    
+
     # Define a simple generator function that doesn't use async generators
     async def sse_events():
         # Start heartbeat task
         heartbeat_task = asyncio.create_task(send_heartbeats(queue))
-        
+
         try:
             # Initial connection message
             connection_msg = f"event: connect\ndata: {json.dumps({'connected': True})}\n\n"
             yield connection_msg
-            
+
             # Send messages from the queue
             while True:
                 try:
                     # Wait for a message with a timeout
                     event = await asyncio.wait_for(queue.get(), timeout=60)
-                    
+
                     # Format SSE message
                     event_type = event.get("event", "message")
                     data = event.get("data", {})
                     sse_msg = f"event: {event_type}\ndata: {json.dumps(data)}\n\n"
-                    
+
                     yield sse_msg
                     queue.task_done()
                 except asyncio.TimeoutError:
@@ -458,13 +480,13 @@ async def conversation_events(
                     if conn["id"] != connection_id
                 ]
                 logger.info(f"Removed SSE connection {connection_id} for conversation {conversation_id}")
-    
+
     # Return a streaming response with the event generator
     return StreamingResponse(
         sse_events(),
         media_type="text/event-stream",
         headers={
-            "Cache-Control": "no-cache", 
+            "Cache-Control": "no-cache",
             "Connection": "keep-alive",
         }
     )

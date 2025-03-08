@@ -2,17 +2,20 @@
 Main entry point for Cortex Core FastAPI application
 """
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
 import uvicorn
 import time
+import uuid
 from contextlib import asynccontextmanager
 
 from app.config import settings
 from app.utils.logger import logger, request_logger
 from app.database.connection import db
 from app.cache.redis_client import connect_redis, disconnect_redis
+from app.exceptions import CortexException
 
 # Import routers
 from app.api import auth, sse, workspaces, conversations, monitoring
@@ -33,7 +36,7 @@ async def lifespan(app: FastAPI):
 
     # Connect to Redis
     await connect_redis()
-    
+
     # Initialize and store event system in app state
     from app.components.event_system import get_event_system
     app.state.event_system = get_event_system()
@@ -82,8 +85,12 @@ async def request_logging_middleware(request: Request, call_next):
     path = request.url.path
     query_params = str(request.query_params)
 
+    # Generate trace_id for request
+    trace_id = str(uuid.uuid4())
+    request.state.trace_id = trace_id
+
     # Log the request
-    request_logger.info(f"{method} {path} {query_params}")
+    request_logger.info(f"{method} {path} {query_params} [trace_id={trace_id}]")
 
     # Process the request
     try:
@@ -93,16 +100,23 @@ async def request_logging_middleware(request: Request, call_next):
 
         # Log the response
         request_logger.info(
-            f"{method} {path} {status_code} {process_time:.3f}s")
+            f"{method} {path} {status_code} {process_time:.3f}s [trace_id={trace_id}]")
 
-        # Add X-Process-Time header
+        # Add X-Process-Time and X-Trace-ID headers
         response.headers["X-Process-Time"] = str(process_time)
+        response.headers["X-Trace-ID"] = trace_id
         return response
     except Exception:
         # Log the error
-        logger.error(f"Request failed: {method} {path}", exc_info=True)
+        logger.error(f"Request failed: {method} {path} [trace_id={trace_id}]", exc_info=True)
         return JSONResponse(
-            status_code=500, content={"detail": "Internal server error"}
+            status_code=500,
+            content={
+                "detail": "Internal server error",
+                "code": "INTERNAL_ERROR",
+                "params": {},
+                "trace_id": trace_id
+            }
         )
 
 
@@ -111,6 +125,87 @@ async def request_logging_middleware(request: Request, call_next):
 async def health_check():
     """Health check endpoint"""
     return {"status": "ok"}
+
+
+# Exception handlers
+@app.exception_handler(CortexException)
+async def cortex_exception_handler(request: Request, exc: CortexException):
+    """Handle application-specific exceptions"""
+    trace_id = getattr(request.state, "trace_id", str(uuid.uuid4()))
+
+    logger.info(
+        f"Handling {exc.__class__.__name__}: {exc.detail} [trace_id={trace_id}]"
+    )
+
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "detail": exc.detail,
+            "code": exc.code,
+            "params": exc.params,
+            "trace_id": trace_id
+        }
+    )
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    """Handle FastAPI HTTP exceptions"""
+    trace_id = getattr(request.state, "trace_id", str(uuid.uuid4()))
+
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "detail": exc.detail,
+            "code": "HTTP_ERROR",
+            "params": {},
+            "trace_id": trace_id
+        }
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Handle validation errors from Pydantic models"""
+    trace_id = getattr(request.state, "trace_id", str(uuid.uuid4()))
+    errors = exc.errors()
+    error_details = []
+
+    for error in errors:
+        error_details.append({
+            "field": ".".join(str(loc) for loc in error["loc"]),
+            "message": error["msg"],
+            "type": error["type"]
+        })
+
+    return JSONResponse(
+        status_code=422,
+        content={
+            "detail": "Request validation failed",
+            "code": "VALIDATION_FAILED",
+            "params": {"errors": error_details},
+            "trace_id": trace_id
+        }
+    )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    """Handle unexpected exceptions"""
+    trace_id = getattr(request.state, "trace_id", str(uuid.uuid4()))
+
+    # Log the exception with traceback
+    logger.exception(f"Unhandled exception: {str(exc)} [trace_id={trace_id}]")
+
+    return JSONResponse(
+        status_code=500,
+        content={
+            "detail": "An unexpected error occurred",
+            "code": "INTERNAL_ERROR",
+            "params": {},
+            "trace_id": trace_id
+        }
+    )
 
 
 # Include routers
