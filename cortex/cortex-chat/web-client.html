@@ -192,6 +192,24 @@
                 transform: translateY(-5px);
             }
         }
+
+        .message-content {
+            white-space: pre-wrap;
+        }
+
+        .message-content pre {
+            background-color: #f0f0f0;
+            padding: 8px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+
+        .message-time {
+            font-size: 0.8rem;
+            color: #888;
+            text-align: right;
+            margin-top: 4px;
+        }
     </style>
 </head>
 <body>
@@ -266,7 +284,7 @@
     
     <script>
         // API configuration
-        const API_URL = 'http://127.0.0.1:8000'; // Reverted back to correct port
+        const API_URL = 'http://127.0.0.1:8000'; // Default API URL
         
         // State
         let authToken = null;
@@ -430,7 +448,7 @@
                 }
                 
                 // Connect to global events
-                connectToGlobalEvents();
+                connectToSSE('global');
             } catch (error) {
                 console.error('Error loading workspaces:', error);
             }
@@ -489,7 +507,7 @@
             await loadConversations(workspaceId);
             
             // Connect to workspace events
-            connectToWorkspaceEvents(workspaceId);
+            connectToSSE('workspace', workspaceId);
         }
         
         async function loadConversations(workspaceId) {
@@ -588,7 +606,7 @@
                 await loadMessages(conversationId);
                 
                 // Connect to conversation events
-                connectToConversationEvents(conversationId);
+                connectToSSE('conversation', conversationId);
             } catch (error) {
                 console.error('Error selecting conversation:', error);
             }
@@ -609,9 +627,7 @@
                 const data = await response.json();
                 currentConversation.messages = data.messages || [];
                 
-                // No timestamp preprocessing needed - we'll use UTC timestamps as is
-                
-                // Render messages - timezone conversion happens during rendering
+                // Render messages
                 renderMessages();
             } catch (error) {
                 console.error('Error loading messages:', error);
@@ -631,7 +647,6 @@
                     id: `temp-${Date.now()}`,
                     content: content,
                     role: 'user',
-                    // Always store timestamps in UTC ISO format
                     created_at_utc: new Date().toISOString()
                 };
                 
@@ -661,8 +676,6 @@
                     throw new Error('Failed to send message');
                 }
                 
-                // The assistant response will come via SSE
-                
                 // Show typing indicator
                 showTypingIndicator();
                 
@@ -672,78 +685,90 @@
             }
         }
         
-        // Server-Sent Events (SSE) functions
-        
-        function connectToGlobalEvents() {
+        // Server-Sent Events (SSE) for real-time updates
+        function connectToSSE(type, resourceId = null) {
             // Close existing connection if any
-            if (eventSources.global) {
-                eventSources.global.close();
+            if (eventSources[type]) {
+                eventSources[type].close();
+                delete eventSources[type];
             }
             
-            // Create new EventSource connection
-            const url = new URL(`${API_URL}/events`);
+            // Determine the URL based on the type
+            let url;
+            switch (type) {
+                case 'global':
+                    url = new URL(`${API_URL}/v1/global`);
+                    break;
+                case 'workspace':
+                    url = new URL(`${API_URL}/v1/workspace/${resourceId}`);
+                    break;
+                case 'conversation':
+                    url = new URL(`${API_URL}/v1/conversation/${resourceId}`);
+                    break;
+                default:
+                    console.error('Invalid SSE type:', type);
+                    return;
+            }
+            
+            // Add token to URL
             url.searchParams.append('token', authToken);
             
+            // Create new EventSource connection
             const eventSource = new EventSource(url.toString());
             
             eventSource.onopen = () => {
-                console.log('Connected to global events');
+                console.log(`Connected to ${type} events`);
             };
             
             eventSource.onerror = (error) => {
-                console.error('Global events error:', error);
+                console.error(`${type} events error:`, error);
                 eventSource.close();
                 
-                // Try to reconnect after delay
-                setTimeout(() => connectToGlobalEvents(), 5000);
+                // Reconnection logic based on type
+                const shouldReconnect = (
+                    (type === 'global') || 
+                    (type === 'workspace' && currentWorkspace && currentWorkspace.id === resourceId) ||
+                    (type === 'conversation' && currentConversation && currentConversation.id === resourceId)
+                );
+                
+                if (shouldReconnect) {
+                    setTimeout(() => connectToSSE(type, resourceId), 5000);
+                }
             };
             
-            // Listen for events
+            // Common events
             eventSource.addEventListener('connect', (event) => {
-                console.log('Global events connected:', JSON.parse(event.data));
+                console.log(`${type} connection established:`, JSON.parse(event.data));
             });
             
+            eventSource.addEventListener('heartbeat', (event) => {
+                console.log(`${type} heartbeat:`, event.data ? JSON.parse(event.data) : {});
+            });
+            
+            // Type-specific events
+            if (type === 'conversation') {
+                setupConversationEvents(eventSource, resourceId);
+            } else if (type === 'workspace') {
+                setupWorkspaceEvents(eventSource, resourceId);
+            } else if (type === 'global') {
+                setupGlobalEvents(eventSource);
+            }
+            
+            // Store connection
+            eventSources[type] = eventSource;
+            
+            return eventSource;
+        }
+        
+        function setupGlobalEvents(eventSource) {
             eventSource.addEventListener('notification', (event) => {
                 const data = JSON.parse(event.data);
                 console.log('Global notification:', data);
                 // Handle notifications here
             });
-            
-            // Store connection
-            eventSources.global = eventSource;
         }
         
-        function connectToWorkspaceEvents(workspaceId) {
-            // Close existing connection if any
-            if (eventSources.workspace) {
-                eventSources.workspace.close();
-            }
-            
-            // Create new EventSource connection
-            const url = new URL(`${API_URL}/workspaces/${workspaceId}/events`);
-            url.searchParams.append('token', authToken);
-            
-            const eventSource = new EventSource(url.toString());
-            
-            eventSource.onopen = () => {
-                console.log(`Connected to workspace ${workspaceId} events`);
-            };
-            
-            eventSource.onerror = (error) => {
-                console.error(`Workspace ${workspaceId} events error:`, error);
-                eventSource.close();
-                
-                // Only try to reconnect if this is still the current workspace
-                if (currentWorkspace && currentWorkspace.id === workspaceId) {
-                    setTimeout(() => connectToWorkspaceEvents(workspaceId), 5000);
-                }
-            };
-            
-            // Listen for events
-            eventSource.addEventListener('connect', (event) => {
-                console.log(`Workspace ${workspaceId} events connected:`, JSON.parse(event.data));
-            });
-            
+        function setupWorkspaceEvents(eventSource, workspaceId) {
             eventSource.addEventListener('conversation_created', (event) => {
                 const newConversation = JSON.parse(event.data);
                 console.log('New conversation created:', newConversation);
@@ -769,61 +794,24 @@
                     renderMessages();
                 }
             });
-            
-            // Store connection
-            eventSources.workspace = eventSource;
         }
         
-        function connectToConversationEvents(conversationId) {
-            // Close existing connection if any
-            if (eventSources.conversation) {
-                eventSources.conversation.close();
-            }
-            
-            // Create new EventSource connection
-            const url = new URL(`${API_URL}/conversations/${conversationId}/events`);
-            url.searchParams.append('token', authToken);
-            
-            const eventSource = new EventSource(url.toString());
-            
-            eventSource.onopen = () => {
-                console.log(`Connected to conversation ${conversationId} events`);
-            };
-            
-            eventSource.onerror = (error) => {
-                console.error(`Conversation ${conversationId} events error:`, error);
-                eventSource.close();
-                
-                // Only try to reconnect if this is still the current conversation
-                if (currentConversation && currentConversation.id === conversationId) {
-                    setTimeout(() => connectToConversationEvents(conversationId), 5000);
-                }
-            };
-            
-            // Listen for events
-            eventSource.addEventListener('connect', (event) => {
-                console.log(`Conversation ${conversationId} events connected:`, JSON.parse(event.data));
-            });
-            
+        function setupConversationEvents(eventSource, conversationId) {
             eventSource.addEventListener('message_received', (event) => {
                 const message = JSON.parse(event.data);
                 console.log('New message received:', message);
                 
                 // Only process if this is the current conversation
                 if (currentConversation && currentConversation.id === conversationId) {
-                    // For all messages (both user and assistant), check if we need to replace a temporary message
-                    // or handle a message that's already been received
-                    
-                    // First check if we already have this exact message by ID
+                    // Check if we already have this exact message by ID
                     const existingIndex = currentConversation.messages.findIndex(m => m.id === message.id);
                     if (existingIndex !== -1) {
-                        // We already have this message, no need to add it again
                         return;
                     }
                     
                     // For user messages, check if we have a temporary message to replace
                     if (message.role === 'user') {
-                        // Find our optimistically added message with temp ID and matching content
+                        // Find optimistically added message with temp ID and matching content
                         const tempIndex = currentConversation.messages.findIndex(m => 
                             m.role === 'user' && 
                             m.content === message.content &&
@@ -834,11 +822,11 @@
                             // Replace our temp message with the server version
                             currentConversation.messages[tempIndex] = message;
                             renderMessages();
-                            return; // We've updated the existing message, no need to add a new one
+                            return;
                         }
                     }
                     
-                    // Add the message (we've already checked for duplicates above)
+                    // Add the message
                     currentConversation.messages.push(message);
                     renderMessages();
                     
@@ -863,30 +851,16 @@
                 }
             });
             
-            eventSource.addEventListener('conversation_update', (event) => {
+            eventSource.addEventListener('status_update', (event) => {
                 const data = JSON.parse(event.data);
-                console.log('Conversation updated:', data);
+                console.log('Conversation status update:', data);
                 
-                // Update conversation data
                 if (currentConversation && currentConversation.id === conversationId) {
-                    // Update fields that were changed
-                    if (data.title) {
-                        currentConversation.title = data.title;
-                    }
-                    if (data.metadata) {
-                        currentConversation.metadata = data.metadata;
-                    }
-                    if (data.last_active_at_utc) {
-                        currentConversation.last_active_at_utc = data.last_active_at_utc;
-                    }
-                    
-                    // Update conversation list
+                    // Update relevant fields
+                    Object.assign(currentConversation, data);
                     renderConversations();
                 }
             });
-            
-            // Store connection
-            eventSources.conversation = eventSource;
         }
         
         function showTypingIndicator() {
@@ -945,44 +919,33 @@
                 return;
             }
             
-            // No pre-processing needed - we'll convert UTC to local on display
-            
             // Add messages
             currentConversation.messages.forEach(message => {
                 const div = document.createElement('div');
                 div.className = `message ${message.role}-message`;
                 
-                // Format timestamp - properly convert UTC to local
-                let date;
-                
-                // For optimistically added messages that haven't been processed by the server
-                if (message.id && message.id.startsWith('temp-')) {
-                    // For newly added messages, use current local time
-                    date = new Date();
-                }
-                // Standard case: properly parse UTC timestamp and display in local timezone
-                else if (message.created_at_utc) {
-                    // Parse ISO 8601 timestamp (UTC) and convert to local time
-                    // JavaScript Date automatically handles the timezone conversion
-                    date = new Date(message.created_at_utc);
-                }
-                // Default to current date if no timestamp provided
-                else {
-                    date = new Date(); 
-                }
-                
-                // Use our helper function to ensure consistency
+                // Format timestamp
                 let formattedTime;
                 
-                // Format the time using created_at_utc or use the date object if needed
-                formattedTime = message.created_at_utc ? 
-                    formatUTCToLocalTime(message.created_at_utc) : 
-                    date.toLocaleTimeString([], { 
+                if (message.id && message.id.startsWith('temp-')) {
+                    // For newly added messages, use current local time
+                    formattedTime = new Date().toLocaleTimeString([], { 
                         hour: '2-digit', 
                         minute: '2-digit',
-                        hour12: true,
-                        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+                        hour12: true
                     });
+                }
+                else if (message.created_at_utc) {
+                    // Convert UTC to local time
+                    formattedTime = formatUTCToLocalTime(message.created_at_utc);
+                }
+                else {
+                    formattedTime = new Date().toLocaleTimeString([], { 
+                        hour: '2-digit', 
+                        minute: '2-digit',
+                        hour12: true
+                    });
+                }
                 
                 // Add message content
                 div.innerHTML = `
@@ -998,30 +961,24 @@
         }
         
         function formatMessageContent(content) {
-            // If content is a string, return it
-            if (typeof content === 'string') {
-                // Basic formatting for code blocks
-                return content.replace(/```([^`]+)```/g, '<pre><code>$1</code></pre>');
+            if (typeof content !== 'string') {
+                return JSON.stringify(content, null, 2);
             }
             
-            // If content is an object, stringify it
-            return JSON.stringify(content, null, 2);
+            // Convert markdown code blocks to HTML
+            const formattedContent = content
+                .replace(/```([^`]+)```/g, '<pre><code>$1</code></pre>');
+            
+            return formattedContent;
         }
         
-        // Helper function to ensure consistent UTC to local time conversion
         function formatUTCToLocalTime(utcTimestamp) {
-            // Create a date object from the UTC timestamp
             const date = new Date(utcTimestamp);
-            
-            // Format it in local time
-            const localTime = date.toLocaleTimeString([], {
+            return date.toLocaleTimeString([], {
                 hour: '2-digit',
                 minute: '2-digit',
-                hour12: true,
-                timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+                hour12: true
             });
-            
-            return localTime;
         }
         
         function showLogin() {

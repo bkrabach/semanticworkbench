@@ -7,10 +7,13 @@ from datetime import datetime, timezone
 import json
 from app.database.connection import get_db
 from app.database.models import User, Workspace
+from app.database.repositories import get_workspace_repository, WorkspaceRepository
 from app.api.auth import get_current_user
 from app.components.sse import get_sse_service
 
 router = APIRouter()
+
+# No dependency needed - we'll use the Session directly
 
 # Request and response models
 
@@ -48,13 +51,11 @@ class WorkspaceResponse(BaseModel):
 async def list_workspaces(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
-):
+) -> Dict[str, List[WorkspaceResponse]]:
     """List workspaces for the current user"""
-    workspaces = db.query(Workspace).filter(
-        Workspace.user_id == user.id
-    ).order_by(
-        Workspace.last_active_at_utc.desc()
-    ).all()
+    # Create repository directly
+    workspace_repo = get_workspace_repository(db)
+    workspaces = workspace_repo.get_user_workspaces(str(user.id))
     
     # Process each workspace to handle the JSON fields
     processed_workspaces = []
@@ -102,27 +103,16 @@ async def create_workspace(
     background_tasks: BackgroundTasks,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
-):
+) -> WorkspaceResponse:
     """Create a new workspace"""
-    now = datetime.now(timezone.utc)
-    config = workspace.config or {}
-
-    # Convert config to JSON string
-    config_json = json.dumps(config)
-
-    new_workspace = Workspace(
-        id=str(uuid.uuid4()),
+    # Create repository directly
+    workspace_repo = get_workspace_repository(db)
+    # Create workspace using repository
+    new_workspace = workspace_repo.create_workspace(
         user_id=str(user.id),
         name=workspace.name,
-        created_at_utc=now,
-        last_active_at_utc=now,
-        config=config_json,
-        meta_data="{}"
+        config=workspace.config
     )
-
-    db.add(new_workspace)
-    db.commit()
-    db.refresh(new_workspace)
 
     # Send event to user
     background_tasks.add_task(

@@ -12,8 +12,9 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 from app.database.connection import get_db
-from app.components.sse import get_sse_service
+from app.components.sse import get_sse_service, SSEAuthService
 from app.utils.logger import logger
+from app.database.repositories import get_resource_access_repository
 
 router = APIRouter(
     prefix="/v1",
@@ -44,10 +45,19 @@ async def handle_sse_connection(
     # Authenticate user
     user_info = await sse_service.authenticate_token(token)
     
-    # For non-global channels, verify resource access
+    # For non-global channels, verify resource access with repository
     if channel_type != "global":
-        has_access = await sse_service.verify_resource_access(
-            user_info, channel_type, resource_id, db
+        # Get resource access repository for explicit DB access pattern
+        resource_access_repo = get_resource_access_repository(db)
+        
+        # Create temporary auth service with repository or use the service's auth
+        if not hasattr(sse_service.auth_service, 'resource_access_repo') or not sse_service.auth_service.resource_access_repo:
+            temp_auth_service = SSEAuthService(resource_access_repo)
+            has_access = await temp_auth_service.verify_resource_access(
+                user_info, channel_type, resource_id, db)
+        else:
+            has_access = await sse_service.verify_resource_access(
+                user_info, channel_type, resource_id, db
         )
         
         if not has_access:

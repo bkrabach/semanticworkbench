@@ -405,47 +405,312 @@ This project follows a layered architecture to maintain separation of concerns:
 - **Repository Layer**: Abstracts data access patterns
 - **Data Layer**: ORM models, database connections
 
-### Repository Pattern
+### Domain-Driven Repository Architecture
 
-We use the Repository Pattern to abstract database access:
+We use a domain-driven repository architecture to maintain a clean separation between database models and business logic. This approach is built on three distinct model layers:
+
+1. **Database Models** (SQLAlchemy): Represent the database schema
+2. **Domain Models** (Pydantic): Represent business entities
+3. **API Models** (Pydantic): Handle HTTP request/response concerns
+
+```
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│   API Models    │     │  Domain Models  │     │  Database Models│
+│   (Pydantic)    │◄───►│   (Pydantic)    │◄───►│  (SQLAlchemy)   │
+└─────────────────┘     └─────────────────┘     └─────────────────┘
+        │                       │                       │
+        ▼                       ▼                       ▼
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│    API Layer    │     │  Service Layer  │     │Repository Layer │
+│  (Controllers)  │     │(Business Logic) │     │ (Data Access)   │
+└─────────────────┘     └─────────────────┘     └─────────────────┘
+```
 
 ```python
-# Definition (interfaces)
+# 1. Domain Model (Pydantic)
+class UserDomain(BaseModel):
+    """Domain model for a user"""
+    id: str
+    email: str
+    name: str
+    created_at: datetime
+    
+# 2. Repository Interface
 class UserRepository(ABC):
+    """Repository interface for user data access"""
     @abstractmethod
-    def get_by_id(self, user_id: str) -> Optional[User]:
+    def get_by_id(self, user_id: str) -> Optional[UserDomain]:
+        """Get a user by ID"""
         pass
         
     @abstractmethod
-    def create(self, email: str, name: str) -> User:
+    def create(self, email: str, name: str) -> UserDomain:
+        """Create a new user"""
         pass
 
-# Implementation (concrete classes)
+# 3. Repository Implementation
 class SQLAlchemyUserRepository(UserRepository):
+    """SQLAlchemy implementation of UserRepository"""
     def __init__(self, db_session: Session):
         self.db = db_session
         
-    def get_by_id(self, user_id: str) -> Optional[User]:
-        return self.db.query(User).filter(User.id == user_id).first()
+    def get_by_id(self, user_id: str) -> Optional[UserDomain]:
+        """Get a user by ID"""
+        # Query the database model
+        db_user = self.db.query(UserDB).filter(UserDB.id == user_id).first()
+        if not db_user:
+            return None
+            
+        # Convert to domain model
+        return self._to_domain(db_user)
         
-    def create(self, email: str, name: str) -> User:
-        user = User(email=email, name=name)
-        self.db.add(user)
+    def create(self, email: str, name: str) -> UserDomain:
+        """Create a new user"""
+        # Create a database model
+        now = datetime.now(timezone.utc)
+        db_user = UserDB(
+            id=str(uuid.uuid4()),
+            email=email, 
+            name=name,
+            created_at_utc=now
+        )
+        self.db.add(db_user)
         self.db.commit()
-        self.db.refresh(user)
-        return user
+        self.db.refresh(db_user)
+        
+        # Convert to domain model
+        return self._to_domain(db_user)
+        
+    def _to_domain(self, db_user: UserDB) -> UserDomain:
+        """Convert database model to domain model"""
+        return UserDomain(
+            id=db_user.id,
+            email=db_user.email,
+            name=db_user.name,
+            created_at=db_user.created_at_utc
+        )
 
-# Factory function for dependency injection
-def get_user_repository(db: Session = Depends(get_db)) -> UserRepository:
-    return SQLAlchemyUserRepository(db)
+# 4. Factory function for dependency injection
+def get_user_repository(db_session: Session) -> UserRepository:
+    """Get a user repository instance"""
+    return SQLAlchemyUserRepository(db_session)
 ```
 
-### Benefits of Repository Pattern
+### Benefits of Domain-Driven Repository Architecture
 
-1. **Separation of Concerns**: API endpoints focus on HTTP interaction, while repositories handle data operations
-2. **Testability**: Repositories can be mocked for testing API endpoints without complex DB mocking
-3. **Flexibility**: Allows for easier DB backend changes in the future
-4. **Consistency**: Provides consistent data access patterns across the codebase
+1. **True Separation of Concerns**: 
+   - API layer only handles HTTP concerns
+   - Service layer contains pure business logic with domain models
+   - Repository layer handles data access and model conversion
+   - Database models remain focused on storage concerns
+
+2. **Consistent Naming and Structure**:
+   - Domain models use business terminology (e.g., `metadata`)
+   - Database models use DB-specific terminology (e.g., `meta_data`)
+   - No confusion about field names across layers
+
+3. **Enhanced Testability**:
+   - Each layer can be tested in isolation
+   - Domain models can be unit tested without database
+   - Services can be tested with mocked repositories
+   - APIs can be tested with mocked services
+
+4. **Type Safety**:
+   - Pydantic provides validation and type checking for domain and API models
+   - Clear interfaces between layers improves IDE support
+   - Prevents data corruption across layer boundaries
+
+### Implementation Guidelines
+
+#### When to Use This Architecture
+
+**ALWAYS** use this architecture for:
+- All data access across the application
+- Business logic that manipulates domain entities
+- API endpoints that expose domain functionality
+- Services that orchestrate operations
+
+#### Implementation Steps
+
+1. **Create Domain Models** in `app/models/domain/`:
+   - Define Pydantic models representing business entities
+   - Use domain terminology for field names
+   - Include validation rules specific to domain
+
+2. **Implement Repository Interfaces and Classes** in `app/database/repositories/`:
+   - Create abstract base classes defining data access methods
+   - Implement concrete classes for SQLAlchemy
+   - Include conversion methods between DB and domain models
+   - Return domain models from all repository methods
+
+3. **Create Services** in `app/services/`:
+   - Implement business logic using domain models
+   - Inject repositories through constructors
+   - Handle orchestration across multiple repositories
+
+4. **Update API Endpoints** in `app/api/`:
+   - Use services for all business logic
+   - Convert between API models and domain models
+   - Focus on HTTP-specific concerns
+
+#### Example: Adding New Data Access Methods
+
+When you need to access data in a way not covered by existing repositories:
+
+```python
+# 1. Create a domain model for the result
+class WorkspaceMemberDomain(BaseModel):
+    """Domain model for workspace member"""
+    user_id: str
+    workspace_id: str
+    access_level: str
+    added_at: datetime
+
+# 2. Add to repository interface
+class WorkspaceRepository(ABC):
+    # Existing methods...
+    
+    @abstractmethod
+    def get_workspace_members(self, workspace_id: str) -> List[WorkspaceMemberDomain]:
+        """Get all members with access to a workspace"""
+        pass
+
+# 3. Implement in the concrete class with model conversion
+class SQLAlchemyWorkspaceRepository(WorkspaceRepository):
+    # Existing methods...
+    
+    def get_workspace_members(self, workspace_id: str) -> List[WorkspaceMemberDomain]:
+        """Get all members with access to a workspace"""
+        # Query database models
+        sharing_records = self.db.query(WorkspaceSharingDB).filter(
+            WorkspaceSharingDB.workspace_id == workspace_id
+        ).all()
+        
+        # Convert to domain models
+        return [self._sharing_to_domain(record) for record in sharing_records]
+        
+    def _sharing_to_domain(self, db_record: WorkspaceSharingDB) -> WorkspaceMemberDomain:
+        """Convert DB model to domain model"""
+        return WorkspaceMemberDomain(
+            user_id=db_record.user_id,
+            workspace_id=db_record.workspace_id,
+            access_level=db_record.access_level,
+            added_at=db_record.created_at_utc
+        )
+```
+
+#### Example: Service with Multiple Repositories
+
+Services orchestrate operations across multiple repositories:
+
+```python
+# Domain model for analytics results
+class WorkspaceStatsDomain(BaseModel):
+    """Domain model for workspace statistics"""
+    workspace_id: str
+    workspace_name: str
+    total_conversations: int
+    active_conversations: int
+    total_messages: int
+    memory_items_count: int
+    last_activity: Optional[datetime] = None
+
+# Service implementation
+class WorkspaceAnalyticsService:
+    """Service for workspace analytics"""
+    
+    def __init__(self, 
+                 workspace_repo: WorkspaceRepository,
+                 conversation_repo: ConversationRepository,
+                 memory_repo: MemoryRepository):
+        self.workspace_repo = workspace_repo
+        self.conversation_repo = conversation_repo
+        self.memory_repo = memory_repo
+        
+    def generate_workspace_stats(self, workspace_id: str) -> WorkspaceStatsDomain:
+        """Generate statistics for a workspace"""
+        # Fetch data using repositories
+        workspace = self.workspace_repo.get_by_id(workspace_id)
+        if not workspace:
+            raise ValueError(f"Workspace not found: {workspace_id}")
+            
+        conversations = self.conversation_repo.get_by_workspace(workspace_id)
+        memory_items = self.memory_repo.get_by_workspace(workspace_id)
+        
+        # Apply business logic to calculate statistics
+        active_conversations = [c for c in conversations 
+                               if c.last_active_at > (datetime.now() - timedelta(days=7))]
+        
+        # Create and return domain model
+        return WorkspaceStatsDomain(
+            workspace_id=workspace.id,
+            workspace_name=workspace.name,
+            total_conversations=len(conversations),
+            active_conversations=len(active_conversations),
+            total_messages=sum(len(c.messages) for c in conversations),
+            memory_items_count=len(memory_items),
+            last_activity=workspace.last_active_at
+        )
+
+# Factory function for service
+def get_workspace_analytics_service(db: Session = Depends(get_db)) -> WorkspaceAnalyticsService:
+    """Get workspace analytics service"""
+    workspace_repo = get_workspace_repository(db)
+    conversation_repo = get_conversation_repository(db)
+    memory_repo = get_memory_repository(db)
+    
+    return WorkspaceAnalyticsService(
+        workspace_repo=workspace_repo,
+        conversation_repo=conversation_repo,
+        memory_repo=memory_repo
+    )
+```
+
+#### Navigating the Codebase
+
+To understand how repositories are used:
+- `app/database/repositories.py` - Repository interfaces and implementations
+- `app/api/conversations.py` - Example of API using repositories
+- `app/components/` - Service components using repositories
+
+#### Troubleshooting
+
+If you need to maintain backward compatibility with existing direct DB access:
+- First implement the proper repository-based solution
+- Then add a fallback mechanism that uses the repository when available
+- Document the pattern you've chosen to help future developers
+
+#### Common Integration Issues
+
+When integrating with FastAPI, be aware of these common issues:
+
+1. **Response Model Inference**:
+   FastAPI tries to infer response types from function parameters. When repositories are injected directly as dependencies, this can cause errors about SQLAlchemy session types being included in response models. To avoid this:
+   
+   ```python
+   # PROBLEMATIC:
+   @router.get("/endpoint")
+   async def endpoint(
+       repo: SomeRepository = Depends(get_some_repository)  # This can cause issues
+   ):
+       # ...
+   
+   # CORRECT:
+   @router.get("/endpoint")
+   async def endpoint(
+       db: Session = Depends(get_db)  # Inject session instead
+   ):
+       repo = get_some_repository(db)  # Create repository inside function
+       # ...
+   ```
+
+2. **Type Conversion**:
+   SQLAlchemy columns may need explicit conversion to Python types when used in function arguments:
+   
+   ```python
+   # Remember to convert SQLAlchemy Column types to strings when needed
+   repo.get_by_id(str(model.id))  # Not: repo.get_by_id(model.id)
+   ```
 
 ### Common Anti-patterns to Avoid
 
@@ -454,18 +719,120 @@ def get_user_repository(db: Session = Depends(get_db)) -> UserRepository:
 3. **Heavy database logic in API handlers**: Move this to repositories
 4. **Complex mocking in tests**: Mock at interface boundaries, not implementation details
 
-### Testing with Repository Pattern
+### Testing with Domain-Driven Architecture
+
+This architecture greatly simplifies testing by allowing each layer to be tested in isolation:
+
+#### Domain Model Testing
 
 ```python
-# Create a mock repository
-mock_repo = MagicMock(spec=UserRepository)
-mock_repo.get_by_id.return_value = User(id="123", name="Test User")
+def test_user_domain_validation():
+    """Test domain model validation rules"""
+    # Valid user
+    user = UserDomain(
+        id="123",
+        email="test@example.com",
+        name="Test User",
+        created_at=datetime.now()
+    )
+    assert user.id == "123"
+    
+    # Invalid email
+    with pytest.raises(ValidationError):
+        UserDomain(
+            id="123",
+            email="invalid-email",
+            name="Test User",
+            created_at=datetime.now()
+        )
+```
 
-# Patch the repository dependency
-with patch('app.api.users.get_user_repository', return_value=mock_repo):
-    response = client.get("/users/123")
-    assert response.status_code == 200
-    assert response.json()["name"] == "Test User"
+#### Repository Testing
+
+```python
+@pytest.mark.asyncio
+async def test_user_repository():
+    """Test user repository with test database"""
+    # Setup test database
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+    db = Session()
+    
+    # Create repository
+    repo = SQLAlchemyUserRepository(db)
+    
+    # Test create
+    user = repo.create(email="test@example.com", name="Test User")
+    assert isinstance(user, UserDomain)
+    assert user.email == "test@example.com"
+    
+    # Test get by ID
+    found = repo.get_by_id(user.id)
+    assert found is not None
+    assert found.id == user.id
+    assert found.name == "Test User"
+```
+
+#### Service Testing
+
+```python
+def test_user_service():
+    """Test user service with mocked repository"""
+    # Create mock repository
+    mock_repo = MagicMock(spec=UserRepository)
+    mock_repo.get_by_id.return_value = UserDomain(
+        id="123",
+        email="test@example.com",
+        name="Test User",
+        created_at=datetime.now()
+    )
+    
+    # Create service with mock repository
+    service = UserService(mock_repo)
+    
+    # Test service method
+    user = service.get_user("123")
+    assert user is not None
+    assert user.id == "123"
+    assert user.name == "Test User"
+    
+    # Verify repository was called correctly
+    mock_repo.get_by_id.assert_called_once_with("123")
+```
+
+#### API Testing
+
+```python
+def test_get_user_endpoint(client):
+    """Test API endpoint with mocked service"""
+    # Create mock service
+    mock_service = MagicMock(spec=UserService)
+    mock_service.get_user.return_value = UserDomain(
+        id="123",
+        email="test@example.com",
+        name="Test User",
+        created_at=datetime.now(timezone.utc)
+    )
+    
+    # Override service dependency
+    app.dependency_overrides[get_user_service] = lambda: mock_service
+    
+    try:
+        # Call API endpoint
+        response = client.get("/users/123")
+        
+        # Verify response
+        assert response.status_code == 200
+        data = response.json()
+        assert data["id"] == "123"
+        assert data["name"] == "Test User"
+        
+        # Verify service was called
+        mock_service.get_user.assert_called_once_with("123")
+    finally:
+        # Clean up override
+        app.dependency_overrides.pop(get_user_service)
 ```
 
 ### Code Review Checklist

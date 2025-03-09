@@ -4,19 +4,28 @@ SSE Authentication Service implementation for Cortex Core.
 Provides authentication and authorization for SSE endpoints.
 """
 
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, Optional
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import text
 import jwt
 
 from app.utils.logger import logger
 from app.config import settings
+from app.database.repositories import ResourceAccessRepository
 
 class SSEAuthService:
     """
     Authentication and authorization for SSE endpoints.
     """
+    
+    def __init__(self, resource_access_repo: Optional[ResourceAccessRepository] = None):
+        """
+        Initialize the SSE authentication service
+        
+        Args:
+            resource_access_repo: Optional repository for resource access checks
+        """
+        self.resource_access_repo = resource_access_repo
     
     async def authenticate_token(self, token: str) -> Dict[str, Any]:
         """
@@ -77,37 +86,75 @@ class SSEAuthService:
         """
         # Users can only access their own user events
         if resource_type == "user":
-            return user_info["id"] == resource_id
+            return bool(user_info["id"] == resource_id)
             
-        # For workspace access, check membership if db provided
-        if db and resource_type == "workspace":
-            result = db.execute(
-                text("SELECT id FROM workspace_members WHERE workspace_id = :workspace_id AND user_id = :user_id"),
-                {"workspace_id": resource_id, "user_id": user_info["id"]}
-            ).fetchone()
-            return result is not None
-            
-        # For conversation access, check workspace membership if db provided
-        if db and resource_type == "conversation":
-            # Get the workspace for this conversation
-            result = db.execute(
-                text("SELECT workspace_id FROM conversations WHERE id = :conversation_id"),
-                {"conversation_id": resource_id}
-            ).fetchone()
-            
-            if not result:
-                return False
+        # If we have a repository, use it for permissions checks
+        if self.resource_access_repo:
+            # For workspace access, check ownership and sharing
+            if resource_type == "workspace":
+                # First check if user is the owner
+                if self.resource_access_repo.is_workspace_owner(resource_id, user_info["id"]):
+                    return True
+                    
+                # Then check if workspace is shared with the user
+                return self.resource_access_repo.has_workspace_sharing_access(resource_id, user_info["id"])
                 
-            workspace_id = result[0]
-            
-            # Check access to the workspace
-            return await self.verify_resource_access(
-                user_info, "workspace", workspace_id, db
-            )
+            # For conversation access, check workspace access
+            if resource_type == "conversation":
+                # Get the workspace for this conversation
+                workspace_id = self.resource_access_repo.get_conversation_workspace_id(resource_id)
+                
+                if not workspace_id:
+                    return False
+                    
+                # Check access to the workspace
+                return await self.verify_resource_access(
+                    user_info, "workspace", workspace_id, db
+                )
         
-        # If no db session or other checks, log warning and restrict access
+        # Fallback to direct DB queries if no repository is available
+        elif db:
+            # For workspace access, check ownership and sharing
+            if resource_type == "workspace":
+                from app.database.models import Workspace, WorkspaceSharing
+                
+                # First check if user is the owner
+                workspace = db.query(Workspace).filter(
+                    Workspace.id == resource_id,
+                    Workspace.user_id == user_info["id"]
+                ).first()
+                
+                if workspace:
+                    return True
+                    
+                # Then check if workspace is shared with the user
+                sharing = db.query(WorkspaceSharing).filter(
+                    WorkspaceSharing.workspace_id == resource_id,
+                    WorkspaceSharing.user_id == user_info["id"]
+                ).first()
+                
+                return sharing is not None
+                
+            # For conversation access, check workspace membership
+            if resource_type == "conversation":
+                from app.database.models import Conversation
+                
+                # Get the workspace for this conversation
+                conversation = db.query(Conversation).filter(
+                    Conversation.id == resource_id
+                ).first()
+                
+                if not conversation:
+                    return False
+                    
+                # Check access to the workspace
+                return await self.verify_resource_access(
+                    user_info, "workspace", str(conversation.workspace_id), db
+                )
+        
+        # If no repository or db session, log warning and restrict access
         logger.warning(
-            f"No database session for {resource_type} {resource_id} access check - "
+            f"No resource access repository or database session for {resource_type} {resource_id} access check - "
             "denying access by default"
         )
         return False

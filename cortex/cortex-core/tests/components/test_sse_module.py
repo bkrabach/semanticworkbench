@@ -133,17 +133,113 @@ async def test_auth_service_resource_access():
     has_access = await service.verify_resource_access(user_info, "user", "user-456", None)
     assert has_access is False
     
-    # Test workspace access with database
-    mock_db = MagicMock()
-    mock_db.execute().fetchone.return_value = ["workspace-123"]  # Return a result
+    # Test without DB - should deny access
+    has_access = await service.verify_resource_access(user_info, "workspace", "workspace-123", None)
+    assert has_access is False
+
+
+@pytest.mark.asyncio
+async def test_auth_service_workspace_access():
+    """Test workspace access verification in the auth service"""
+    from app.database.models import Workspace, WorkspaceSharing
     
-    # Should have access
+    service = SSEAuthService()
+    user_info = {"id": "user-123", "roles": ["user"]}
+    
+    # Mock DB session
+    mock_db = MagicMock()
+    
+    # Setup workspace owner query - mock the query builder pattern
+    workspace_query = MagicMock()
+    workspace_query.filter.return_value = workspace_query
+    workspace_query.first.return_value = MagicMock()  # Return a workspace object
+    
+    # Setup workspace sharing query
+    sharing_query = MagicMock()
+    sharing_query.filter.return_value = sharing_query
+    sharing_query.first.return_value = None  # No sharing record
+    
+    # Setup DB queries
+    mock_db.query = MagicMock(side_effect=lambda model: 
+        workspace_query if model == Workspace else sharing_query
+    )
+    
+    # Test as workspace owner
     has_access = await service.verify_resource_access(user_info, "workspace", "workspace-123", mock_db)
     assert has_access is True
     
-    # Test with no result
-    mock_db.execute().fetchone.return_value = None
+    # Test with shared workspace (not owner)
+    workspace_query.first.return_value = None  # Not the owner
+    sharing_query.first.return_value = MagicMock()  # Has sharing access
+    
     has_access = await service.verify_resource_access(user_info, "workspace", "workspace-456", mock_db)
+    assert has_access is True
+    
+    # Test with no access at all
+    workspace_query.first.return_value = None  # Not the owner
+    sharing_query.first.return_value = None  # No sharing access
+    
+    has_access = await service.verify_resource_access(user_info, "workspace", "workspace-789", mock_db)
+    assert has_access is False
+
+
+@pytest.mark.asyncio
+async def test_auth_service_conversation_access():
+    """Test conversation access verification in the auth service"""
+    from app.database.models import Conversation, Workspace, WorkspaceSharing
+    
+    service = SSEAuthService()
+    user_info = {"id": "user-123", "roles": ["user"]}
+    
+    # Mock DB session
+    mock_db = MagicMock()
+    
+    # Setup conversation query
+    conversation_query = MagicMock()
+    conversation_query.filter.return_value = conversation_query
+    mock_conversation = MagicMock()
+    mock_conversation.workspace_id = "workspace-123"
+    conversation_query.first.return_value = mock_conversation
+    
+    # Setup workspace owner query
+    workspace_query = MagicMock()
+    workspace_query.filter.return_value = workspace_query
+    workspace_query.first.return_value = MagicMock()  # User is workspace owner
+    
+    # Setup workspace sharing query
+    sharing_query = MagicMock()
+    sharing_query.filter.return_value = sharing_query
+    sharing_query.first.return_value = None  # No sharing needed for owner
+    
+    # Setup DB queries with side effects to return different mocks for different models
+    mock_db.query = MagicMock(side_effect=lambda model: 
+        conversation_query if model == Conversation 
+        else workspace_query if model == Workspace 
+        else sharing_query
+    )
+    
+    # Test conversation access where user is workspace owner
+    has_access = await service.verify_resource_access(user_info, "conversation", "conv-123", mock_db)
+    assert has_access is True
+    
+    # Test conversation access with shared workspace (not owner)
+    workspace_query.first.return_value = None  # Not the owner
+    sharing_query.first.return_value = MagicMock()  # Has sharing access
+    
+    has_access = await service.verify_resource_access(user_info, "conversation", "conv-456", mock_db)
+    assert has_access is True
+    
+    # Test conversation access with no workspace access
+    workspace_query.first.return_value = None  # Not the owner
+    sharing_query.first.return_value = None  # No sharing access
+    
+    has_access = await service.verify_resource_access(user_info, "conversation", "conv-789", mock_db)
+    assert has_access is False
+    
+    # Test non-existent conversation
+    conversation_query.first.return_value = None
+    
+    has_access = await service.verify_resource_access(user_info, "conversation", "conv-999", mock_db)
     assert has_access is False
 
 

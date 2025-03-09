@@ -15,6 +15,7 @@ from app.components.tokens import TokenData, generate_jwt_token
 from app.components.security_manager import SecurityManager
 from app.database.models import User, ApiKey, Workspace
 from app.database.connection import get_db
+from app.database.repositories import UserRepository, get_user_repository
 
 
 @pytest.fixture
@@ -64,6 +65,8 @@ def mock_db():
     query_builder.filter.return_value = query_builder
 
     return mock
+
+# No longer using fixture as we need more control in individual tests
 
 
 @pytest.fixture
@@ -231,8 +234,9 @@ def test_login_auto_create_test_user(client_with_db_override, mock_db):
         assert data["user_id"] is not None
         assert data["token"] is not None
 
-        # Verify the test user was created in the mock DB
-        assert mock_db.add.call_count == 3  # User and 2 workspaces were added
+        # We now create entities through repositories, so only workspaces are added directly
+        # The user is created inside the user_repo, which then adds it to the db
+        assert mock_db.add.call_count == 2  # 2 workspaces are added
         assert mock_db.commit.call_count >= 2  # At least 2 commits were made
 
 
@@ -264,11 +268,22 @@ async def test_get_current_user_valid_token(mock_db, test_user, test_token):
 
     # Call the function with our valid token
     try:
-        user = await get_current_user(token=test_token, db=mock_db)
-        assert user.id == test_user.id
-        assert user.email == test_user.email
+        # Override dependencies
+        app.dependency_overrides[get_db] = lambda: mock_db
+        # Set up the mock user repository
+        mock_user_repo = MagicMock(spec=UserRepository)
+        mock_user_repo.get_by_id.return_value = test_user
+        
+        # Important: get_user_repository should return the mock repository object, not itself
+        with patch("app.api.auth.get_user_repository", return_value=mock_user_repo):
+            user = await get_current_user(token=test_token)
+            assert user.id == test_user.id
+            assert user.email == test_user.email
     except Exception as e:
         pytest.fail(f"Unexpected exception: {e}")
+    finally:
+        # Clean up dependency override
+        app.dependency_overrides.pop(get_db, None)
 
 
 @pytest.mark.asyncio
@@ -279,7 +294,13 @@ async def test_get_current_user_invalid_token(mock_db):
 
     # Call the function and verify it raises the expected exception
     with pytest.raises(Exception) as excinfo:
-        await get_current_user(token=invalid_token, db=mock_db)
+        # Override dependencies
+        app.dependency_overrides[get_db] = lambda: mock_db
+        try:
+            await get_current_user(token=invalid_token)
+        finally:
+            # Clean up
+            app.dependency_overrides.pop(get_db, None)
 
     # Check that it has the expected status code
     assert "401" in str(excinfo.value)
@@ -302,21 +323,37 @@ async def test_get_current_user_expired_token(mock_db, test_user):
 
         # Call the function and verify it raises the expected exception
         with pytest.raises(Exception) as excinfo:
-            await get_current_user(token=expired_token, db=mock_db)
+            # Override dependencies
+            app.dependency_overrides[get_db] = lambda: mock_db
+            try:
+                await get_current_user(token=expired_token)
+            finally:
+                # Clean up
+                app.dependency_overrides.pop(get_db, None)
 
         # Check that it has the expected status code
         assert "401" in str(excinfo.value)
 
 
 @pytest.mark.asyncio
-async def test_get_current_user_user_not_found(mock_db, test_token):
+async def test_get_current_user_user_not_found(test_token, mock_db):
     """Test getting current user when user doesn't exist"""
-    # Configure mock to indicate the user doesn't exist
-    mock_db.query.return_value.filter.return_value.first.return_value = None
-
-    # Call the function and verify it raises the expected exception
-    with pytest.raises(Exception) as excinfo:
-        await get_current_user(token=test_token, db=mock_db)
+    # Create a mock repo that returns no user
+    null_user_repo = MagicMock(spec=UserRepository)
+    null_user_repo.get_by_id.return_value = None
+    
+    # Override dependencies
+    app.dependency_overrides[get_db] = lambda: mock_db
+    
+    try:
+        # Call the function and verify it raises the expected exception
+        with pytest.raises(Exception) as excinfo:
+            # Patch the repository factory to return our null repo
+            with patch("app.api.auth.get_user_repository", return_value=null_user_repo):
+                await get_current_user(token=test_token)
+    finally:
+        # Clean up
+        app.dependency_overrides.pop(get_db, None)
 
     # Check that it has the expected status code
     assert "404" in str(excinfo.value)

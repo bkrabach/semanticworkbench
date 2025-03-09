@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 import uuid
 from app.database.connection import get_db
 from app.database.models import User, ApiKey
+from app.database.repositories import get_user_repository, UserRepository, get_workspace_repository, WorkspaceRepository
 from app.config import settings
 from app.utils.logger import logger
 from app.components.security_manager import SecurityManager
@@ -72,7 +73,8 @@ class ApiKeyResponse(BaseModel):
 
 # Authentication dependency
 async def get_current_user(
-    token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)
+    token: str = Depends(oauth2_scheme), 
+    db: Session = Depends(get_db)
 ) -> User:
     """
     Get current authenticated user from token
@@ -87,6 +89,8 @@ async def get_current_user(
     Raises:
         HTTPException: If token is invalid or user doesn't exist
     """
+    # Create the repository directly
+    user_repo = get_user_repository(db)
     token_data = verify_jwt_token(token)
     if not token_data:
         raise HTTPException(
@@ -95,7 +99,7 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    user = db.query(User).filter(User.id == token_data.user_id).first()
+    user = user_repo.get_by_id(token_data.user_id)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
@@ -106,10 +110,16 @@ async def get_current_user(
 
 # Routes
 @router.post("/login", response_model=AuthResponse)
-async def login(credentials: UserCredentials, db: Session = Depends(get_db)):
+async def login(
+    credentials: UserCredentials,
+    db: Session = Depends(get_db)
+) -> AuthResponse:
     """
     Authenticate user and create a session token
     """
+    # Create repositories directly
+    user_repo = get_user_repository(db)
+    workspace_repo = get_workspace_repository(db)
     try:
         logger.info(
             f"Authentication attempt for {credentials.identifier} using {credentials.type}"
@@ -118,8 +128,7 @@ async def login(credentials: UserCredentials, db: Session = Depends(get_db)):
         # Authenticate based on credential type
         if credentials.type == "password":
             # Get user from database
-            user = db.query(User).filter(
-                User.email == credentials.identifier).first()
+            user = user_repo.get_by_email(credentials.identifier)
 
             # For development: auto-create test user if it doesn't exist
             if (
@@ -139,36 +148,20 @@ async def login(credentials: UserCredentials, db: Session = Depends(get_db)):
                     credentials.secret.encode()).hexdigest()
 
                 # Create test user
-                user = User(
-                    id=str(uuid.uuid4()),
+                user = user_repo.create_user(
                     email=credentials.identifier,
                     name="Test User",
-                    password_hash=password_hash,
-                    created_at_utc=datetime.now(timezone.utc),
-                    updated_at_utc=datetime.now(timezone.utc),
+                    password_hash=password_hash
                 )
-                db.add(user)
-
-                # Commit to get the user ID
-                db.commit()
-                db.refresh(user)
 
                 logger.info(f"Created test user: {credentials.identifier}")
 
                 # Create default workspace for test user
-                from app.database.models import Workspace
-                now = datetime.now(timezone.utc)
-                default_workspace = Workspace(
-                    id=str(uuid.uuid4()),
-                    name="My Workspace",
-                    user_id=user.id,
-                    created_at_utc=now,
-                    last_active_at_utc=now,
-                    config="{}",
-                    meta_data="{}"
+                default_workspace = workspace_repo.create_workspace(
+                    user_id=str(user.id),
+                    name="My Workspace"
                 )
-                db.add(default_workspace)
-                db.commit()
+                
                 logger.info(f"Created default workspace for test user: {user.id}")
 
             if not user:
@@ -190,27 +183,18 @@ async def login(credentials: UserCredentials, db: Session = Depends(get_db)):
                     f"Invalid password for user: {credentials.identifier}")
                 return AuthResponse(success=False, error="Invalid email or password")
 
-            # Update last login time - setattr to properly handle ORM Column attribute
-            setattr(user, 'last_login_at_utc', datetime.now(timezone.utc))
-            db.commit()
+            # Update last login time
+            user_repo.update_last_login(str(user.id))
             
             # Check if user has any workspaces, create a default one if not
-            from app.database.models import Workspace
-            workspace_count = db.query(Workspace).filter(Workspace.user_id == user.id).count()
-            if workspace_count == 0:
+            workspaces = workspace_repo.get_user_workspaces(str(user.id), limit=1)
+            if not workspaces:
                 # Create default workspace for existing user
-                now = datetime.now(timezone.utc)
-                default_workspace = Workspace(
-                    id=str(uuid.uuid4()),
-                    name="My Workspace",
-                    user_id=user.id,
-                    created_at_utc=now,
-                    last_active_at_utc=now,
-                    config="{}",
-                    meta_data="{}"
+                default_workspace = workspace_repo.create_workspace(
+                    user_id=str(user.id),
+                    name="My Workspace"
                 )
-                db.add(default_workspace)
-                db.commit()
+                
                 logger.info(f"Created default workspace for existing user: {user.id}")
 
         elif credentials.type == "api_key":
