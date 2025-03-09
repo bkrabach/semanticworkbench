@@ -80,8 +80,12 @@ async function login(email, password) {
 
   const data = await response.json();
 
+  // Response format may vary slightly depending on implementation
+  // Some implementations return access_token in data.access_token, others in data.token
+  const token = data.access_token || data.token;
+
   // Store the token securely
-  localStorage.setItem("cortex_token", data.token);
+  localStorage.setItem("cortex_token", token);
 
   return data;
 }
@@ -121,6 +125,8 @@ async function makeAuthenticatedRequest(url, method = "GET", body = null) {
 ```
 
 ### Token Refresh
+
+> ⚠️ **Note**: According to the API Reference, the token refresh endpoint is not currently implemented and returns a 501 Not Implemented status.
 
 ```javascript
 async function refreshToken() {
@@ -443,6 +449,8 @@ function renderChart(container, component) {
 
 ## Streaming Responses
 
+> ⚠️ **Important Update**: According to the API Reference, the streaming endpoint (`/conversations/{id}/messages/stream`) currently returns a placeholder response instructing clients to listen for events via the SSE endpoints. Clients should use the SSE implementation described below for real-time updates.
+
 For real-time interactions, you can use streaming responses from Cortex Core.
 
 ### Chat Streaming
@@ -507,7 +515,25 @@ async function streamChatResponse(workspaceId, conversationId, message) {
 
 ## Real-time Updates with SSE
 
-For real-time updates and events, use Server-Sent Events (SSE). Note that all event timestamps from the server are provided in UTC and should be converted to local time for display:
+For real-time updates and events, use Server-Sent Events (SSE). The SSE system has been updated to use the sse-starlette library for improved connection stability.
+
+> ⚠️ **Important**: All timestamp fields from the server are provided in ISO 8601 format with UTC timezone (e.g., `2023-01-15T12:00:00Z`). Client implementations should convert these to local time for display.
+
+### Unified SSE Endpoint Pattern
+
+The Cortex Core SSE implementation uses a clean, unified endpoint pattern for all event types:
+
+```
+GET /v1/{channel_type}/{resource_id}?token={token}
+```
+
+Where:
+
+- `channel_type`: The type of events to subscribe to (one of: `global`, `user`, `workspace`, `conversation`)
+- `resource_id`: The ID of the resource to subscribe to (not required for global events)
+- `token`: Your authentication token as a query parameter
+
+### SSE Client Implementation
 
 ```javascript
 class CortexEventSource {
@@ -563,18 +589,28 @@ class CortexEventSource {
       });
 
       // Listen for specific event types
-      ["conversation_update", "message_received", "notification"].forEach(
-        (eventType) => {
-          this.eventSource.addEventListener(eventType, (event) => {
-            try {
-              const data = JSON.parse(event.data);
-              this._triggerEvent(eventType, data);
-            } catch (error) {
-              console.error(`Error parsing ${eventType} event:`, error);
+      [
+        "conversation_update",
+        "message_received",
+        "notification",
+        "status_update",
+        "typing_indicator",
+      ].forEach((eventType) => {
+        this.eventSource.addEventListener(eventType, (event) => {
+          try {
+            const data = JSON.parse(event.data);
+
+            // Convert UTC timestamp to local time for display
+            if (data.created_at) {
+              data.localTime = new Date(data.created_at).toLocaleString();
             }
-          });
-        }
-      );
+
+            this._triggerEvent(eventType, data);
+          } catch (error) {
+            console.error(`Error parsing ${eventType} event:`, error);
+          }
+        });
+      });
     } catch (error) {
       console.error("Failed to create EventSource:", error);
       this._reconnect(path);
@@ -659,10 +695,13 @@ events.on("conversation_update", (data) => {
 events.on("message_received", (data) => {
   console.log("New message received:", data);
   // Update UI with new message
+
+  // Example of using the converted local time
+  console.log(`Message received at local time: ${data.localTime}`);
 });
 
 // Connect to the unified events endpoints
-events.connect("/v1/global");  // For system-wide events
+events.connect("/v1/global"); // For system-wide events
 
 // For user-specific events
 // events.connect(`/v1/user/${userId}`);
@@ -672,6 +711,136 @@ events.connect("/v1/global");  // For system-wide events
 
 // For conversation-specific events
 // events.connect(`/v1/conversation/${conversationId}`);
+```
+
+### SSE Channel Types and Events
+
+#### Global Channel (`/v1/global`)
+
+```javascript
+// Subscribe to global events
+events.connect("/v1/global");
+
+// Handle global notifications
+events.on("notification", (data) => {
+  console.log("Global notification:", data);
+  showNotification(data.message);
+});
+
+// Handle system updates
+events.on("system_update", (data) => {
+  console.log("System update:", data);
+  if (data.requiresRefresh) {
+    alert("System has been updated. Please refresh your browser.");
+  }
+});
+```
+
+#### User Channel (`/v1/user/{userId}`)
+
+```javascript
+// Subscribe to user-specific events
+events.connect(`/v1/user/${userId}`);
+
+// Handle user notifications
+events.on("notification", (data) => {
+  console.log("User notification:", data);
+  showUserNotification(data.message);
+});
+
+// Handle preference updates
+events.on("preference_update", (data) => {
+  console.log("Preference update:", data);
+  updateUserPreferences(data);
+});
+```
+
+#### Workspace Channel (`/v1/workspace/{workspaceId}`)
+
+```javascript
+// Subscribe to workspace events
+events.connect(`/v1/workspace/${workspaceId}`);
+
+// Handle new conversation creation
+events.on("conversation_created", (data) => {
+  console.log("New conversation:", data);
+  addConversationToUI(data);
+});
+
+// Handle conversation deletion
+events.on("conversation_deleted", (data) => {
+  console.log("Conversation deleted:", data);
+  removeConversationFromUI(data.id);
+});
+
+// Handle workspace updates
+events.on("workspace_update", (data) => {
+  console.log("Workspace update:", data);
+  updateWorkspaceUI(data);
+});
+```
+
+#### Conversation Channel (`/v1/conversation/{conversationId}`)
+
+```javascript
+// Subscribe to conversation events
+events.connect(`/v1/conversation/${conversationId}`);
+
+// Handle new messages
+events.on("message_received", (data) => {
+  console.log("New message:", data);
+  addMessageToUI(data);
+});
+
+// Handle typing indicators
+events.on("typing_indicator", (data) => {
+  console.log("Typing indicator:", data);
+  if (data.isTyping) {
+    showTypingIndicator();
+  } else {
+    hideTypingIndicator();
+  }
+});
+
+// Handle conversation updates
+events.on("conversation_update", (data) => {
+  console.log("Conversation update:", data);
+  updateConversationUI(data);
+});
+
+// Handle status updates
+events.on("status_update", (data) => {
+  console.log("Status update:", data);
+  updateStatusUI(data);
+});
+```
+
+### Handling Timestamps
+
+All timestamps from the server are provided in UTC and should be converted to local time for display:
+
+```javascript
+// Convert UTC timestamp to local time
+function formatTimestamp(utcTimestamp) {
+  if (!utcTimestamp) return "";
+
+  const date = new Date(utcTimestamp);
+  return date.toLocaleString(); // Format according to user's locale
+}
+
+// Example usage
+events.on("message_received", (data) => {
+  const localTime = formatTimestamp(data.created_at);
+  console.log(`Message received at ${localTime}`);
+
+  // Update UI with message and formatted time
+  const messageEl = document.createElement("div");
+  messageEl.innerHTML = `
+    <div class="message-content">${data.content}</div>
+    <div class="message-time">${localTime}</div>
+  `;
+  messagesContainer.appendChild(messageEl);
+});
 ```
 
 ## Error Handling
@@ -733,9 +902,56 @@ function notifyUser(message) {
 }
 ```
 
+### Handling SSE Connection Errors
+
+```javascript
+// SSE-specific error handling
+function setupSSEErrorHandling(eventSource) {
+  // Listen for connection errors
+  eventSource.addEventListener("error", (event) => {
+    console.error("SSE connection error:", event);
+
+    // Check if the connection is closed
+    if (eventSource.readyState === EventSource.CLOSED) {
+      notifyUser("Connection lost. Attempting to reconnect...");
+
+      // Implement reconnection logic
+      setTimeout(() => {
+        // Attempt to reconnect
+        reconnectSSE();
+      }, 3000);
+    }
+  });
+}
+
+// Reconnection with exponential backoff
+let reconnectAttempts = 0;
+const maxReconnectAttempts = 5;
+
+function reconnectSSE() {
+  if (reconnectAttempts >= maxReconnectAttempts) {
+    notifyUser("Unable to reconnect. Please refresh the page.");
+    return;
+  }
+
+  reconnectAttempts++;
+  const backoffTime = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000);
+
+  notifyUser(`Reconnecting (attempt ${reconnectAttempts})...`);
+
+  // Try to reconnect after backoff time
+  setTimeout(() => {
+    // Implementation depends on your SSE setup
+    setupSSEConnection();
+  }, backoffTime);
+}
+```
+
 ## Sample Implementations
 
 ### Basic Chat Interface
+
+This is a simplified example of a chat interface using the Cortex Core API and SSE:
 
 ```html
 <!DOCTYPE html>
@@ -745,125 +961,7 @@ function notifyUser(message) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Cortex Chat Interface</title>
     <style>
-      /* CSS styles for the chat interface */
-      body {
-        font-family: Arial, sans-serif;
-        margin: 0;
-        padding: 0;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        height: 100vh;
-        background-color: #f5f5f5;
-      }
-
-      .chat-container {
-        width: 400px;
-        height: 600px;
-        border-radius: 10px;
-        overflow: hidden;
-        display: flex;
-        flex-direction: column;
-        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
-        background-color: white;
-      }
-
-      .chat-header {
-        background-color: #4285f4;
-        color: white;
-        padding: 15px;
-        text-align: center;
-      }
-
-      .messages-container {
-        flex: 1;
-        overflow-y: auto;
-        padding: 15px;
-        display: flex;
-        flex-direction: column;
-      }
-
-      .message {
-        padding: 10px 15px;
-        border-radius: 18px;
-        margin-bottom: 10px;
-        max-width: 70%;
-        word-wrap: break-word;
-      }
-
-      .message.user {
-        align-self: flex-end;
-        background-color: #4285f4;
-        color: white;
-      }
-
-      .message.assistant {
-        align-self: flex-start;
-        background-color: #f1f1f1;
-        color: #333;
-      }
-
-      .input-container {
-        display: flex;
-        padding: 10px;
-        border-top: 1px solid #eaeaea;
-      }
-
-      #message-input {
-        flex: 1;
-        padding: 10px;
-        border: 1px solid #ddd;
-        border-radius: 20px;
-        outline: none;
-      }
-
-      #send-button {
-        margin-left: 10px;
-        padding: 10px 15px;
-        background-color: #4285f4;
-        color: white;
-        border: none;
-        border-radius: 20px;
-        cursor: pointer;
-      }
-
-      .typing-indicator {
-        display: none;
-        align-self: flex-start;
-        background-color: #f1f1f1;
-        color: #333;
-        padding: 10px 15px;
-        border-radius: 18px;
-        margin-bottom: 10px;
-      }
-
-      .dot {
-        display: inline-block;
-        width: 8px;
-        height: 8px;
-        border-radius: 50%;
-        background-color: #888;
-        animation: wave 1.3s linear infinite;
-      }
-
-      .dot:nth-child(2) {
-        animation-delay: -1.1s;
-      }
-
-      .dot:nth-child(3) {
-        animation-delay: -0.9s;
-      }
-
-      @keyframes wave {
-        0%,
-        60%,
-        100% {
-          transform: initial;
-        }
-        30% {
-          transform: translateY(-5px);
-        }
-      }
+      /* CSS styles omitted for brevity */
     </style>
   </head>
   <body>
@@ -936,7 +1034,7 @@ function notifyUser(message) {
           try {
             // Send the message to Cortex Core
             const response = await fetch(
-              `https://your-cortex-core-instance/workspaces/${workspaceId}/conversations/${conversationId}/messages`,
+              `https://your-cortex-core-instance/conversations/${conversationId}/messages`,
               {
                 method: "POST",
                 headers: {
@@ -976,7 +1074,7 @@ function notifyUser(message) {
         function addMessage(content, role, timestamp = "") {
           const messageElement = document.createElement("div");
           messageElement.className = `message ${role}`;
-          
+
           // Add timestamp prefix if provided
           messageElement.textContent = timestamp + content;
 
@@ -1027,11 +1125,13 @@ function notifyUser(message) {
               if (data.role === "assistant" && data.content) {
                 // Convert UTC timestamp to local time for display if timestamp exists
                 let timestampDisplay = "";
-                if (data.created_at_utc) {
-                  const localTime = new Date(data.created_at_utc).toLocaleTimeString();
+                if (data.created_at) {
+                  const localTime = new Date(
+                    data.created_at
+                  ).toLocaleTimeString();
                   timestampDisplay = `[${localTime}] `;
                 }
-                
+
                 // Add message with timestamp if available
                 addMessage(data.content, "assistant", timestampDisplay);
               }
@@ -1066,166 +1166,24 @@ function notifyUser(message) {
 </html>
 ```
 
-### Real-time Updates with SSE
+### Full Client Implementation
 
-Here's a basic example of setting up SSE for different types of updates:
+For a more complete implementation, refer to the `web-client.html` in the `cortex-chat` directory, which demonstrates:
 
-```javascript
-// Set up SSE for conversation updates
-function setupConversationEvents(conversationId) {
-  const token = localStorage.getItem("cortex_token");
-
-  const url = new URL(
-    `https://your-cortex-core-instance/conversations/${conversationId}/events`
-  );
-  url.searchParams.append("token", token);
-
-  const eventSource = new EventSource(url.toString());
-
-  eventSource.addEventListener("message", (event) => {
-    try {
-      const data = JSON.parse(event.data);
-      console.log("General message:", data);
-    } catch (error) {
-      console.error("Error parsing message:", error);
-    }
-  });
-
-  // Handle new messages
-  eventSource.addEventListener("message_received", (event) => {
-    try {
-      const message = JSON.parse(event.data);
-      console.log("New message:", message);
-
-      // Process timestamp (all timestamps from server are in UTC)
-      if (message.created_at_utc) {
-        // Convert UTC timestamp to local time for display
-        const localTimeStr = new Date(message.created_at_utc).toLocaleString();
-        console.log(`Message received at ${localTimeStr} (local time)`);
-        message.localTime = localTimeStr;
-      }
-
-      // Update UI with the new message
-      updateChatUI(message);
-    } catch (error) {
-      console.error("Error handling message:", error);
-    }
-  });
-
-  // Handle typing indicators
-  eventSource.addEventListener("typing_indicator", (event) => {
-    try {
-      const data = JSON.parse(event.data);
-      console.log("Typing indicator:", data);
-
-      // Show/hide typing indicator in UI
-      updateTypingIndicator(data.isTyping);
-    } catch (error) {
-      console.error("Error handling typing indicator:", error);
-    }
-  });
-
-  // Handle conversation updates
-  eventSource.addEventListener("conversation_update", (event) => {
-    try {
-      const data = JSON.parse(event.data);
-      console.log("Conversation update:", data);
-
-      // Update conversation metadata in UI
-      updateConversationMetadata(data);
-    } catch (error) {
-      console.error("Error handling conversation update:", error);
-    }
-  });
-
-  // Handle errors
-  eventSource.onerror = (error) => {
-    console.error("SSE error:", error);
-
-    // Attempt to reconnect
-    eventSource.close();
-    setTimeout(() => setupConversationEvents(conversationId), 3000);
-  };
-
-  // Return the event source for cleanup
-  return eventSource;
-}
-
-// Set up SSE for workspace updates
-function setupWorkspaceEvents(workspaceId) {
-  const token = localStorage.getItem("cortex_token");
-
-  const url = new URL(
-    `https://your-cortex-core-instance/workspaces/${workspaceId}/events`
-  );
-  url.searchParams.append("token", token);
-
-  const eventSource = new EventSource(url.toString());
-
-  // Handle workspace updates
-  eventSource.addEventListener("workspace_update", (event) => {
-    try {
-      const data = JSON.parse(event.data);
-      console.log("Workspace update:", data);
-
-      // Update workspace information in UI
-      updateWorkspaceInfo(data);
-    } catch (error) {
-      console.error("Error handling workspace update:", error);
-    }
-  });
-
-  // Handle new conversations
-  eventSource.addEventListener("conversation_created", (event) => {
-    try {
-      const data = JSON.parse(event.data);
-      console.log("New conversation:", data);
-
-      // Add new conversation to UI
-      addConversationToList(data);
-    } catch (error) {
-      console.error("Error handling new conversation:", error);
-    }
-  });
-
-  // Return the event source for cleanup
-  return eventSource;
-}
-
-// UI update functions
-function updateChatUI(message) {
-  // Implementation to add message to UI
-}
-
-function updateTypingIndicator(isTyping) {
-  const indicator = document.getElementById("typing-indicator");
-  indicator.style.display = isTyping ? "block" : "none";
-}
-
-function updateConversationMetadata(data) {
-  // Implementation to update conversation info
-}
-
-function updateWorkspaceInfo(data) {
-  // Implementation to update workspace details
-}
-
-function addConversationToList(conversation) {
-  // Implementation to add new conversation to list
-}
-```
-
-### Multi-Modal Interface
-
-A multi-modal interface combines chat, voice, and canvas interactions in a single unified experience. The examples above demonstrate the individual modalities that you can integrate into your application.
+1. User authentication
+2. Workspace and conversation management
+3. SSE connection management with reconnection logic
+4. Message sending and receiving
+5. Proper timestamp handling
+6. Typing indicators
 
 ## Best Practices
 
 1. **Authentication Management**
 
    - Store tokens securely (HttpOnly cookies for web apps, secure storage for mobile apps)
-   - Implement token refresh mechanisms
    - Handle authentication errors gracefully
+   - Implement proper redirection to login when authentication fails
 
 2. **Error Handling**
 
@@ -1255,14 +1213,21 @@ A multi-modal interface combines chat, voice, and canvas interactions in a singl
    - Use HTTPS for all communications
    - Follow the principle of least privilege
 
-6. **Timezone Handling**
+6. **Timestamp Handling**
 
    - Always treat server timestamps as UTC (all API timestamps are provided in ISO 8601 format with UTC timezone)
    - Convert UTC timestamps to local time on the client side for display
    - Use timezone-aware date libraries (like date-fns, luxon, or moment-timezone) to handle conversions
    - Consider user timezone preferences in your application settings
 
-7. **Testing**
+7. **SSE Connection Management**
+
+   - Implement proper reconnection strategy with exponential backoff
+   - Handle connection errors gracefully
+   - Clean up connections when no longer needed
+   - Consider connection limits in production environments
+
+8. **Testing**
    - Test across different browsers/devices
    - Implement unit tests for client logic
    - Test error scenarios and edge cases
@@ -1281,15 +1246,52 @@ A multi-modal interface combines chat, voice, and canvas interactions in a singl
 
    - **Issue**: EventSource disconnects frequently
    - **Solution**: Implement reconnection logic with exponential backoff
+   - **Solution**: Ensure server configurations allow long-lived connections
 
 3. **Response Handling Errors**
 
    - **Issue**: Error parsing response data
    - **Solution**: Validate response structure before processing
+   - **Solution**: Implement proper error handling for malformed data
 
 4. **Performance Issues**
    - **Issue**: Slow response times
    - **Solution**: Optimize request payloads, implement caching, and consider client-side optimizations
+
+### Deployment Considerations
+
+1. **Proxy Configuration**
+
+   If you're deploying behind a proxy (e.g., Nginx), ensure it's configured for SSE:
+
+   ```nginx
+   # Nginx configuration for SSE
+   location /v1/ {
+       proxy_pass http://your-backend-service;
+       proxy_http_version 1.1;
+       proxy_set_header Connection "";
+       proxy_buffering off;
+       proxy_read_timeout 3600s;
+       proxy_set_header Host $host;
+       proxy_set_header X-Real-IP $remote_addr;
+   }
+   ```
+
+2. **Load Balancing**
+
+   For high-availability setups:
+
+   - Consider sticky sessions for SSE connections
+   - Implement Redis or similar for shared connection state
+   - Set appropriate timeout values on load balancers
+
+3. **Timeouts**
+
+   Configure appropriate timeouts:
+
+   - Client-side reconnection timeouts (as shown in the SSE implementation)
+   - Server-side request timeouts
+   - Proxy/load balancer timeouts
 
 ### Debugging Tips
 
@@ -1301,3 +1303,5 @@ A multi-modal interface combines chat, voice, and canvas interactions in a singl
 ## Support and Resources
 
 - [API Documentation](./API_REFERENCE.md)
+- [SSE Documentation](./SSE.md)
+- [SSE Implementation Improvements](./SSE_IMPROVEMENTS.md)
