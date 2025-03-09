@@ -1,15 +1,15 @@
 """User repository for accessing user data."""
 
 from datetime import datetime, timezone
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 import uuid
 import json
 from app.utils.json_helpers import parse_datetime
 
 from sqlalchemy.orm import Session
 
-from app.database.models import User as UserDB
-from app.models.domain.user import User, UserInfo
+from app.database.models import User as UserDB, ApiKey as ApiKeyDB
+from app.models.domain.user import User, UserInfo, ApiKey
 from app.database.repositories.base import Repository
 
 class UserRepository(Repository[User, UserDB]):
@@ -87,7 +87,7 @@ class UserRepository(Repository[User, UserDB]):
     def _to_domain(self, db_model: UserDB) -> User:
         """Convert DB model to domain model"""
         # No meta_data field in UserDB model, so use an empty dict
-        metadata = {}
+        metadata: Dict[str, Any] = {}
             
         # Parse roles
         try:
@@ -157,6 +157,51 @@ class UserRepository(Repository[User, UserDB]):
         # This could be implemented in a separate method if needed
         
         return db_instance
+    
+    def create_api_key(self, user_id: str, encrypted_key: str, scopes: List[str], 
+                       expires_at: Optional[datetime] = None) -> ApiKey:
+        """Create a new API key for a user."""
+        # Convert scopes to JSON
+        scopes_json = json.dumps(scopes)
+        
+        # Create a new API key
+        api_key_db = ApiKeyDB(
+            id=str(uuid.uuid4()),
+            user_id=user_id,
+            key=encrypted_key,
+            scopes_json=scopes_json,
+            created_at_utc=datetime.now(timezone.utc),
+            expires_at_utc=expires_at
+        )
+        
+        self.db.add(api_key_db)
+        self.db.commit()
+        self.db.refresh(api_key_db)
+        
+        return self._api_key_to_domain(api_key_db)
+    
+    def _api_key_to_domain(self, db_model: ApiKeyDB) -> ApiKey:
+        """Convert API key database model to domain model."""
+        # Parse scopes from JSON
+        try:
+            # Convert SQLAlchemy Column to string first
+            scopes_json_str = str(db_model.scopes_json) if db_model.scopes_json is not None else "[]"
+            scopes = json.loads(scopes_json_str)
+        except (json.JSONDecodeError, TypeError):
+            scopes = []
+        
+        # Extract the values from SQLAlchemy Column objects
+        created_at = parse_datetime(db_model.created_at_utc) if db_model.created_at_utc is not None else datetime.now(timezone.utc)
+        expires_at = parse_datetime(db_model.expires_at_utc) if db_model.expires_at_utc is not None else None
+        
+        return ApiKey(
+            id=str(db_model.id),
+            user_id=str(db_model.user_id),
+            key=str(db_model.key),  # Already encrypted
+            created_at=created_at,
+            scopes=scopes,
+            expires_at=expires_at
+        )
 
 # Factory function for dependency injection
 def get_user_repository(db_session: Session) -> UserRepository:

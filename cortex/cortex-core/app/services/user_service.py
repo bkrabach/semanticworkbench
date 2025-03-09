@@ -1,11 +1,12 @@
 """User service for handling user-related business logic."""
 
-from typing import Optional
+from typing import Optional, List
+from datetime import datetime
 
 from sqlalchemy.orm import Session
 
 from app.database.repositories.user_repository import UserRepository
-from app.models.domain.user import User, UserInfo
+from app.models.domain.user import User, UserInfo, ApiKey
 from app.services.base import Service
 from app.components.event_system import EventSystem
 
@@ -85,6 +86,17 @@ class UserService(Service[User, UserRepository]):
                 "login_at": user.last_login_at.isoformat() if user.last_login_at else None
             },
             source="user_service"
+        )
+        
+    def create_api_key(self, user_id: str, encrypted_key: str, scopes: List[str], 
+                      expires_at: Optional[datetime] = None) -> ApiKey:
+        """Create a new API key for a user."""
+        # Use repository to create the key
+        return self.repository.create_api_key(
+            user_id=user_id,
+            encrypted_key=encrypted_key,
+            scopes=scopes,
+            expires_at=expires_at
         )
 
 # Factory function for dependency injection

@@ -6,12 +6,13 @@ Handles authentication, authorization, and encryption
 import json
 import hashlib
 from typing import Optional, Any
+from app.models.domain.user import User
 from cryptography.fernet import Fernet
 import base64
 from fastapi import Depends
 from sqlalchemy.orm import Session
 from app.database.connection import get_db
-from app.database.models import User
+from app.services.user_service import get_user_service, UserService
 from app.components.tokens import verify_jwt_token
 from app.components.auth_schemes import oauth2_scheme_optional
 
@@ -49,17 +50,17 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 
 async def get_current_user_or_none(
     token: Optional[str] = Depends(oauth2_scheme_optional),
-    db: Session = Depends(get_db)
+    user_service: UserService = Depends(get_user_service)
 ) -> Optional[User]:
     """
     Get current user from token but don't raise exception if token is invalid
 
     Args:
         token: JWT token (optional)
-        db: Database session
+        user_service: User service for retrieving user domain models
 
     Returns:
-        User object if token is valid, None otherwise
+        User domain model if token is valid, None otherwise
     """
     if not token:
         return None
@@ -69,7 +70,8 @@ async def get_current_user_or_none(
         if not token_data:
             return None
 
-        user = db.query(User).filter(User.id == token_data.user_id).first()
+        # Use the user service to get the domain model
+        user = user_service.get_user(token_data.user_id)
         return user
     except Exception:
         return None

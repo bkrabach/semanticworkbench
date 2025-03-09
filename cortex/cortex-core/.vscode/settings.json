@@ -70,6 +70,7 @@
     "asyncpg",
     "autoflush",
     "beforeunload",
+    "ciphertext",
     "clauseelement",
     "coro",
     "datefmt",
@@ -120,6 +121,7 @@
     "urlsafe",
     "utcnow",
     "uvicorn",
-    "venv"
+    "venv",
+    "مرحبا"
   ]
 }

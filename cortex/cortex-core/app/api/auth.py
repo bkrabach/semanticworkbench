@@ -12,7 +12,7 @@ import uuid
 import hashlib
 
 from app.database.connection import get_db
-from app.database.models import ApiKey
+from app.models.domain.user import ApiKey
 from app.database.repositories.user_repository import get_user_repository
 from app.database.repositories.workspace_repository import get_workspace_repository
 from app.services.user_service import get_user_service, UserService
@@ -322,18 +322,13 @@ async def generate_api_key(
         # Encrypt key for storage
         encrypted_key = security_manager.encrypt(key)
 
-        # Create API key in database
-        api_key = ApiKey(
-            id=str(uuid.uuid4()),
-            key=encrypted_key,
-            user_id=str(user.id),
-            scopes_json=security_manager.stringify_json(request.scopes),
-            created_at_utc=datetime.now(timezone.utc),
-            expires_at_utc=expiry,
+        # Create API key using user service
+        api_key = user_service.create_api_key(
+            user_id=user.id,
+            encrypted_key=encrypted_key,
+            scopes=request.scopes,
+            expires_at=expiry
         )
-
-        db.add(api_key)
-        db.commit()
 
         logger.info(f"Generated API key for user {user.id}")
 

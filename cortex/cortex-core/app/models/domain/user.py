@@ -36,3 +36,15 @@ class UserInfo(TimestampedModel):
     email: str  # We use str instead of EmailStr to avoid validation errors during auth
     name: Optional[str] = None
     roles: List[str] = Field(default_factory=list)
+
+
+class ApiKey(TimestampedModel):
+    """
+    Domain model for an API key.
+    
+    Represents an API key used for programmatic access to the system.
+    """
+    user_id: str
+    key: str  # Encrypted key value
+    scopes: List[str] = Field(default_factory=list)
+    expires_at: Optional[datetime] = None
