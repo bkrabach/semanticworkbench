@@ -39,8 +39,7 @@ async def connect_redis():
         logger.info("Redis connection established")
 
     except Exception as e:
-        logger.error(f"Failed to connect to Redis: {e}")
-        logger.warning("Using in-memory cache fallback")
+        logger.info(f"Redis not available ({e}), using in-memory cache instead")
         using_memory_fallback = True
 
     # Start memory cache cleanup in a background thread if using fallback

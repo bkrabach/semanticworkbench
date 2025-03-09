@@ -1,9 +1,16 @@
 <!DOCTYPE html>
+<!--
+  IMPORTANT: THIS IS A PROOF OF CONCEPT CLIENT
+  
+  This web client is intended solely for testing and demonstration purposes.
+  It is not production-ready and may contain simplifications and experimental code.
+  Feel free to modify, extend, or completely rewrite as needed for your use case.
+-->
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cortex Client</title>
+    <title>Cortex Client - PoC</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -226,16 +233,18 @@
         <!-- Login Form -->
         <div id="login-section" class="login-form">
             <h2>Login</h2>
-            <div class="form-group">
-                <label for="email">Email</label>
-                <input type="email" id="email" placeholder="Enter your email" value="test@example.com">
-            </div>
-            <div class="form-group">
-                <label for="password">Password</label>
-                <input type="password" id="password" placeholder="Enter your password" value="password">
-            </div>
-            <button id="login-btn">Login</button>
-            <p id="login-error" style="color: red;"></p>
+            <form id="login-form" onsubmit="event.preventDefault(); login();">
+                <div class="form-group">
+                    <label for="email">Email</label>
+                    <input type="email" id="email" placeholder="Enter your email" value="test@example.com" autocomplete="email">
+                </div>
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" placeholder="Enter your password" value="password" autocomplete="current-password">
+                </div>
+                <button type="submit" id="login-btn">Login</button>
+                <p id="login-error" style="color: red;"></p>
+            </form>
         </div>
         
         <!-- Main Application -->
@@ -677,91 +686,43 @@
                     throw new Error('Failed to send message');
                 }
                 
-                // Show typing indicator
+                // Show typing indicator - will be controlled by the server via SSE
                 showTypingIndicator();
                 
-                // Use the direct echo endpoint to get an immediate response
-                try {
-                    const directResponse = await fetch(`${API_URL}/direct/echo/${currentConversation.id}`, {
-                        method: 'POST',
-                        headers: {
-                            'Authorization': `Bearer ${authToken}`,
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            content: content,
-                            user_id: currentUser.id
-                        })
-                    });
-                    
-                    if (directResponse.ok) {
-                        // Parse the direct echo response
-                        const echoMessage = await directResponse.json();
-                        console.log('Direct echo response:', echoMessage);
-                        
-                        // Add to conversation
-                        currentConversation.messages.push(echoMessage);
-                        
-                        // Render messages
-                        renderMessages();
-                        hideTypingIndicator();
-                    } else {
-                        console.error('Direct echo failed:', directResponse.status);
-                        
-                        // Fall back to client-side echo
-                        setTimeout(() => {
-                            const message = {
-                                id: `client-echo-${Date.now()}`,
-                                content: `CLIENT ECHO: ${content}`,
-                                role: 'assistant',
-                                created_at_utc: new Date().toISOString()
-                            };
-                            
-                            // Add to local messages array
-                            currentConversation.messages.push(message);
-                            
-                            // Render messages and hide typing indicator
-                            renderMessages();
-                            hideTypingIndicator();
-                            
-                            console.log('Client-side echo response added');
-                        }, 2000);
-                    }
-                } catch (error) {
-                    console.error('Error calling direct echo:', error);
-                    
-                    // Fall back to client-side echo
-                    setTimeout(() => {
-                        const message = {
-                            id: `client-echo-${Date.now()}`,
-                            content: `CLIENT ECHO (fallback): ${content}`,
-                            role: 'assistant',
-                            created_at_utc: new Date().toISOString()
-                        };
-                        
-                        // Add to local messages array
-                        currentConversation.messages.push(message);
-                        
-                        // Render messages and hide typing indicator
-                        renderMessages();
-                        hideTypingIndicator();
-                        
-                        console.log('Fallback client-side echo response added');
-                    }, 2000);
-                }
+                // We no longer use the direct echo endpoint
+                // The server will handle routing through the CortexRouter
+                // Responses will come back via SSE events
+                // The typing indicator will be hidden when the response arrives
                 
             } catch (error) {
                 console.error('Error sending message:', error);
                 alert('Failed to send message');
+                hideTypingIndicator();
             }
         }
         
         // Server-Sent Events (SSE) for real-time updates
         function connectToSSE(type, resourceId = null) {
+            // Verify we have a valid token before connecting
+            if (!authToken) {
+                console.error(`Cannot connect to SSE: No auth token available`);
+                return null;
+            }
+            
             // Close existing connection if any
             if (eventSources[type]) {
-                eventSources[type].close();
+                try {
+                    eventSources[type].close();
+                } catch (e) {
+                    console.warn(`Error closing previous ${type} connection:`, e);
+                }
                 delete eventSources[type];
+            }
+            
+            // For typed connections, verify we have a valid resource ID
+            if (type !== 'global' && (!resourceId || resourceId === 'undefined' || resourceId === 'null')) {
+                console.error(`Cannot connect to ${type} events: Invalid resource ID ${resourceId}`);
+                return null;
             }
             
             // Determine the URL based on the type
@@ -778,35 +739,63 @@
                     break;
                 default:
                     console.error('Invalid SSE type:', type);
-                    return;
+                    return null;
             }
             console.log(`Connecting to SSE endpoint: ${url.toString()}`);
             
             // Add token to URL
             url.searchParams.append('token', authToken);
             
-            // Create new EventSource connection
-            const eventSource = new EventSource(url.toString());
-            
-            eventSource.onopen = () => {
-                console.log(`Connected to ${type} events`);
-            };
-            
-            eventSource.onerror = (error) => {
-                console.error(`${type} events error:`, error);
-                eventSource.close();
+            try {
+                // Create new EventSource connection
+                const eventSource = new EventSource(url.toString());
                 
-                // Reconnection logic based on type
-                const shouldReconnect = (
-                    (type === 'global') || 
-                    (type === 'workspace' && currentWorkspace && currentWorkspace.id === resourceId) ||
-                    (type === 'conversation' && currentConversation && currentConversation.id === resourceId)
-                );
+                // Track connection state
+                let hasConnected = false;
+                let reconnectAttempts = 0;
+                const MAX_RECONNECT_ATTEMPTS = 5;
                 
-                if (shouldReconnect) {
-                    setTimeout(() => connectToSSE(type, resourceId), 5000);
-                }
-            };
+                eventSource.onopen = () => {
+                    console.log(`Connected to ${type} events`);
+                    hasConnected = true;
+                    reconnectAttempts = 0; // Reset reconnect counter after successful connection
+                };
+                
+                eventSource.onerror = (error) => {
+                    console.error(`${type} events error:`, error);
+                    
+                    // Clean up resource
+                    if (eventSources[type] === eventSource) {
+                        delete eventSources[type];
+                    }
+                    eventSource.close();
+                    
+                    // If we never established a connection, the server may be down or rejecting
+                    if (!hasConnected && reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+                        console.error(`Failed to connect to ${type} events after ${MAX_RECONNECT_ATTEMPTS} attempts, giving up`);
+                        return;
+                    }
+                    
+                    // Check if service is available or connection was rejected
+                    const isServiceUnavailable = error.target && error.target.readyState === EventSource.CONNECTING;
+                    
+                    // Reconnection logic based on type and availability
+                    const shouldReconnect = (
+                        !isServiceUnavailable && 
+                        reconnectAttempts < MAX_RECONNECT_ATTEMPTS && (
+                            (type === 'global') || 
+                            (type === 'workspace' && currentWorkspace && currentWorkspace.id === resourceId) ||
+                            (type === 'conversation' && currentConversation && currentConversation.id === resourceId)
+                        )
+                    );
+                    
+                    if (shouldReconnect) {
+                        reconnectAttempts++;
+                        const delay = Math.min(1000 * reconnectAttempts, 5000); // Exponential backoff up to 5 seconds
+                        console.log(`Reconnecting to ${type} events in ${delay/1000} seconds... (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
+                        setTimeout(() => connectToSSE(type, resourceId), delay);
+                    }
+                };
             
             // Common events
             eventSource.addEventListener('connect', (event) => {
@@ -826,10 +815,14 @@
                 setupGlobalEvents(eventSource);
             }
             
-            // Store connection
-            eventSources[type] = eventSource;
-            
-            return eventSource;
+                // Store connection
+                eventSources[type] = eventSource;
+                
+                return eventSource;
+            } catch (error) {
+                console.error(`Error creating SSE connection to ${type}:`, error);
+                return null;
+            }
         }
         
         function setupGlobalEvents(eventSource) {

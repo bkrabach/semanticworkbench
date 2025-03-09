@@ -108,7 +108,7 @@ class SSEConnectionManager:
         )
         
         # Create event queue
-        queue = asyncio.Queue()
+        queue: asyncio.Queue[Dict[str, Any]] = asyncio.Queue()
         
         # Create combined connection object that has the queue
         connection_info = ConnectionInfo(connection, queue)

@@ -230,24 +230,51 @@ class SSEService:
         # Log connection status for debugging
         logger.info(f"SSE Connection requested - type: {channel_type}, resource: {resource_id}, user: {user_info.id}")
         
+        # Debug the connection manager state before creating the connection
+        stats = self.get_connection_stats()
+        logger.info(f"Current active connections: {stats.total_connections}")
+        if channel_type == "conversation":
+            conv_key = f"conversation:{resource_id}"
+            logger.info(f"Current conversation connections: {stats.connections_by_channel.get(conv_key, 0)}")
+        
         # Handle special case for conversation channel - start publisher
         if channel_type == "conversation":
             try:
                 from app.components.conversation_channels import get_conversation_publisher
                 
                 # Start the publisher, but await it directly instead of creating a task
-                await get_conversation_publisher(resource_id)
+                publisher = await get_conversation_publisher(resource_id)
+                logger.info(f"Created conversation publisher for {resource_id}: {publisher}")
             except Exception as e:
                 logger.error(f"Error initializing conversation publisher: {e}")
+                import traceback
+                logger.error(f"Publisher error details: {traceback.format_exc()}")
         
         # Use the actual request from the API endpoint
         # This ensures that the client disconnect detection works properly
-        return await self.connection_manager.create_sse_response(
-            channel_type=channel_type,
-            resource_id=resource_id,
-            user_id=user_info.id,
-            request=request
-        )
+        logger.info(f"Creating SSE response through connection manager for {channel_type}/{resource_id}")
+        try:
+            response = await self.connection_manager.create_sse_response(
+                channel_type=channel_type,
+                resource_id=resource_id,
+                user_id=user_info.id,
+                request=request
+            )
+            logger.info(f"Successfully created SSE response for {channel_type}/{resource_id}")
+            
+            # Debug state after creating connection
+            stats = self.get_connection_stats() 
+            logger.info(f"After creating connection - total active: {stats.total_connections}")
+            if channel_type == "conversation":
+                conv_key = f"conversation:{resource_id}"
+                logger.info(f"After creating connection - conversation connections: {stats.connections_by_channel.get(conv_key, 0)}")
+            
+            return response
+        except Exception as e:
+            logger.error(f"Error creating SSE response: {e}")
+            import traceback
+            logger.error(f"SSE response error details: {traceback.format_exc()}")
+            raise
     
     def get_connection_stats(self) -> SSEConnectionStats:
         """
