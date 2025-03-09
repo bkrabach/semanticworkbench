@@ -46,8 +46,8 @@ class UserRepository(Repository[User, UserDB]):
         # Extract metadata if provided
         metadata: Dict[str, Any] = {}
         
-        # Convert metadata to JSON
-        metadata_json = json.dumps(metadata) if metadata else "{}"
+        # No longer needed as meta_data is not a field in User model
+        # metadata_json = json.dumps(metadata) if metadata else "{}"
         
         user_db = UserDB(
             id=str(uuid.uuid4()),
@@ -56,9 +56,10 @@ class UserRepository(Repository[User, UserDB]):
             password_hash=password_hash,
             created_at_utc=now,
             updated_at_utc=now,
-            meta_data=metadata_json,
+            # meta_data field doesn't exist in the User DB model
+            # Removed meta_data parameter
             last_login_at_utc=None,
-            roles="[]"  # Default empty array
+            # Don't set roles parameter - it's a relationship that defaults to an empty list
         )
         
         self.db.add(user_db)
@@ -85,11 +86,8 @@ class UserRepository(Repository[User, UserDB]):
         
     def _to_domain(self, db_model: UserDB) -> User:
         """Convert DB model to domain model"""
-        # Parse metadata
-        try:
-            metadata = json.loads(db_model.meta_data) if db_model.meta_data is not None else {}
-        except (json.JSONDecodeError, TypeError):
-            metadata = {}
+        # No meta_data field in UserDB model, so use an empty dict
+        metadata = {}
             
         # Parse roles
         try:
@@ -137,21 +135,28 @@ class UserRepository(Repository[User, UserDB]):
         
     def _to_db_model(self, domain_model: User) -> UserDB:
         """Convert domain model to DB model"""
-        # This is used for update operations
-        metadata_json = json.dumps(domain_model.metadata) if domain_model.metadata else "{}"
-        roles_json = json.dumps(domain_model.roles) if domain_model.roles else "[]"
+        # No longer needed as meta_data is not a field in User model
+        # metadata_json = json.dumps(domain_model.metadata) if domain_model.metadata else "{}"
+        # roles is a relationship, not a string column
+        # roles_json = json.dumps(domain_model.roles) if domain_model.roles else "[]"
         
-        return UserDB(
+        db_instance = UserDB(
             id=domain_model.id,
             email=domain_model.email,
             name=domain_model.name,
             password_hash=domain_model.password_hash,
             created_at_utc=domain_model.created_at,
             updated_at_utc=domain_model.updated_at or datetime.now(timezone.utc),
-            last_login_at_utc=domain_model.last_login_at,
-            meta_data=metadata_json,
-            roles=roles_json
+            last_login_at_utc=domain_model.last_login_at
+            # meta_data field doesn't exist in the User DB model
+            # roles field is a relationship, not a column - don't set directly
         )
+        
+        # Roles needs to be handled through the relationship
+        # We would need to query Role objects and add them to the relationship
+        # This could be implemented in a separate method if needed
+        
+        return db_instance
 
 # Factory function for dependency injection
 def get_user_repository(db_session: Session) -> UserRepository:

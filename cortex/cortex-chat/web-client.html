@@ -367,9 +367,8 @@
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        type: 'password',
-                        identifier: email,
-                        secret: password
+                        email: email,
+                        password: password
                     })
                 });
                 

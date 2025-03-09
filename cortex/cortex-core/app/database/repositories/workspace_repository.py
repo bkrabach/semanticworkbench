@@ -55,7 +55,7 @@ class WorkspaceRepository(Repository[Workspace, WorkspaceDB]):
             user_id=user_id,
             name=name,
             created_at_utc=now,
-            updated_at_utc=now,
+            # updated_at_utc field doesn't exist in the Workspace DB model
             meta_data=metadata_json
         )
         
@@ -72,7 +72,8 @@ class WorkspaceRepository(Repository[Workspace, WorkspaceDB]):
             return None
             
         now = datetime.now(timezone.utc)
-        workspace_db.updated_at_utc = now
+        # updated_at_utc field doesn't exist in the Workspace DB model
+        # workspace_db.updated_at_utc = now
         
         if name:
             # Set the value directly - SQLAlchemy handles the conversion
@@ -110,10 +111,13 @@ class WorkspaceRepository(Repository[Workspace, WorkspaceDB]):
         # Convert SQLAlchemy Column datetime objects to Python datetime objects
         # Use parse_datetime that handles mock objects and various formats safely
         created_at = parse_datetime(db_model.created_at_utc) if db_model.created_at_utc is not None else datetime.now(timezone.utc)
-        updated_at = parse_datetime(db_model.updated_at_utc) if db_model.updated_at_utc is not None else None
+        
+        # updated_at_utc field doesn't exist in the Workspace DB model
+        # Use last_active_at_utc if available, otherwise created_at
+        updated_at = parse_datetime(db_model.last_active_at_utc) if hasattr(db_model, 'last_active_at_utc') and db_model.last_active_at_utc is not None else created_at
         
         # Since last_active_at is required and cannot be None, we need to provide a valid datetime
-        last_active_at = updated_at if updated_at is not None else created_at
+        last_active_at = parse_datetime(db_model.last_active_at_utc) if hasattr(db_model, 'last_active_at_utc') and db_model.last_active_at_utc is not None else created_at
         
         return Workspace(
             id=str(db_model.id),
@@ -138,7 +142,7 @@ class WorkspaceRepository(Repository[Workspace, WorkspaceDB]):
             user_id=domain_model.user_id,
             name=domain_model.name,
             created_at_utc=domain_model.created_at,
-            updated_at_utc=domain_model.updated_at or datetime.now(timezone.utc),
+            # updated_at_utc field doesn't exist in the Workspace DB model
             meta_data=metadata_json
         )
         
