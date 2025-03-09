@@ -377,10 +377,12 @@
                 }
                 
                 const data = await response.json();
-                authToken = data.token;
+                // The API returns access_token, not token
+                authToken = data.access_token;
                 currentUser = {
-                    id: data.user_id,
-                    email: email
+                    // User info is in the user object
+                    id: data.user.id,
+                    email: data.user.email
                 };
                 
                 // Save to local storage
