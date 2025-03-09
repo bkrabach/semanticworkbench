@@ -3,8 +3,8 @@ Helper functions for JSON serialization/deserialization with database storage
 """
 
 import json
-from datetime import datetime
-from typing import Any, Dict, List, Optional, TypeVar
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional, TypeVar, Union
 from app.utils.logger import logger
 
 
@@ -164,3 +164,38 @@ class DomainExpertTaskHelpers:
     @staticmethod
     def parse_metadata(task: Dict[str, Any]) -> Dict[str, Any]:
         return parse_json_string(task.get("metadata"), {})
+
+
+def parse_datetime(date_str: Optional[Union[str, datetime]]) -> datetime:
+    """
+    Parse a string into a datetime object.
+    
+    Args:
+        date_str: String in ISO format or datetime object
+        
+    Returns:
+        Parsed datetime object or current time if parsing fails
+    """
+    if isinstance(date_str, datetime):
+        return date_str
+        
+    if not date_str:
+        return datetime.now(timezone.utc)
+        
+    try:
+        # Handle both formats with and without timezone info
+        if date_str.endswith('Z'):
+            # UTC time with Z suffix
+            dt = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
+        elif '+' in date_str or '-' in date_str[-6:]:
+            # ISO format with timezone info
+            dt = datetime.fromisoformat(date_str)
+        else:
+            # No timezone info, assume UTC
+            dt = datetime.fromisoformat(date_str)
+            dt = dt.replace(tzinfo=timezone.utc)
+            
+        return dt
+    except (ValueError, TypeError) as e:
+        logger.error(f"Error parsing datetime: {e} from {date_str}")
+        return datetime.now(timezone.utc)

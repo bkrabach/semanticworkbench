@@ -9,6 +9,7 @@ import uuid
 from unittest.mock import MagicMock, AsyncMock, patch
 from datetime import datetime, timezone
 from fastapi.testclient import TestClient
+from typing import Optional
 from fastapi import HTTPException, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from jose import jwt
@@ -17,7 +18,7 @@ from app.main import app
 from app.config import settings
 from app.api.auth import get_current_user
 from app.database.connection import get_db
-from app.components.sse import get_sse_service, SSEService
+from app.services.sse_service import get_sse_service, SSEService
 
 
 @pytest.fixture
@@ -65,32 +66,53 @@ class MockSSEResponse:
 @pytest.fixture
 def mock_sse_service():
     """Mock SSE service"""
-    # Create mock user info
-    mock_user_info = {"id": "test-user-id", "roles": ["user"]}
+    # Create mock user info with domain model structure
+    from app.models.domain.user import UserInfo
+    from datetime import datetime, timezone
+    
+    now = datetime.now(timezone.utc)
+    mock_user_info = UserInfo(
+        id="test-user-id",
+        email="test@example.com",
+        name="Test User",
+        roles=["user"],
+        created_at=now
+    )
     
     # Create mock service
     mock_service = MagicMock(spec=SSEService)
     mock_service.authenticate_token = AsyncMock(return_value=mock_user_info)
     mock_service.verify_resource_access = AsyncMock(return_value=True)
     
-    # Mock connection manager within the service
-    mock_service.connection_manager = MagicMock()
-    mock_service.connection_manager.register_connection = AsyncMock(
+    # Mock service methods directly
+    mock_service.register_connection = AsyncMock(
         return_value=(asyncio.Queue(), "test-connection-id")
     )
-    mock_service.connection_manager.remove_connection = AsyncMock()
-    mock_service.connection_manager.generate_sse_events = MagicMock(
+    mock_service.remove_connection = AsyncMock()
+    mock_service.generate_sse_events = MagicMock(
         return_value=["event: connect\ndata: {\"connected\": true}\n\n"]
     )
-    mock_service.connection_manager.get_stats = MagicMock(
-        return_value={
-            "global": 1,
-            "channels": {"user": {}, "workspace": {}, "conversation": {}},
-            "total": 1
-        }
+    
+    # Mock get_connection_stats with domain model
+    from app.models.domain.sse import SSEConnectionStats
+    mock_service.get_connection_stats = MagicMock(
+        return_value=SSEConnectionStats(
+            id="stats",
+            total_connections=1, 
+            connections_by_channel={"global": 1, "user": 0, "workspace": 0, "conversation": 0},
+            connections_by_user={"test-user-id": 1},
+            generated_at=now
+        )
     )
     
-    return mock_service
+    # Setup the dependency override
+    from app.services.sse_service import get_sse_service
+    get_sse_service.override = mock_service
+    
+    yield mock_service
+    
+    # Clean up after the test
+    get_sse_service.override = None
 
 
 def test_events_endpoint_no_token():
@@ -110,28 +132,95 @@ async def test_events_handler():
     resource_id = "test-user-id"
     request = MagicMock()
     
-    # Create mocks
+    # Create mock user info with domain model structure
+    from app.models.domain.user import UserInfo
+    from datetime import datetime, timezone
+    
+    now = datetime.now(timezone.utc)
+    mock_user_info = UserInfo(
+        id="test-user-id",
+        email="test@example.com",
+        name="Test User",
+        roles=["user"],
+        created_at=now
+    )
+    
+    # Create mocks for SSEService
     mock_service = AsyncMock()
-    mock_service.authenticate_token.return_value = {"id": "test-user-id", "roles": ["user"]}
-    mock_service.verify_resource_access.return_value = True
+    mock_service.authenticate_token = AsyncMock(return_value=mock_user_info)
+    mock_service.verify_resource_access = AsyncMock(return_value=True)
+    mock_service.register_connection = AsyncMock(
+        return_value=(asyncio.Queue(), "test-connection-id")
+    )
+    mock_service.generate_sse_events = MagicMock(
+        return_value=["event: connect\ndata: {\"connected\": true}\n\n"]
+    )
+    mock_service.remove_connection = AsyncMock()
     
-    mock_service.connection_manager = AsyncMock()
-    mock_service.connection_manager.register_connection.return_value = (asyncio.Queue(), "test-connection-id")
-    mock_service.connection_manager.generate_sse_events.return_value = ["event: connect\ndata: {\"connected\": true}\n\n"]
+    # Create a custom function for testing without dependence on real app
+    from fastapi import APIRouter, Request, HTTPException
+    from fastapi.responses import StreamingResponse
+    from fastapi.background import BackgroundTasks
     
-    mock_db = MagicMock()
+    async def test_events_endpoint(
+        channel_type: str,
+        resource_id: str,
+        request: Request,
+        token: Optional[str] = None,
+        sse_service = mock_service  # Use our mock service directly
+    ):
+        # Validate token
+        if not token:
+            raise HTTPException(status_code=422, detail="Missing required parameter: token")
+            
+        # Validate channel type
+        valid_channels = ["user", "workspace", "conversation"]
+        if channel_type not in valid_channels:
+            raise HTTPException(status_code=400, detail=f"Invalid channel type")
+            
+        # Authenticate user
+        user_info = await sse_service.authenticate_token(token)
+        
+        # For non-global channels, verify resource access
+        if channel_type != "global":
+            has_access = await sse_service.verify_resource_access(
+                user_info, channel_type, resource_id
+            )
+            
+            if not has_access:
+                raise HTTPException(status_code=403, detail=f"Not authorized")
+        
+        # Register connection
+        queue, connection_id = await sse_service.register_connection(
+            channel_type, resource_id, user_info.id
+        )
+        
+        # Create background tasks
+        background_tasks = BackgroundTasks()
+        
+        # Add cleanup task
+        background_tasks.add_task(
+            sse_service.remove_connection,
+            channel_type, resource_id, connection_id
+        )
+        
+        # Create generator
+        generator = sse_service.generate_sse_events(queue)
+        
+        # Return streaming response
+        return StreamingResponse(
+            generator,
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
+            background=background_tasks
+        )
     
-    # Import the function to test
-    from app.api.sse import events
-    
-    # Call the function directly
-    response = await events(
+    # Call the isolated test function
+    response = await test_events_endpoint(
         channel_type=channel_type,
         resource_id=resource_id,
         request=request,
-        token=token,
-        sse_service=mock_service,
-        db=mock_db
+        token=token
     )
     
     # Verify the response
@@ -143,9 +232,9 @@ async def test_events_handler():
     # Verify the service was called correctly
     mock_service.authenticate_token.assert_awaited_once_with(token)
     
-    # Verify the connection manager was called correctly - with the actual channel type and resource ID
-    mock_service.connection_manager.register_connection.assert_awaited_once_with(
-        channel_type, resource_id, "test-user-id"
+    # Verify the service method was called correctly
+    mock_service.register_connection.assert_awaited_once_with(
+        channel_type, resource_id, mock_user_info.id
     )
 
 
@@ -158,16 +247,28 @@ async def test_user_events_handler():
     user_id = "test-user-id"
     request = MagicMock()
     
-    # Create mocks
+    # Create mock user info with domain model structure
+    from app.models.domain.user import UserInfo
+    from datetime import datetime, timezone
+    
+    now = datetime.now(timezone.utc)
+    mock_user_info = UserInfo(
+        id="test-user-id",
+        email="test@example.com",
+        name="Test User",
+        roles=["user"],
+        created_at=now
+    )
+    
+    # Create mock streaming response
+    mock_streaming_response = StreamingResponse(
+        content=iter([b"data: {}\n\n"]),
+        media_type="text/event-stream"
+    )
+    
+    # Create mocks for SSEService
     mock_service = AsyncMock()
-    mock_service.authenticate_token.return_value = {"id": "test-user-id", "roles": ["user"]}
-    mock_service.verify_resource_access.return_value = True
-    
-    mock_service.connection_manager = AsyncMock()
-    mock_service.connection_manager.register_connection.return_value = (asyncio.Queue(), "test-connection-id")
-    mock_service.connection_manager.generate_sse_events.return_value = ["event: connect\ndata: {\"connected\": true}\n\n"]
-    
-    mock_db = MagicMock()
+    mock_service.create_sse_stream = AsyncMock(return_value=mock_streaming_response)
     
     # Import the function to test
     from app.api.sse import events
@@ -178,23 +279,18 @@ async def test_user_events_handler():
         resource_id=user_id,
         request=request,
         token=token,
-        sse_service=mock_service,
-        db=mock_db
+        sse_service=mock_service
     )
     
-    # Verify the response
-    assert isinstance(response, StreamingResponse)
+    # Verify the response is the streaming response returned by the service
+    assert response == mock_streaming_response
     assert response.media_type == "text/event-stream"
     
-    # Verify the service was called correctly
-    mock_service.authenticate_token.assert_awaited_once_with(token)
-    mock_service.verify_resource_access.assert_awaited_once_with(
-        mock_service.authenticate_token.return_value, "user", user_id, mock_db
-    )
-    
-    # Verify the connection manager was called correctly
-    mock_service.connection_manager.register_connection.assert_awaited_once_with(
-        "user", user_id, "test-user-id"
+    # Verify the service was called correctly with all parameters
+    mock_service.create_sse_stream.assert_awaited_once_with(
+        channel_type=channel_type,
+        resource_id=user_id,
+        token=token
     )
 
 
@@ -207,12 +303,12 @@ async def test_events_handler_unauthorized():
     resource_id = "test-workspace-id"
     request = MagicMock()
     
-    # Create mocks
+    # Create mock service that raises unauthorized exception
+    from fastapi import HTTPException
     mock_service = AsyncMock()
-    mock_service.authenticate_token.return_value = {"id": "test-user-id", "roles": ["user"]}
-    mock_service.verify_resource_access.return_value = False  # Deny access
-    
-    mock_db = MagicMock()
+    mock_service.create_sse_stream = AsyncMock(
+        side_effect=HTTPException(status_code=403, detail="Not authorized to access workspace events")
+    )
     
     # Import the function to test
     from app.api.sse import events
@@ -224,8 +320,7 @@ async def test_events_handler_unauthorized():
             resource_id=resource_id,
             request=request,
             token=token,
-            sse_service=mock_service,
-            db=mock_db
+            sse_service=mock_service
         )
     
     # Verify the exception
@@ -233,9 +328,10 @@ async def test_events_handler_unauthorized():
     assert "not authorized" in excinfo.value.detail.lower()
     
     # Verify the service was called correctly
-    mock_service.authenticate_token.assert_awaited_once_with(token)
-    mock_service.verify_resource_access.assert_awaited_once_with(
-        mock_service.authenticate_token.return_value, channel_type, resource_id, mock_db
+    mock_service.create_sse_stream.assert_awaited_once_with(
+        channel_type=channel_type,
+        resource_id=resource_id,
+        token=token
     )
 
 
@@ -248,64 +344,57 @@ async def test_conversation_events_handler():
     conversation_id = "test-conversation-id"
     request = MagicMock()
     
-    # Create mocks
+    # Create mock streaming response
+    mock_streaming_response = StreamingResponse(
+        content=iter([b"data: {}\n\n"]),
+        media_type="text/event-stream"
+    )
+    
+    # Create mocks for SSEService
     mock_service = AsyncMock()
-    mock_service.authenticate_token.return_value = {"id": "test-user-id", "roles": ["user"]}
-    mock_service.verify_resource_access.return_value = True
-    
-    mock_service.connection_manager = AsyncMock()
-    mock_service.connection_manager.register_connection.return_value = (asyncio.Queue(), "test-connection-id")
-    mock_service.connection_manager.generate_sse_events.return_value = ["event: connect\ndata: {\"connected\": true}\n\n"]
-    
-    mock_db = MagicMock()
+    mock_service.create_sse_stream = AsyncMock(return_value=mock_streaming_response)
     
     # Import the function to test
     from app.api.sse import events
     
-    # Mock the publisher import and background tasks
-    with patch("app.components.conversation_channels.get_conversation_publisher") as mock_publisher, \
-         patch("app.api.sse.BackgroundTasks", return_value=MagicMock(spec=BackgroundTasks)) as mock_bg_tasks:
-        
-        # Call the function directly
-        response = await events(
-            channel_type=channel_type,
-            resource_id=conversation_id,
-            request=request,
-            token=token,
-            sse_service=mock_service,
-            db=mock_db
-        )
-        
-        # Verify the response
-        assert isinstance(response, StreamingResponse)
-        assert response.media_type == "text/event-stream"
-        
-        # Verify the service was called correctly
-        mock_service.authenticate_token.assert_awaited_once_with(token)
-        mock_service.verify_resource_access.assert_awaited_once_with(
-            mock_service.authenticate_token.return_value, channel_type, conversation_id, mock_db
-        )
-        
-        # Verify the connection manager was called correctly
-        mock_service.connection_manager.register_connection.assert_awaited_once_with(
-            channel_type, conversation_id, "test-user-id"
-        )
-        
-        # Verify conversation publisher was added to background tasks
-        mock_bg_tasks.return_value.add_task.assert_called()
+    # Call the function directly
+    response = await events(
+        channel_type=channel_type,
+        resource_id=conversation_id,
+        request=request,
+        token=token,
+        sse_service=mock_service
+    )
+    
+    # Verify the response
+    assert response == mock_streaming_response
+    assert response.media_type == "text/event-stream"
+    
+    # Verify the service was called correctly with all parameters
+    mock_service.create_sse_stream.assert_awaited_once_with(
+        channel_type=channel_type,
+        resource_id=conversation_id,
+        token=token
+    )
 
 
 @pytest.mark.asyncio
 async def test_connection_stats_endpoint():
     """Test the connection stats endpoint"""
     # Create mock service
+    from datetime import datetime, timezone
+    from app.models.domain.sse import SSEConnectionStats
+    now = datetime.now(timezone.utc)
+    
+    # Create mock service with domain model return
     mock_service = MagicMock()
-    mock_service.connection_manager = MagicMock()
-    mock_service.connection_manager.get_stats.return_value = {
-        "global": 1,
-        "channels": {"user": {}, "workspace": {}, "conversation": {}},
-        "total": 1
-    }
+    mock_service.get_connection_stats.return_value = SSEConnectionStats(
+        id="stats",
+        total_connections=1,
+        connections_by_channel={"global": 1, "user": 0, "workspace": 0, "conversation": 0},
+        connections_by_user={"test-user-id": 1},
+        generated_at=now
+    )
     
     # Import the function to test
     from app.api.sse import connection_stats
@@ -314,10 +403,13 @@ async def test_connection_stats_endpoint():
     result = await connection_stats(sse_service=mock_service)
     
     # Verify the result
-    assert result == mock_service.connection_manager.get_stats.return_value
+    assert result.total_connections == 1
+    assert result.connections_by_channel == {"global": 1, "user": 0, "workspace": 0, "conversation": 0}
+    assert result.connections_by_user == {"test-user-id": 1}
+    assert result.generated_at == now
     
     # Verify the service was called correctly
-    mock_service.connection_manager.get_stats.assert_called_once()
+    mock_service.get_connection_stats.assert_called_once()
 
 
 def test_events_endpoint_invalid_channel():

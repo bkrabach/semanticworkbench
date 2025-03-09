@@ -2,30 +2,69 @@
 SSE Connection Manager implementation for Cortex Core.
 
 Manages the lifecycle of Server-Sent Events connections, including registration,
-removal, and communication with connected clients.
+removal, and communication with connected clients. Uses domain models for
+internal state management.
 """
 
-from typing import Dict, List, Any, Tuple, Optional, AsyncGenerator
+from typing import Dict, List, Any, Tuple, AsyncGenerator
 import asyncio
 import uuid
 from datetime import datetime, timezone
 import json
-import logging
+import collections
 
 from app.utils.logger import logger
+from app.models.domain.sse import SSEConnection
+
+# Type for internal connection tracking with queue
+class ConnectionInfo:
+    """
+    Internal class to track connection information with queue.
+    
+    This class encapsulates the relationship between a domain model connection
+    and its associated queue for event delivery, ensuring type safety and
+    following the domain-driven design pattern.
+    
+    Attributes:
+        connection: The domain model representing the connection
+        queue: The asyncio queue used for event delivery to this connection
+    """
+    def __init__(self, connection: SSEConnection, queue: asyncio.Queue):
+        """
+        Initialize a new connection info object.
+        
+        Args:
+            connection: The domain model representing the connection
+            queue: The asyncio queue for this connection
+        """
+        self.connection = connection
+        self.queue = queue
+
 
 class SSEConnectionManager:
     """
     Manages SSE connections with proper lifecycle handling.
+    
+    Uses domain models for internal state management following the domain-driven
+    repository architecture. Instead of using raw dictionaries to store connection
+    information, this manager uses strongly-typed domain models (SSEConnection)
+    encapsulated in ConnectionInfo objects.
+    
+    This approach provides several benefits:
+    1. Type safety and validation through Pydantic models
+    2. Clear separation of concerns with domain model encapsulation
+    3. Better maintainability with consistent naming conventions
+    4. Improved testability with well-defined interfaces
     """
     
     def __init__(self):
-        """Initialize the connection manager with empty connection dictionaries"""
+        """Initialize the connection manager with empty connection collections"""
+        # Store connection objects by type and resource
         self.connections = {
-            "global": [],
-            "user": {},
-            "workspace": {},
-            "conversation": {}
+            "global": [],  # List of ConnectionInfo for global connections
+            "user": collections.defaultdict(list),  # Dict of resource_id to list of ConnectionInfo
+            "workspace": collections.defaultdict(list),
+            "conversation": collections.defaultdict(list)
         }
         
     async def register_connection(self, 
@@ -43,22 +82,27 @@ class SSEConnectionManager:
         Returns:
             Tuple containing the event queue and unique connection ID
         """
-        queue = asyncio.Queue()
+        # Create new queue for this connection
+        queue: asyncio.Queue = asyncio.Queue()
         connection_id = str(uuid.uuid4())
         
-        connection_info = {
-            "id": connection_id,
-            "user_id": user_id,
-            "queue": queue,
-            "connected_at": datetime.now(timezone.utc).isoformat()
-        }
+        # Create domain model for the connection
+        connection = SSEConnection(
+            id=connection_id,
+            channel_type=channel_type,
+            resource_id=resource_id,
+            user_id=user_id,
+            connected_at=datetime.now(timezone.utc),
+            last_active_at=datetime.now(timezone.utc)
+        )
+        
+        # Create internal connection info
+        connection_info = ConnectionInfo(connection, queue)
         
         # Add to appropriate channel
         if channel_type == "global":
             self.connections["global"].append(connection_info)
         else:
-            if resource_id not in self.connections[channel_type]:
-                self.connections[channel_type][resource_id] = []
             self.connections[channel_type][resource_id].append(connection_info)
         
         logger.info(f"SSE connection {connection_id} established: user={user_id}, {channel_type}={resource_id}")
@@ -80,20 +124,20 @@ class SSEConnectionManager:
         if channel_type == "global":
             self.connections["global"] = [
                 conn for conn in self.connections["global"] 
-                if conn["id"] != connection_id
+                if conn.connection.id != connection_id
             ]
             logger.info(f"Removed SSE connection {connection_id} for global channel")
             return
         
         # Handle typed connections
-        if resource_id not in self.connections[channel_type]:
+        if not self.connections[channel_type][resource_id]:
             logger.warning(f"Attempted to remove non-existent connection: {channel_type}/{resource_id}/{connection_id}")
             return
             
         # Remove the connection
         self.connections[channel_type][resource_id] = [
             conn for conn in self.connections[channel_type][resource_id]
-            if conn["id"] != connection_id
+            if conn.connection.id != connection_id
         ]
         
         # Clean up empty resource entries
@@ -103,26 +147,32 @@ class SSEConnectionManager:
         logger.info(f"Removed SSE connection {connection_id} for {channel_type} {resource_id}")
         
     async def broadcast_to_channel(self, 
-                                connections: List[Dict[str, Any]], 
+                                connections: List[ConnectionInfo], 
                                 event_type: str, 
                                 data: Dict[str, Any]):
         """
         Broadcast an event to all connections in a channel
         
         Args:
-            connections: List of connection info dictionaries
+            connections: List of connection info objects
             event_type: Type of event to broadcast
             data: Event data payload
         """
-        for connection in connections:
-            if connection.get("queue"):
-                try:
-                    await connection["queue"].put({
-                        "event": event_type, 
-                        "data": data
-                    })
-                except Exception as e:
-                    logger.error(f"Failed to send event to queue: {e}")
+        for conn_info in connections:
+            try:
+                # Create a domain event model
+                event = {
+                    "event": event_type, 
+                    "data": data
+                }
+                
+                # Update the last_active_at timestamp
+                conn_info.connection.last_active_at = datetime.now(timezone.utc)
+                
+                # Send to the connection's queue
+                await conn_info.queue.put(event)
+            except Exception as e:
+                logger.error(f"Failed to send event to queue: {e}")
     
     async def send_event(self,
                       channel_type: str,
@@ -152,28 +202,45 @@ class SSEConnectionManager:
         Get statistics about active connections
         
         Returns:
-            Dictionary with connection statistics by channel type
+            Dictionary with connection statistics formatted for SSEConnectionStats
         """
-        # Calculate counts for each channel type
-        channel_counts = {}
-        total_count = len(self.connections["global"])
+        # Count connections by channel and user
+        connections_by_channel = {"global": len(self.connections["global"])}
+        total_connections = len(self.connections["global"])
+        connections_by_user: Dict[str, int] = {}
         
+        # Process each channel type
         for channel_type in ["user", "workspace", "conversation"]:
-            type_counts = {}
-            type_total = 0
+            channel_count = 0
             
+            # Process each resource in this channel
             for resource_id, connections in self.connections[channel_type].items():
                 count = len(connections)
-                type_counts[resource_id] = count
-                type_total += count
+                channel_count += count
                 
-            channel_counts[channel_type] = type_counts
-            total_count += type_total
+                # Track counts by resource
+                key = f"{channel_type}:{resource_id}"
+                connections_by_channel[key] = count
+                
+                # Track counts by user
+                for conn_info in connections:
+                    user_id = conn_info.connection.user_id
+                    connections_by_user[user_id] = connections_by_user.get(user_id, 0) + 1
+            
+            # Add total for this channel type
+            connections_by_channel[channel_type] = channel_count
+            total_connections += channel_count
+            
+        # For global connections, add their users
+        for conn_info in self.connections["global"]:
+            user_id = conn_info.connection.user_id
+            connections_by_user[user_id] = connections_by_user.get(user_id, 0) + 1
         
         return {
-            "global": len(self.connections["global"]),
-            "channels": channel_counts,
-            "total": total_count
+            "total_connections": total_connections,
+            "connections_by_channel": connections_by_channel,
+            "connections_by_user": connections_by_user,
+            "generated_at": datetime.now(timezone.utc)
         }
         
     async def generate_sse_events(self,

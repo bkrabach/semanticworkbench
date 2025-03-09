@@ -4,6 +4,84 @@
 
 This document outlines a comprehensive plan to enhance our architecture by fully separating database models from domain and API models. This architectural improvement addresses current inconsistencies in the repository pattern implementation and establishes a more maintainable, testable, and clean design.
 
+## Implementation Progress
+
+### Completed (Phase 1)
+
+- ✅ Created directory structure for domain models (`app/models/domain/`)
+- ✅ Created directory structure for API models (`app/models/api/request/` and `app/models/api/response/`)  
+- ✅ Created directory structure for repositories (`app/database/repositories/`)
+- ✅ Implemented base domain models (`DomainModel`, `TimestampedModel`, etc.)
+- ✅ Implemented core domain models (User, Workspace, Conversation)
+- ✅ Implemented SSE-specific domain models
+- ✅ Implemented base repository interface pattern
+- ✅ Implemented ResourceAccessRepository with domain-driven approach
+- ✅ Updated SSE components to use domain models
+- ✅ Ensured tests pass with new architecture
+
+### Progress with Phase 2
+
+- ✅ Implement service layer for SSE components
+  - Created SSEService in app/services/sse_service.py
+  - Enhanced dependency injection pattern
+  - Refactored API endpoints to use service layer instead of components directly
+  - Maintained backward compatibility during transition
+- ✅ Completed domain-driven architecture for SSE components
+  - Updated SSEConnectionManager to use domain models instead of raw dictionaries
+  - Enhanced SSEEventSubscriber to create and use proper domain models
+  - Improved type safety with strongly-typed ConnectionInfo class
+  - Fixed tests to work with the new domain model implementation
+  - Ensured consistent error handling and model conversion
+- ✅ Implemented ConversationRepository with domain-driven pattern
+  - Created a fully type-safe repository implementation for conversations
+  - Improved JSON serialization and error handling
+  - Implemented proper type conversion between SQLAlchemy and domain models
+  - Added comprehensive data validation and safety features
+- ✅ Implemented ConversationService layer
+  - Created service with business logic for conversations
+  - Added event publishing for conversation changes
+  - Implemented clean interfaces between layers
+  - Enhanced error handling and traceability
+- ✅ Created Conversation API models and updated endpoints
+  - Defined specialized request models for different operations
+  - Created detailed response models with proper validation
+  - Updated API endpoints to use the service layer
+  - Improved error handling and typing
+- ✅ Implemented UserRepository with domain-driven pattern
+  - Created dedicated repository class in app/database/repositories/user_repository.py
+  - Implemented type-safe methods with proper domain model conversion
+  - Added robust error handling for JSON deserialization
+  - Created factory function for dependency injection
+- ✅ Implemented UserService layer
+  - Created service with business logic for user operations in app/services/user_service.py
+  - Added event publishing for user-related events
+  - Implemented clean interfaces with domain models
+  - Added proper error handling for all operations
+- ✅ Created User API models and updated Auth endpoints
+  - Created request models for login and registration
+  - Created response models for user information and authentication
+  - Updated authentication endpoints to use the service layer
+  - Improved type safety and documentation
+- ✅ Implemented WorkspaceRepository with domain-driven pattern
+  - Created dedicated repository class in app/database/repositories/workspace_repository.py
+  - Implemented CRUD operations with proper domain model conversion
+  - Added error handling for all operations
+  - Created factory function for dependency injection
+- ✅ Implemented WorkspaceService layer
+  - Created service with business logic for workspace operations
+  - Added event publishing for workspace lifecycle events
+  - Implemented proper validation and error handling
+  - Created comprehensive test suite for the service
+- ✅ Updated Workspace API endpoints to use the new architecture
+  - Created request models for workspace operations in app/models/api/request/workspace.py
+  - Created response models for workspace data in app/models/api/response/workspace.py
+  - Refactored workspace API to use the service layer and domain models
+  - Added proper error handling and type safety
+  - Implemented additional endpoints (GET, PUT, DELETE) for complete CRUD operations
+  - Wrote comprehensive tests for the API endpoints
+  - Fixed dependency injection patterns to avoid FastAPI response model issues
+  - Made all endpoints compatible with the event system for notifications
+
 ## Core Architecture
 
 Our enhanced architecture consists of three distinct model layers:
@@ -450,360 +528,206 @@ Our enhanced architecture consists of three distinct model layers:
    - Create integration tests for services
    - Create API tests that verify correct model transformations
 
-## Concrete Migration Example: Conversations API
+# Domain-Driven Repository Architecture Implementation Status
 
-### Step 1: Create domain models
+## Overview
 
-```python
-# app/models/domain/conversation.py
-from datetime import datetime
-from typing import List, Dict, Any, Optional
-from pydantic import BaseModel, Field
+This document provides a status update on our progress implementing a comprehensive domain-driven repository architecture across the codebase. The architecture establishes a clean separation between database models, domain models, and API models while creating consistent patterns for data access, business logic, and API interactions.
 
-from app.models.domain.base import TimestampedModel
+## Current Status: Phase 3 - Final Refinements ✅
 
-class Message(BaseModel):
-    id: str
-    content: str
-    role: str
-    created_at: datetime
-    metadata: Dict[str, Any] = {}
+The implementation of the domain-driven repository architecture is now substantially complete. All major components have been successfully migrated to the new architecture, including:
 
-class Conversation(TimestampedModel):
-    workspace_id: str
-    title: str
-    modality: str
-    last_active_at: datetime
-    metadata: Dict[str, Any] = {}
-    messages: List[Message] = []
+1. **SSE System (Server-Sent Events)**: ✅ COMPLETED
+   - Domain models for SSE connections, events, and statistics
+   - Repository pattern for resource access checks
+   - Service layer with business logic and error handling
+   - Clean API endpoints that delegate to the service layer
+   - Optimized event handling with factory methods
+   - Type-safe implementation with proper annotations
+   - Full test coverage with passing component, API, and integration tests
+
+2. **Conversation System**: ✅ COMPLETED
+   - Domain models for conversations and messages
+   - Repository with proper domain model conversion
+   - Service layer with business logic
+   - API endpoints with request/response models
+
+3. **User/Auth System**: ✅ COMPLETED
+   - Domain models for users
+   - Repository for user management
+   - Service layer with authentication logic
+   - API endpoints with authentication and authorization
+
+4. **Workspace System**: ✅ COMPLETED
+   - Domain models for workspaces
+   - Repository for workspace data access
+   - Service layer with business logic
+   - Comprehensive API endpoints for workspace management
+
+## Architecture Overview
+
+Our architecture establishes three distinct model layers:
+
+```
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│   API Models    │     │  Domain Models  │     │  Database Models│
+│   (Pydantic)    │◄───►│   (Pydantic)    │◄───►│  (SQLAlchemy)   │
+└─────────────────┘     └─────────────────┘     └─────────────────┘
+        │                       │                       │
+        ▼                       ▼                       ▼
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│    API Layer    │     │  Service Layer  │     │Repository Layer │
+│  (Controllers)  │     │(Business Logic) │     │ (Data Access)   │
+└─────────────────┘     └─────────────────┘     └─────────────────┘
 ```
 
-### Step 2: Update repository with translation logic
+### Key Components
 
-```python
-# app/database/repositories/conversation_repository.py
-from typing import Optional, List, Dict, Any
-from datetime import datetime, timezone
-import json
-import uuid
-from sqlalchemy.orm import Session
+1. **Database Models**
+   - SQLAlchemy ORM models
+   - Database-oriented naming (e.g., `meta_data`)
+   - Reflect database schema constraints
+   - Located in `app/database/models.py`
 
-from app.database.models import Conversation as ConversationDB
-from app.models.domain.conversation import Conversation, Message
-from app.utils.json_helpers import DateTimeEncoder
+2. **Domain Models**
+   - Pydantic models representing core business entities
+   - Domain-oriented naming (e.g., `metadata`)
+   - Business validation rules
+   - Independent of database implementation
+   - Located in `app/models/domain/`
 
-class ConversationRepository:
-    def __init__(self, db_session: Session):
-        self.db = db_session
-        
-    def get_by_id(self, conversation_id: str) -> Optional[Conversation]:
-        """Get a conversation by ID"""
-        db_model = self.db.query(ConversationDB).filter(
-            ConversationDB.id == conversation_id
-        ).first()
-        
-        if not db_model:
-            return None
-            
-        return self._to_domain(db_model)
-        
-    def create(self, workspace_id: str, title: str, modality: str, metadata: Dict[str, Any] = None) -> Conversation:
-        """Create a new conversation"""
-        now = datetime.now(timezone.utc)
-        metadata_json = json.dumps(metadata or {}, cls=DateTimeEncoder)
-        
-        db_model = ConversationDB(
-            id=str(uuid.uuid4()),
-            workspace_id=workspace_id,
-            title=title,
-            modality=modality,
-            created_at_utc=now,
-            last_active_at_utc=now,
-            entries="[]",
-            meta_data=metadata_json
-        )
-        
-        self.db.add(db_model)
-        self.db.commit()
-        self.db.refresh(db_model)
-        
-        return self._to_domain(db_model)
-        
-    def _to_domain(self, db_model: ConversationDB) -> Conversation:
-        """Convert database model to domain model"""
-        # Parse JSON fields
-        try:
-            metadata = json.loads(db_model.meta_data) if db_model.meta_data else {}
-        except (json.JSONDecodeError, TypeError):
-            metadata = {}
-            
-        try:
-            entries = json.loads(db_model.entries) if db_model.entries else []
-        except (json.JSONDecodeError, TypeError):
-            entries = []
-            
-        # Convert entries to Message objects
-        messages = [
-            Message(
-                id=entry.get("id"),
-                content=entry.get("content", ""),
-                role=entry.get("role", "user"),
-                created_at=entry.get("created_at_utc"),
-                metadata=entry.get("metadata", {})
-            )
-            for entry in entries
-        ]
-        
-        # Create and return domain model
-        return Conversation(
-            id=db_model.id,
-            workspace_id=db_model.workspace_id,
-            title=db_model.title,
-            modality=db_model.modality,
-            created_at=db_model.created_at_utc,
-            updated_at=db_model.updated_at_utc if hasattr(db_model, "updated_at_utc") else None,
-            last_active_at=db_model.last_active_at_utc,
-            metadata=metadata,
-            messages=messages
-        )
-```
+3. **API Models**
+   - Pydantic models for request/response handling
+   - API-specific validation rules
+   - Documentation via FastAPI
+   - Located in `app/models/api/`
 
-### Step 3: Implement service layer
+4. **Repository Layer**
+   - Interfaces defined via ABC
+   - Implementations that translate between DB and domain models
+   - Only place where SQLAlchemy is directly used
+   - Located in `app/database/repositories/`
 
-```python
-# app/services/conversation_service.py
-from typing import Optional, List, Dict, Any
-from sqlalchemy.orm import Session
+5. **Service Layer**
+   - Business logic implementation
+   - Works exclusively with domain models
+   - Orchestrates operations across repositories
+   - Located in `app/services/`
 
-from app.models.domain.conversation import Conversation, Message
-from app.database.repositories.conversation_repository import ConversationRepository
+6. **API Layer**
+   - HTTP request/response handling
+   - Authentication and permission checks
+   - Converts between API and domain models
+   - Delegates to services for business logic
+   - Located in `app/api/`
 
-class ConversationService:
-    def __init__(self, db_session: Session, repository: ConversationRepository):
-        self.db = db_session
-        self.repository = repository
-        
-    def get_conversation(self, conversation_id: str) -> Optional[Conversation]:
-        """Get a conversation by ID"""
-        return self.repository.get_by_id(conversation_id)
-        
-    def create_conversation(self, workspace_id: str, title: str, modality: str, metadata: Dict[str, Any] = None) -> Conversation:
-        """Create a new conversation"""
-        # Business logic, validation, etc.
-        
-        conversation = self.repository.create(
-            workspace_id=workspace_id,
-            title=title,
-            modality=modality,
-            metadata=metadata or {}
-        )
-        
-        # Post-creation logic (e.g., publish event)
-        
-        return conversation
-```
+## Recent SSE Improvements
 
-### Step 4: Update API endpoints
+We've just completed extensive improvements to the SSE (Server-Sent Events) components:
 
-```python
-# app/api/conversations.py
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+1. **Service-Based Architecture**:
+   - Moved helper functionality from API endpoints to the service layer
+   - Created a new `create_sse_stream` method to handle all connection setup logic
+   - Service now handles authentication, authorization, connection registration, and cleanup
 
-from app.database.connection import get_db
-from app.models.api.request.conversation import CreateConversationRequest
-from app.models.api.response.conversation import ConversationResponse
-from app.services.conversation_service import ConversationService
-from app.database.repositories.conversation_repository import ConversationRepository
-from app.api.auth import get_current_user
-from app.models.domain.user import User
+2. **Repository Pattern**:
+   - Removed direct database access in `auth.py`
+   - Added proper deprecation warnings for legacy code
+   - Ensured consistent use of repositories for data access
 
-router = APIRouter()
+3. **Optimized Event Handling**:
+   - Refactored event subscriber to use a factory pattern
+   - Reduced code duplication across event handlers
+   - Added better logging and error handling
 
-# Factory functions
-def get_conversation_repository(db: Session = Depends(get_db)) -> ConversationRepository:
-    return ConversationRepository(db)
+4. **Enhanced Type Safety**:
+   - Added proper type annotations throughout the codebase
+   - Fixed mypy issues for better IDE support and runtime safety
+   - Used generic types appropriately
 
-def get_conversation_service(
-    db: Session = Depends(get_db),
-    repository: ConversationRepository = Depends(get_conversation_repository)
-) -> ConversationService:
-    return ConversationService(db, repository)
+5. **Testing Improvements**:
+   - Updated tests to work with the new service-based architecture
+   - Added better mocking practices
+   - Ensured all component, API, and integration tests pass
 
-@router.post("/{workspace_id}/conversations", response_model=ConversationResponse)
-async def create_conversation(
-    workspace_id: str,
-    request: CreateConversationRequest,
-    service: ConversationService = Depends(get_conversation_service),
-    current_user: User = Depends(get_current_user)
-):
-    """Create a new conversation in a workspace"""
-    # Authorization check
-    
-    # Call service
-    conversation = service.create_conversation(
-        workspace_id=workspace_id,
-        title=request.title,
-        modality=request.modality,
-        metadata=request.metadata
-    )
-    
-    # Transform to response model
-    return ConversationResponse(
-        id=conversation.id,
-        title=conversation.title,
-        workspace_id=conversation.workspace_id,
-        modality=conversation.modality,
-        created_at=conversation.created_at,
-        last_active_at=conversation.last_active_at,
-        metadata=conversation.metadata
-    )
-```
+6. **Code Cleanup**:
+   - Removed unused imports
+   - Fixed linting issues
+   - Improved code organization
 
-## Benefits of This Architecture
+## Remaining Tasks
 
-1. **Clean Separation of Concerns**
-   - API layer focuses only on HTTP concerns
-   - Service layer contains all business logic
-   - Repository layer handles data access and translations
-   - No leakage of database concerns to higher layers
+While the implementation is substantially complete, a few polish items remain:
 
-2. **Improved Testability**
+### High Priority
+
+1. **Pydantic Validator Upgrades**: (Est. 1-2 hours)
+   - Update `@validator` decorators to `@field_validator` in domain models
+   - Address Pydantic V2 deprecation warnings
+
+2. **Documentation Updates**: (Est. 2-3 hours)
+   - Update OpenAPI descriptions for the new API models
+   - Add architecture diagrams to documentation
+   - Document the domain-driven pattern for developers
+
+### Medium Priority
+
+3. **Additional Test Coverage**: (Est. 3-5 hours)
+   - Create specific tests for domain model validation
+   - Add tests for edge cases in repository implementations
+   - Improve coverage for service layer business logic
+
+4. **Performance Review**: (Est. 1-2 hours)
+   - Identify potential N+1 query issues
+   - Review JSON serialization/deserialization performance
+   - Consider caching opportunities
+
+### Low Priority
+
+5. **Developer Tooling**: (Est. 1-2 hours)
+   - Create scaffolding tools for new domain models
+   - Add code generation for repository boilerplate
+   - Develop example templates for common patterns
+
+## Timeline and Effort
+
+The overall SSE implementation following the domain-driven pattern is now complete. All tests pass, and the code is structured according to the defined architecture. The remaining tasks are primarily polish and optimization, estimated at 8-14 hours of work.
+
+## Benefits Achieved
+
+The migration to domain-driven repository architecture has delivered significant benefits:
+
+1. **Clean Separation of Concerns**:
+   - API layer focuses purely on HTTP protocol concerns
+   - Service layer contains isolated business logic
+   - Repository layer handles data access and conversions
+   - Models are separated by their purpose (API, domain, database)
+
+2. **Improved Type Safety**:
+   - Strong typing throughout the codebase
+   - Pydantic validation for all data structures
+   - Clear interfaces between components
+
+3. **Enhanced Testability**:
    - Each layer can be tested in isolation
-   - Domain models can be unit tested without database
-   - Services can be tested with mocked repositories
-   - APIs can be tested with mocked services
+   - Mock interfaces make testing simpler
+   - Dependency injection improves test reliability
 
-3. **Consistent Naming and Structure**
-   - Domain models use domain language (`metadata`)
-   - Database models use DB conventions (`meta_data`)
-   - No confusion about field names across layers
+4. **Consistent Patterns**:
+   - The same architecture applies to all components
+   - Common naming conventions across the codebase
+   - Clear structure for adding new features
 
-4. **Type Safety**
-   - Pydantic models provide validation and type safety
-   - Clear interfaces between layers
-   - Better IDE support and autocompletion
-
-5. **Documentation**
-   - API models generate OpenAPI documentation
-   - Domain models document business concepts
-   - Repository interfaces document data access patterns
-
-## Implementation Roadmap
-
-Based on a complete analysis of the codebase, here are all the files that need to be modified or created to implement the new architecture:
-
-### Phase 1: Create Directory Structure and Base Classes
-
-#### New Directories
-- `/app/models/domain/`
-- `/app/models/api/request/`
-- `/app/models/api/response/`
-- `/app/services/`
-- `/app/database/repositories/`
-
-#### Base Classes
-- `/app/models/domain/base.py` (New)
-- `/app/services/base.py` (New)
-- `/app/database/repositories/base.py` (New)
-
-### Phase 2: Database Models (SQLAlchemy)
-
-No changes needed to:
-- `/app/database/models.py` (Keep as-is)
-
-### Phase 3: Domain Models (Pydantic)
-
-Create the following files:
-- `/app/models/domain/__init__.py`
-- `/app/models/domain/user.py`
-- `/app/models/domain/workspace.py`
-- `/app/models/domain/conversation.py`
-
-### Phase 4: API Models (Pydantic)
-
-Create the following files:
-- `/app/models/api/__init__.py`
-- `/app/models/api/request/__init__.py`
-- `/app/models/api/request/conversation.py`
-- `/app/models/api/request/user.py`
-- `/app/models/api/request/workspace.py`
-- `/app/models/api/response/__init__.py`
-- `/app/models/api/response/conversation.py`
-- `/app/models/api/response/user.py`
-- `/app/models/api/response/workspace.py`
-
-### Phase 5: Repository Implementation
-
-Refactor current repositories into new structure:
-- Migrate from `/app/database/repositories.py` to:
-  - `/app/database/repositories/__init__.py`
-  - `/app/database/repositories/conversation_repository.py`
-  - `/app/database/repositories/user_repository.py`
-  - `/app/database/repositories/workspace_repository.py`
-  - `/app/database/repositories/resource_access_repository.py`
-
-### Phase 6: Service Layer
-
-Create the following files:
-- `/app/services/__init__.py`
-- `/app/services/conversation_service.py`
-- `/app/services/user_service.py`
-- `/app/services/workspace_service.py`
-
-### Phase 7: API Endpoints
-
-Modify the following files to use services instead of repositories:
-- `/app/api/conversations.py` (Moderate changes)
-- `/app/api/workspaces.py` (Moderate changes)
-- `/app/api/auth.py` (Moderate changes)
-
-### Phase 8: Component Refactoring
-
-Modify the following files:
-- `/app/components/sse/manager.py` (Minor to moderate changes)
-- `/app/components/conversation_channels.py` (Minor changes)
-
-### Phase 9: Test Updates
-
-Update existing tests:
-- `/tests/api/test_conversations.py` (Major changes)
-- `/tests/api/test_auth.py` (Major changes)
-- `/tests/api/test_workspaces.py` (Major changes)
-- `/tests/components/test_conversation_channels.py` (Moderate changes)
-
-Create new tests:
-- `/tests/models/test_domain_models.py`
-- `/tests/services/test_conversation_service.py`
-- `/tests/services/test_user_service.py`
-- `/tests/services/test_workspace_service.py`
-- `/tests/database/repositories/test_conversation_repository.py`
-- `/tests/database/repositories/test_user_repository.py`
-- `/tests/database/repositories/test_workspace_repository.py`
-
-## Implementation Priority
-
-Based on the complexity and dependencies, we recommend implementing in this order:
-
-1. Base infrastructure (directories and base classes)
-2. Domain models
-3. Repository split and implementation
-4. Service layer
-5. API models
-6. API endpoint updates
-7. Component refactoring
-8. Tests
-
-## Effort Estimation
-
-- **Minor changes**: Approximately 1-2 hours per file
-- **Moderate changes**: Approximately 2-4 hours per file  
-- **Major changes/new files**: Approximately 4-8 hours per file
-
-Total estimated effort: 120-180 hours (3-4.5 weeks for one engineer)
+5. **Better Error Handling**:
+   - Domain-specific error types
+   - Consistent error handling patterns
+   - Better user-facing error messages
 
 ## Conclusion
 
-This architecture provides a robust foundation for Cortex Core's continued development. By clearly separating concerns between different layers and model types, we create a more maintainable, testable, and extensible codebase.
+The SSE component implementation now fully embraces the domain-driven repository architecture. The code is cleaner, more maintainable, and exhibits better separation of concerns. All tests are passing, and the implementation offers improved type safety and error handling.
 
-The migration strategy allows for incremental adoption while maintaining backward compatibility where needed. The end result will be a clean, consistent architecture that adheres to best practices and supports future growth.
+The remaining tasks are primarily polish and documentation, but the core architectural migration is complete. This successful implementation serves as a model for the rest of the codebase and provides a solid foundation for future development.
+
+We've demonstrated that this architecture is viable, maintainable, and beneficial for the project. The lessons learned from this implementation can now be applied to other components as needed.

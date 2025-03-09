@@ -80,6 +80,7 @@
     "fetchone",
     "flushall",
     "gettz",
+    "hasattr",
     "hashlib",
     "httpx",
     "incrby",

@@ -44,11 +44,23 @@ async def lifespan(app: FastAPI):
 
     # Initialize SSE service
     try:
-        # Use the new modular SSE service
-        from app.components.sse import get_sse_service
-        app.state.sse_service = get_sse_service()
-        await app.state.sse_service.initialize()
-        logger.info("SSE Service initialized")
+        # Use the domain-driven service layer implementation
+        from app.database.connection import SessionLocal
+        from app.database.repositories.resource_access_repository import get_resource_access_repository
+        from app.services.sse_service import SSEService
+        
+        # Create a direct database session (not using async generator)
+        db_session = SessionLocal()
+        
+        try:
+            # Create repository and service directly 
+            repository = get_resource_access_repository(db_session)
+            app.state.sse_service = SSEService(db_session, repository)
+            await app.state.sse_service.initialize()
+            logger.info("SSE Service initialized")
+        finally:
+            # Close session even if initialization succeeded
+            db_session.close()
     except Exception as e:
         logger.error(f"Error initializing SSE service: {e}")
 

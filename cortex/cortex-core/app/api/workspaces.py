@@ -1,161 +1,189 @@
-from fastapi import APIRouter, Depends, BackgroundTasks
+"""
+Workspace API endpoints for the Cortex Core application.
+
+This module implements workspace-related API endpoints using the domain-driven architecture.
+"""
+
+from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException
 from sqlalchemy.orm import Session
-from typing import List, Optional, Dict, Any
-from pydantic import BaseModel, Field
-import uuid
-from datetime import datetime, timezone
-import json
+
 from app.database.connection import get_db
-from app.database.models import User, Workspace
-from app.database.repositories import get_workspace_repository, WorkspaceRepository
+from app.models.domain.user import User
+from app.models.api.request.workspace import WorkspaceCreate, WorkspaceUpdate
+from app.models.api.response.workspace import WorkspaceResponse, WorkspaceListResponse
+from app.database.repositories.workspace_repository import get_workspace_repository
+from app.services.workspace_service import get_workspace_service, WorkspaceService
 from app.api.auth import get_current_user
-from app.components.sse import get_sse_service
+from app.components.event_system import get_event_system
+from app.services.sse_service import get_sse_service
 
 router = APIRouter()
 
-# No dependency needed - we'll use the Session directly
 
-# Request and response models
-
-
-class WorkspaceCreate(BaseModel):
-    """Workspace creation model"""
-    name: str
-    config: Optional[Dict[str, Any]] = None
-
-
-class WorkspaceUpdate(BaseModel):
-    """Workspace update model"""
-    name: Optional[str] = None
-    config: Optional[Dict[str, Any]] = None
+def get_service(db: Session = Depends(get_db)) -> WorkspaceService:
+    """Get workspace service with dependencies"""
+    repo = get_workspace_repository(db)
+    # We need to cast the event_system to the concrete type expected by the service
+    from app.components.event_system import EventSystem
+    event_system = get_event_system()
+    # Cast to the concrete type for type checking
+    return get_workspace_service(db, repo, event_system if isinstance(event_system, EventSystem) else None)
 
 
-class WorkspaceResponse(BaseModel):
-    """Workspace response model"""
-    id: str
-    name: str
-    created_at_utc: datetime
-    last_active_at_utc: datetime
-    config: Dict[str, Any] = Field(default_factory=dict)
-    meta_data: Dict[str, Any] = Field(default_factory=dict)
-    
-    model_config = {
-        "from_attributes": True,
-        "json_encoders": {
-            datetime: lambda dt: dt.isoformat()
-        }
-    }
-
-
-@router.get("/workspaces", response_model=Dict[str, List[WorkspaceResponse]])
+@router.get("/workspaces", response_model=WorkspaceListResponse)
 async def list_workspaces(
     user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-) -> Dict[str, List[WorkspaceResponse]]:
+    service: WorkspaceService = Depends(get_service)
+) -> WorkspaceListResponse:
     """List workspaces for the current user"""
-    # Create repository directly
-    workspace_repo = get_workspace_repository(db)
-    workspaces = workspace_repo.get_user_workspaces(str(user.id))
+    # Get workspaces using service
+    workspaces = service.get_user_workspaces(user.id)
     
-    # Process each workspace to handle the JSON fields
-    processed_workspaces = []
-    for workspace in workspaces:
-        # Parse JSON strings to dictionaries safely
-        config_str = "{}"
-        meta_data_str = "{}"
-        
-        if workspace.config is not None:
-            config_str = str(workspace.config)
-            if not config_str:
-                config_str = "{}"
-                
-        if workspace.meta_data is not None:
-            meta_data_str = str(workspace.meta_data)
-            if not meta_data_str:
-                meta_data_str = "{}"
-        
-        try:
-            config = json.loads(config_str)
-        except json.JSONDecodeError:
-            config = {}
-            
-        try:
-            meta_data = json.loads(meta_data_str)
-        except json.JSONDecodeError:
-            meta_data = {}
-            
-        workspace_dict = {
-            "id": str(workspace.id),
-            "name": str(workspace.name),
-            "created_at_utc": workspace.created_at_utc,
-            "last_active_at_utc": workspace.last_active_at_utc,
-            "config": config,
-            "meta_data": meta_data
-        }
-        processed_workspaces.append(WorkspaceResponse.model_validate(workspace_dict))
+    # Transform domain models to API response models
+    workspace_responses = [
+        WorkspaceResponse(
+            id=workspace.id,
+            name=workspace.name,
+            created_at=workspace.created_at,
+            updated_at=workspace.updated_at,
+            last_active_at=workspace.last_active_at,
+            config=workspace.config,
+            metadata=workspace.metadata
+        )
+        for workspace in workspaces
+    ]
     
-    return {"workspaces": processed_workspaces}
+    return WorkspaceListResponse(workspaces=workspace_responses)
 
 
 @router.post("/workspaces", response_model=WorkspaceResponse)
 async def create_workspace(
-    workspace: WorkspaceCreate,
+    request: WorkspaceCreate,
     background_tasks: BackgroundTasks,
     user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    service: WorkspaceService = Depends(get_service)
 ) -> WorkspaceResponse:
     """Create a new workspace"""
-    # Create repository directly
-    workspace_repo = get_workspace_repository(db)
-    # Create workspace using repository
-    new_workspace = workspace_repo.create_workspace(
-        user_id=str(user.id),
-        name=workspace.name,
-        config=workspace.config
+    # Create workspace using service layer
+    workspace = service.create_workspace(
+        user_id=user.id,
+        name=request.name,
+        description=request.description
     )
-
-    # Send event to user
+    
+    # Send additional SSE notification to user
+    # This is separate from the event that the service publishes
     background_tasks.add_task(
         get_sse_service().connection_manager.send_event,
         "user",
-        str(user.id),
+        user.id,
         "workspace_created",
         {
-            "id": str(new_workspace.id),
-            "name": str(new_workspace.name),
-            "created_at_utc": new_workspace.created_at_utc.isoformat()
+            "id": workspace.id,
+            "name": workspace.name,
+            "created_at": workspace.created_at.isoformat()
         }
     )
+    
+    # Transform domain model to response model
+    return WorkspaceResponse(
+        id=workspace.id,
+        name=workspace.name,
+        created_at=workspace.created_at,
+        updated_at=workspace.updated_at,
+        last_active_at=workspace.last_active_at,
+        config=workspace.config,
+        metadata=workspace.metadata
+    )
 
-    # Parse JSON strings and return validated model
-    config_str = "{}"
-    meta_data_str = "{}"
+
+@router.get("/workspaces/{workspace_id}", response_model=WorkspaceResponse)
+async def get_workspace(
+    workspace_id: str,
+    user: User = Depends(get_current_user),
+    service: WorkspaceService = Depends(get_service)
+) -> WorkspaceResponse:
+    """Get a specific workspace by ID"""
+    # Get workspace using service
+    workspace = service.get_workspace(workspace_id)
     
-    if new_workspace.config is not None:
-        config_str = str(new_workspace.config)
-        if not config_str:
-            config_str = "{}"
-            
-    if new_workspace.meta_data is not None:
-        meta_data_str = str(new_workspace.meta_data)
-        if not meta_data_str:
-            meta_data_str = "{}"
+    # Check if workspace exists
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
     
-    try:
-        config = json.loads(config_str)
-    except json.JSONDecodeError:
-        config = {}
-        
-    try:
-        meta_data = json.loads(meta_data_str)
-    except json.JSONDecodeError:
-        meta_data = {}
+    # Check if user has access to this workspace
+    if workspace.user_id != user.id:
+        raise HTTPException(status_code=403, detail="Access denied to this workspace")
     
-    return WorkspaceResponse.model_validate({
-        "id": str(new_workspace.id),
-        "name": str(new_workspace.name),
-        "created_at_utc": new_workspace.created_at_utc,
-        "last_active_at_utc": new_workspace.last_active_at_utc,
-        "config": config,
-        "meta_data": meta_data
-    })
+    # Transform domain model to response model
+    return WorkspaceResponse(
+        id=workspace.id,
+        name=workspace.name,
+        created_at=workspace.created_at,
+        updated_at=workspace.updated_at,
+        last_active_at=workspace.last_active_at,
+        config=workspace.config,
+        metadata=workspace.metadata
+    )
+
+
+@router.put("/workspaces/{workspace_id}", response_model=WorkspaceResponse)
+async def update_workspace(
+    workspace_id: str,
+    request: WorkspaceUpdate,
+    user: User = Depends(get_current_user),
+    service: WorkspaceService = Depends(get_service)
+) -> WorkspaceResponse:
+    """Update a workspace"""
+    # Check workspace ownership first
+    workspace = service.get_workspace(workspace_id)
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    
+    if workspace.user_id != user.id:
+        raise HTTPException(status_code=403, detail="Access denied to this workspace")
+    
+    # Update the workspace
+    updated_workspace = service.update_workspace(
+        workspace_id=workspace_id,
+        name=request.name,
+        metadata=request.metadata
+    )
+    
+    if not updated_workspace:
+        raise HTTPException(status_code=404, detail="Failed to update workspace")
+    
+    # Transform domain model to response model
+    return WorkspaceResponse(
+        id=updated_workspace.id,
+        name=updated_workspace.name,
+        created_at=updated_workspace.created_at,
+        updated_at=updated_workspace.updated_at,
+        last_active_at=updated_workspace.last_active_at,
+        config=updated_workspace.config,
+        metadata=updated_workspace.metadata
+    )
+
+
+@router.delete("/workspaces/{workspace_id}", response_model=dict)
+async def delete_workspace(
+    workspace_id: str,
+    user: User = Depends(get_current_user),
+    service: WorkspaceService = Depends(get_service)
+) -> dict:
+    """Delete a workspace"""
+    # Check workspace ownership first
+    workspace = service.get_workspace(workspace_id)
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    
+    if workspace.user_id != user.id:
+        raise HTTPException(status_code=403, detail="Access denied to this workspace")
+    
+    # Delete the workspace
+    success = service.delete_workspace(workspace_id)
+    
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to delete workspace")
+    
+    return {"success": True, "message": "Workspace deleted successfully"}

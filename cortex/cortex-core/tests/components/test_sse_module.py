@@ -8,9 +8,8 @@ import uuid
 from unittest.mock import MagicMock, AsyncMock, patch
 from datetime import datetime, timezone
 
-from app.components.sse import SSEService, get_sse_service
+from app.services.sse_service import SSEService
 from app.components.sse.manager import SSEConnectionManager
-from app.components.sse.auth import SSEAuthService
 from app.components.sse.events import SSEEventSubscriber
 
 
@@ -33,7 +32,7 @@ async def test_connection_manager_register():
     assert isinstance(queue, asyncio.Queue)
     assert isinstance(conn_id, str)
     assert len(manager.connections["global"]) == 1
-    assert manager.connections["global"][0]["user_id"] == "user-123"
+    assert manager.connections["global"][0].connection.user_id == "user-123"
     
     # Test registering a user connection
     queue, conn_id = await manager.register_connection("user", "user-123", "user-123")
@@ -97,150 +96,190 @@ async def test_connection_manager_send_event():
 
 
 @pytest.mark.asyncio
-async def test_auth_service_token_verification():
-    """Test token verification in the auth service"""
-    service = SSEAuthService()
+async def test_service_token_verification():
+    """Test token verification in the SSE service"""
+    # Create mock repository
+    mock_repo = MagicMock()
+    mock_db = MagicMock()
+    
+    # Create SSE service with mocked components
+    service = SSEService(mock_db, mock_repo)
     
     # Create a test token
     user_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc)
     payload = {
         "user_id": user_id,
+        "email": "test@example.com",
+        "name": "Test User",
         "roles": ["user"],
-        "exp": datetime.now(timezone.utc).timestamp() + 3600
+        "exp": now.timestamp() + 3600
     }
     
-    # Mock the jwt.decode function
-    with patch("app.components.sse.auth.jwt.decode", return_value=payload):
+    # Mock the jwt.decode function and datetime for created_at
+    with patch("app.services.sse_service.jwt.decode", return_value=payload), \
+         patch("app.models.domain.user.datetime") as mock_datetime:
+        
+        # Mock datetime.now to return a fixed time
+        mock_datetime.now.return_value = now
+        
         # Verify the token
         user_info = await service.authenticate_token("test-token")
-        assert user_info["id"] == user_id
-        assert "user" in user_info["roles"]
+        assert user_info.id == user_id
+        assert user_info.email == "test@example.com"
+        assert user_info.name == "Test User"
+        assert "user" in user_info.roles
 
 
 @pytest.mark.asyncio
-async def test_auth_service_resource_access():
-    """Test resource access verification in the auth service"""
-    service = SSEAuthService()
+async def test_service_resource_access():
+    """Test resource access verification in the SSE service"""
+    from app.models.domain.user import UserInfo
     
-    # Test user access - can only access own resources
-    user_info = {"id": "user-123", "roles": ["user"]}
+    # Create mock repository and database session
+    mock_repo = MagicMock()
+    mock_db = MagicMock()
+    
+    # Create SSE service
+    service = SSEService(mock_db, mock_repo)
+    
+    # Create test user domain model
+    now = datetime.now(timezone.utc)
+    user_info = UserInfo(
+        id="user-123",
+        email="test@example.com",
+        name="Test User",
+        roles=["user"],
+        created_at=now
+    )
     
     # Same user id - should have access
-    has_access = await service.verify_resource_access(user_info, "user", "user-123", None)
+    has_access = await service.verify_resource_access(user_info, "user", "user-123")
     assert has_access is True
     
     # Different user id - should not have access
-    has_access = await service.verify_resource_access(user_info, "user", "user-456", None)
-    assert has_access is False
-    
-    # Test without DB - should deny access
-    has_access = await service.verify_resource_access(user_info, "workspace", "workspace-123", None)
+    has_access = await service.verify_resource_access(user_info, "user", "user-456")
     assert has_access is False
 
 
 @pytest.mark.asyncio
-async def test_auth_service_workspace_access():
-    """Test workspace access verification in the auth service"""
-    from app.database.models import Workspace, WorkspaceSharing
+async def test_service_workspace_access():
+    """Test workspace access verification in the SSE service"""
+    from app.models.domain.user import UserInfo
     
-    service = SSEAuthService()
-    user_info = {"id": "user-123", "roles": ["user"]}
+    # Create user domain model
+    now = datetime.now(timezone.utc)
+    user_info = UserInfo(
+        id="user-123",
+        email="test@example.com",
+        name="Test User",
+        roles=["user"],
+        created_at=now
+    )
     
-    # Mock DB session
+    # Mock database session
     mock_db = MagicMock()
     
-    # Setup workspace owner query - mock the query builder pattern
-    workspace_query = MagicMock()
-    workspace_query.filter.return_value = workspace_query
-    workspace_query.first.return_value = MagicMock()  # Return a workspace object
+    # Mock repository with configured responses
+    mock_repo = MagicMock()
     
-    # Setup workspace sharing query
-    sharing_query = MagicMock()
-    sharing_query.filter.return_value = sharing_query
-    sharing_query.first.return_value = None  # No sharing record
+    # Configure repository mock behavior
+    # Case 1: User is workspace owner
+    mock_repo.is_workspace_owner.return_value = True
+    mock_repo.has_workspace_sharing_access.return_value = False
     
-    # Setup DB queries
-    mock_db.query = MagicMock(side_effect=lambda model: 
-        workspace_query if model == Workspace else sharing_query
-    )
+    # Create service
+    service = SSEService(mock_db, mock_repo)
     
     # Test as workspace owner
-    has_access = await service.verify_resource_access(user_info, "workspace", "workspace-123", mock_db)
+    has_access = await service.verify_resource_access(user_info, "workspace", "workspace-123")
     assert has_access is True
+    mock_repo.is_workspace_owner.assert_called_with("workspace-123", "user-123")
+    
+    # Case 2: User is not workspace owner but has sharing access
+    mock_repo.is_workspace_owner.return_value = False
+    mock_repo.has_workspace_sharing_access.return_value = True
     
     # Test with shared workspace (not owner)
-    workspace_query.first.return_value = None  # Not the owner
-    sharing_query.first.return_value = MagicMock()  # Has sharing access
-    
-    has_access = await service.verify_resource_access(user_info, "workspace", "workspace-456", mock_db)
+    has_access = await service.verify_resource_access(user_info, "workspace", "workspace-456")
     assert has_access is True
+    mock_repo.is_workspace_owner.assert_called_with("workspace-456", "user-123")
+    mock_repo.has_workspace_sharing_access.assert_called_with("workspace-456", "user-123")
     
-    # Test with no access at all
-    workspace_query.first.return_value = None  # Not the owner
-    sharing_query.first.return_value = None  # No sharing access
+    # Case 3: User has no access at all
+    mock_repo.is_workspace_owner.return_value = False
+    mock_repo.has_workspace_sharing_access.return_value = False
     
-    has_access = await service.verify_resource_access(user_info, "workspace", "workspace-789", mock_db)
+    # Test with no access
+    has_access = await service.verify_resource_access(user_info, "workspace", "workspace-789")
     assert has_access is False
+    mock_repo.is_workspace_owner.assert_called_with("workspace-789", "user-123")
+    mock_repo.has_workspace_sharing_access.assert_called_with("workspace-789", "user-123")
 
 
 @pytest.mark.asyncio
-async def test_auth_service_conversation_access():
-    """Test conversation access verification in the auth service"""
-    from app.database.models import Conversation, Workspace, WorkspaceSharing
+async def test_service_conversation_access():
+    """Test conversation access verification in the SSE service"""
+    from app.models.domain.user import UserInfo
     
-    service = SSEAuthService()
-    user_info = {"id": "user-123", "roles": ["user"]}
-    
-    # Mock DB session
-    mock_db = MagicMock()
-    
-    # Setup conversation query
-    conversation_query = MagicMock()
-    conversation_query.filter.return_value = conversation_query
-    mock_conversation = MagicMock()
-    mock_conversation.workspace_id = "workspace-123"
-    conversation_query.first.return_value = mock_conversation
-    
-    # Setup workspace owner query
-    workspace_query = MagicMock()
-    workspace_query.filter.return_value = workspace_query
-    workspace_query.first.return_value = MagicMock()  # User is workspace owner
-    
-    # Setup workspace sharing query
-    sharing_query = MagicMock()
-    sharing_query.filter.return_value = sharing_query
-    sharing_query.first.return_value = None  # No sharing needed for owner
-    
-    # Setup DB queries with side effects to return different mocks for different models
-    mock_db.query = MagicMock(side_effect=lambda model: 
-        conversation_query if model == Conversation 
-        else workspace_query if model == Workspace 
-        else sharing_query
+    # Create user domain model
+    now = datetime.now(timezone.utc)
+    user_info = UserInfo(
+        id="user-123",
+        email="test@example.com",
+        name="Test User",
+        roles=["user"],
+        created_at=now
     )
     
+    # Mock database session
+    mock_db = MagicMock()
+    
+    # Mock repository with configured responses
+    mock_repo = MagicMock()
+    
+    # Set up conversation workspace lookup
+    mock_repo.get_conversation_workspace_id.return_value = "workspace-123"
+    
+    # Case 1: User is workspace owner
+    mock_repo.is_workspace_owner.return_value = True
+    mock_repo.has_workspace_sharing_access.return_value = False
+    
+    # Create service
+    service = SSEService(mock_db, mock_repo)
+    
     # Test conversation access where user is workspace owner
-    has_access = await service.verify_resource_access(user_info, "conversation", "conv-123", mock_db)
+    has_access = await service.verify_resource_access(user_info, "conversation", "conv-123")
     assert has_access is True
+    mock_repo.get_conversation_workspace_id.assert_called_with("conv-123")
+    mock_repo.is_workspace_owner.assert_called_with("workspace-123", "user-123")
     
-    # Test conversation access with shared workspace (not owner)
-    workspace_query.first.return_value = None  # Not the owner
-    sharing_query.first.return_value = MagicMock()  # Has sharing access
+    # Case 2: User is not workspace owner but has sharing access
+    mock_repo.is_workspace_owner.return_value = False
+    mock_repo.has_workspace_sharing_access.return_value = True
     
-    has_access = await service.verify_resource_access(user_info, "conversation", "conv-456", mock_db)
+    # Test conversation access with shared workspace
+    has_access = await service.verify_resource_access(user_info, "conversation", "conv-456")
     assert has_access is True
+    mock_repo.get_conversation_workspace_id.assert_called_with("conv-456")
+    mock_repo.is_workspace_owner.assert_called_with("workspace-123", "user-123")
+    mock_repo.has_workspace_sharing_access.assert_called_with("workspace-123", "user-123")
+    
+    # Case 3: User has no access at all
+    mock_repo.is_workspace_owner.return_value = False
+    mock_repo.has_workspace_sharing_access.return_value = False
     
     # Test conversation access with no workspace access
-    workspace_query.first.return_value = None  # Not the owner
-    sharing_query.first.return_value = None  # No sharing access
-    
-    has_access = await service.verify_resource_access(user_info, "conversation", "conv-789", mock_db)
+    has_access = await service.verify_resource_access(user_info, "conversation", "conv-789")
     assert has_access is False
+    
+    # Case 4: Non-existent conversation (no workspace ID found)
+    mock_repo.get_conversation_workspace_id.return_value = None
     
     # Test non-existent conversation
-    conversation_query.first.return_value = None
-    
-    has_access = await service.verify_resource_access(user_info, "conversation", "conv-999", mock_db)
+    has_access = await service.verify_resource_access(user_info, "conversation", "conv-999")
     assert has_access is False
+    mock_repo.get_conversation_workspace_id.assert_called_with("conv-999")
 
 
 @pytest.mark.asyncio
@@ -265,8 +304,10 @@ async def test_event_subscriber_event_handling(mock_event_system):
     event_payload = MagicMock()
     event_payload.data = {"conversation_id": "conv-123", "message": "Hello"}
     
-    # Handle the event
-    await subscriber._handle_conversation_event("message_received", event_payload)
+    # Handle the event using the factory method output
+    # Get the handler for conversation events
+    conversation_handler = subscriber._create_event_handler("conversation_id", "conversation")
+    await conversation_handler("message_received", event_payload)
     
     # Check the event was added to the queue
     event = queue.get_nowait()
@@ -281,16 +322,20 @@ async def test_event_subscriber_event_handling(mock_event_system):
 @pytest.mark.asyncio
 async def test_sse_service_initialization(mock_event_system):
     """Test the SSE service initialization"""
-    with patch("app.components.sse.get_event_system", return_value=mock_event_system):
+    # Create mock repository and DB session
+    mock_repo = MagicMock()
+    mock_db = MagicMock()
+    
+    with patch("app.services.sse_service.get_event_system", return_value=mock_event_system):
         # Create the service
-        service = SSEService()
+        service = SSEService(mock_db, mock_repo)
         
         # Initialize
         await service.initialize()
         
         # Verify initialization
         assert hasattr(service, "connection_manager")
-        assert hasattr(service, "auth_service")
+        assert hasattr(service, "repository")
         assert hasattr(service, "event_subscriber")
         
         # Clean up
@@ -298,11 +343,29 @@ async def test_sse_service_initialization(mock_event_system):
 
 
 @pytest.mark.asyncio
-async def test_get_sse_service_singleton():
-    """Test that get_sse_service returns a singleton instance"""
-    # Get the service twice
-    service1 = get_sse_service()
-    service2 = get_sse_service()
+async def test_get_connection_stats():
+    """Test getting connection statistics from the service"""
+    # Create mock repository and DB session
+    mock_repo = MagicMock()
+    mock_db = MagicMock()
     
-    # Should be the same instance
-    assert service1 is service2
+    # Create the service
+    service = SSEService(mock_db, mock_repo)
+    
+    # Mock the connection manager
+    service.connection_manager = MagicMock()
+    service.connection_manager.get_stats.return_value = {
+        "total_connections": 3,
+        "connections_by_channel": {"global": 1, "user": 1, "workspace": 1},
+        "connections_by_user": {"user-123": 2, "user-456": 1},
+        "generated_at": datetime.now(timezone.utc)
+    }
+    
+    # Get stats
+    stats = service.get_connection_stats()
+    
+    # Verify stats is a domain model
+    assert stats.id == "stats"
+    assert stats.total_connections == 3
+    assert stats.connections_by_channel == {"global": 1, "user": 1, "workspace": 1}
+    assert stats.connections_by_user == {"user-123": 2, "user-456": 1}

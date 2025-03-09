@@ -15,7 +15,10 @@ from app.components.tokens import TokenData, generate_jwt_token
 from app.components.security_manager import SecurityManager
 from app.database.models import User, ApiKey, Workspace
 from app.database.connection import get_db
-from app.database.repositories import UserRepository, get_user_repository
+from app.database.repositories.user_repository import UserRepository, get_user_repository
+from app.services.user_service import UserService
+from app.models.domain.user import User as UserDomain
+from app.components.event_system import EventSystem
 
 
 @pytest.fixture
@@ -95,195 +98,261 @@ def test_token(test_user):
 
 def test_login_success(client_with_db_override, mock_db, test_user):
     """Test successful login with password"""
-    # Configure mock database to return our test user
-    query_builder = mock_db.query.return_value.filter.return_value
-    query_builder.first.return_value = test_user
-
-    # Make login request using the client with DB override
-    response = client_with_db_override.post(
-        "/auth/login",
-        json={
-            "type": "password",
-            "identifier": "test@example.com",
-            "secret": "password"
-        }
+    # Create a domain model version of the test user
+    domain_user = UserDomain(
+        id=test_user.id,
+        email=test_user.email,
+        name=test_user.name,
+        created_at=test_user.created_at_utc,
+        updated_at=test_user.updated_at_utc,
+        last_login_at=None,
+        roles=[]
     )
+    
+    # Set up mocked repository and service
+    mock_user_repo = MagicMock(spec=UserRepository)
+    mock_user_repo.get_by_email.return_value = domain_user
+    mock_user_repo.update_last_login.return_value = domain_user
+    
+    mock_event_system = MagicMock(spec=EventSystem)
+    
+    mock_user_service = UserService(mock_db, mock_user_repo, mock_event_system)
+    
+    # Configure mock workspace repository
+    mock_workspace_repo = MagicMock()
+    mock_workspace_repo.get_user_workspaces.return_value = [MagicMock()]
+    
+    # Set up dependency overrides
+    app.dependency_overrides[get_user_repository] = lambda: mock_user_repo
+    
+    with patch("app.api.auth.get_user_service_with_events", return_value=mock_user_service), \
+         patch("app.api.auth.get_workspace_repository", return_value=mock_workspace_repo):
+        
+        # Make login request using the client with DB override
+        response = client_with_db_override.post(
+            "/auth/login",
+            json={
+                "email": "test@example.com",
+                "password": "password"
+            }
+        )
+
+    # Remove overrides
+    app.dependency_overrides.pop(get_user_repository, None)
 
     # Verify the response
     assert response.status_code == 200
     data = response.json()
 
-    assert data["success"] is True
-    assert data["user_id"] == test_user.id
-    assert data["token"] is not None
-    assert data["expires_at_utc"] is not None
-    assert data["error"] is None
+    assert data["access_token"] is not None
+    assert data["token_type"] == "bearer"
+    assert data["user"]["id"] == test_user.id
+    assert data["user"]["email"] == test_user.email
 
 
 def test_login_invalid_password(client_with_db_override, mock_db, test_user):
     """Test login with invalid password"""
-    # Configure mock database to return our test user
-    query_builder = mock_db.query.return_value.filter.return_value
-    query_builder.first.return_value = test_user
-
-    # Make login request with wrong password using client with DB override
-    response = client_with_db_override.post(
-        "/auth/login",
-        json={
-            "type": "password",
-            "identifier": "test@example.com",
-            "secret": "wrong-password"
-        }
+    # Create a domain model version of the test user
+    domain_user = UserDomain(
+        id=test_user.id,
+        email=test_user.email,
+        name=test_user.name,
+        created_at=test_user.created_at_utc,
+        updated_at=test_user.updated_at_utc,
+        last_login_at=None,
+        roles=[],
+        password_hash=test_user.password_hash
     )
+    
+    # Set up mocked repository and service
+    mock_user_repo = MagicMock(spec=UserRepository)
+    mock_user_repo.get_by_email.return_value = domain_user
+    
+    mock_event_system = MagicMock(spec=EventSystem)
+    
+    mock_user_service = UserService(mock_db, mock_user_repo, mock_event_system)
+    
+    # Configure mock workspace repository
+    mock_workspace_repo = MagicMock()
+    
+    # Set up dependency overrides
+    app.dependency_overrides[get_user_repository] = lambda: mock_user_repo
+    
+    with patch("app.api.auth.get_user_service_with_events", return_value=mock_user_service), \
+         patch("app.api.auth.get_workspace_repository", return_value=mock_workspace_repo):
+        
+        # Make login request with wrong password
+        response = client_with_db_override.post(
+            "/auth/login",
+            json={
+                "email": "test@example.com",
+                "password": "wrong-password"
+            }
+        )
+
+    # Remove overrides
+    app.dependency_overrides.pop(get_user_repository, None)
 
     # Verify the response
-    assert response.status_code == 200
+    assert response.status_code == 401
     data = response.json()
-
-    assert data["success"] is False
-    assert data["error"] == "Invalid email or password"
-    assert data["token"] is None
+    assert data["detail"] == "Invalid email or password"
 
 
 def test_login_user_not_found(client_with_db_override, mock_db):
     """Test login with non-existent user"""
-    # Configure mock database to return None (user not found)
-    query_builder = mock_db.query.return_value.filter.return_value
-    query_builder.first.return_value = None
+    # Set up mocked repository and service
+    mock_user_repo = MagicMock(spec=UserRepository)
+    mock_user_repo.get_by_email.return_value = None
+    
+    mock_event_system = MagicMock(spec=EventSystem)
+    
+    mock_user_service = UserService(mock_db, mock_user_repo, mock_event_system)
+    
+    # Configure mock workspace repository
+    mock_workspace_repo = MagicMock()
+    
+    # Set up dependency overrides
+    app.dependency_overrides[get_user_repository] = lambda: mock_user_repo
+    
+    with patch("app.api.auth.get_user_service_with_events", return_value=mock_user_service), \
+         patch("app.api.auth.get_workspace_repository", return_value=mock_workspace_repo):
+        
+        # Make login request
+        response = client_with_db_override.post(
+            "/auth/login",
+            json={
+                "email": "nonexistent@example.com",
+                "password": "password"
+            }
+        )
 
-    # Make login request using client with DB override
-    response = client_with_db_override.post(
-        "/auth/login",
-        json={
-            "type": "password",
-            "identifier": "nonexistent@example.com",
-            "secret": "password"
-        }
-    )
+    # Remove overrides
+    app.dependency_overrides.pop(get_user_repository, None)
 
     # Verify the response
-    assert response.status_code == 200
+    assert response.status_code == 401
     data = response.json()
-
-    assert data["success"] is False
-    assert data["error"] == "Invalid email or password"
-    assert data["token"] is None
+    assert data["detail"] == "Invalid email or password"
 
 
 def test_login_missing_password(client_with_db_override, mock_db, test_user):
     """Test login with missing password"""
-    # Configure mock database to return our test user
-    query_builder = mock_db.query.return_value.filter.return_value
-    query_builder.first.return_value = test_user
-
     # Make login request without password using client with DB override
     response = client_with_db_override.post(
         "/auth/login",
         json={
-            "type": "password",
-            "identifier": "test@example.com"
+            "email": "test@example.com"
         }
     )
 
     # Verify the response
-    assert response.status_code == 200
-    data = response.json()
-
-    assert data["success"] is False
-    assert data["error"] == "Password is required"
-    assert data["token"] is None
+    assert response.status_code == 422  # Validation error
 
 
 def test_login_auto_create_test_user(client_with_db_override, mock_db):
     """Test creating a test user automatically during login (localhost only)"""
-    # Configure mock to indicate the user doesn't exist
-    mock_db.query.return_value.filter.return_value.first.return_value = None
-
-    # Configure count for workspace check to return 0
-    workspace_query = MagicMock()
-    mock_db.query.side_effect = lambda model: (
-        workspace_query if model == Workspace else mock_db.query.return_value
+    # Create a new test user as domain model
+    new_domain_user = UserDomain(
+        id="test-user-id",
+        email="test@example.com",
+        name="Test User",
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+        last_login_at=None,
+        roles=[]
     )
-    workspace_query.filter.return_value.count.return_value = 0
-
+    
+    # Set up mocked repository and service
+    mock_user_repo = MagicMock(spec=UserRepository)
+    mock_user_repo.get_by_email.return_value = None  # User doesn't exist
+    mock_user_repo.create.return_value = new_domain_user
+    mock_user_repo.update_last_login.return_value = new_domain_user
+    
+    mock_event_system = MagicMock(spec=EventSystem)
+    
+    mock_user_service = UserService(mock_db, mock_user_repo, mock_event_system)
+    
+    # Configure mock workspace repository
+    mock_workspace_repo = MagicMock()
+    mock_workspace_repo.get_user_workspaces.return_value = []
+    mock_workspace_repo.create_workspace.return_value = MagicMock()
+    
     # Patch settings to indicate we're on localhost
     test_settings = MagicMock()
     test_settings.server.host = "localhost"
     test_settings.security.token_expiry_seconds = 3600
     test_settings.security.jwt_secret = "test-secret"
-
-    # Patch only the settings, DB is already patched in the fixture
+    
+    # Set up dependency overrides
+    app.dependency_overrides[get_user_repository] = lambda: mock_user_repo
+    
+    # Patch settings and service dependencies
     with patch("app.api.auth.settings", test_settings), \
-         patch("app.components.tokens.settings", test_settings):
-
+         patch("app.components.tokens.settings", test_settings), \
+         patch("app.api.auth.get_user_service_with_events", return_value=mock_user_service), \
+         patch("app.api.auth.get_workspace_repository", return_value=mock_workspace_repo):
+        
         # Make login request with test credentials
         response = client_with_db_override.post(
             "/auth/login",
             json={
-                "type": "password",
-                "identifier": "test@example.com",
-                "secret": "password"
+                "email": "test@example.com",
+                "password": "password"
             }
         )
 
-        # Verify the response
-        assert response.status_code == 200
-        data = response.json()
-
-        assert data["success"] is True
-        assert data["user_id"] is not None
-        assert data["token"] is not None
-
-        # We now create entities through repositories, so only workspaces are added directly
-        # The user is created inside the user_repo, which then adds it to the db
-        assert mock_db.add.call_count == 2  # 2 workspaces are added
-        assert mock_db.commit.call_count >= 2  # At least 2 commits were made
-
-
-def test_login_unsupported_type(client_with_db_override):
-    """Test login with unsupported authentication type"""
-    # Make login request with unsupported type
-    response = client_with_db_override.post(
-        "/auth/login",
-        json={
-            "type": "unsupported",
-            "identifier": "test@example.com",
-            "secret": "password"
-        }
-    )
+    # Remove overrides
+    app.dependency_overrides.pop(get_user_repository, None)
 
     # Verify the response
     assert response.status_code == 200
     data = response.json()
 
-    assert data["success"] is False
-    assert "Unsupported authentication type" in data["error"]
+    assert data["access_token"] is not None
+    assert data["token_type"] == "bearer"
+    assert data["user"]["id"] == new_domain_user.id
+    assert data["user"]["email"] == new_domain_user.email
+    
+    # Verify service calls
+    mock_user_service.create_user.assert_called_once()
+    mock_workspace_repo.create_workspace.assert_called_once()
+
+
+# No longer applicable with the updated login endpoint
 
 
 @pytest.mark.asyncio
 async def test_get_current_user_valid_token(mock_db, test_user, test_token):
     """Test getting current user with valid token"""
-    # Configure mock to return the test user
-    mock_db.query.return_value.filter.return_value.first.return_value = test_user
-
-    # Call the function with our valid token
+    # Create a domain model version of the test user
+    domain_user = UserDomain(
+        id=test_user.id,
+        email=test_user.email,
+        name=test_user.name,
+        created_at=test_user.created_at_utc,
+        updated_at=test_user.updated_at_utc,
+        last_login_at=None,
+        roles=[]
+    )
+    
+    # Set up mocked user service
+    mock_user_service = MagicMock(spec=UserService)
+    mock_user_service.get_user.return_value = domain_user
+    
     try:
-        # Override dependencies
-        app.dependency_overrides[get_db] = lambda: mock_db
-        # Set up the mock user repository
-        mock_user_repo = MagicMock(spec=UserRepository)
-        mock_user_repo.get_by_id.return_value = test_user
+        # Call the function with our valid token
+        user = await get_current_user(token=test_token, user_service=mock_user_service)
         
-        # Important: get_user_repository should return the mock repository object, not itself
-        with patch("app.api.auth.get_user_repository", return_value=mock_user_repo):
-            user = await get_current_user(token=test_token)
-            assert user.id == test_user.id
-            assert user.email == test_user.email
+        # Verify the result
+        assert user.id == test_user.id
+        assert user.email == test_user.email
+        
+        # Verify service was called correctly
+        mock_user_service.get_user.assert_called_once_with(test_user.id)
+        
     except Exception as e:
         pytest.fail(f"Unexpected exception: {e}")
-    finally:
-        # Clean up dependency override
-        app.dependency_overrides.pop(get_db, None)
 
 
 @pytest.mark.asyncio
@@ -292,18 +361,18 @@ async def test_get_current_user_invalid_token(mock_db):
     # Create an invalid token
     invalid_token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXvCJ9.eyJ1c2VyX2lkIjoidGVzdC11c2VyLWlkIiwiZXhwIjoxNjA5NDU5MjAwfQ.INVALID-SIGNATURE"
 
+    # Set up mocked user service
+    mock_user_service = MagicMock(spec=UserService)
+    
     # Call the function and verify it raises the expected exception
-    with pytest.raises(Exception) as excinfo:
-        # Override dependencies
-        app.dependency_overrides[get_db] = lambda: mock_db
-        try:
-            await get_current_user(token=invalid_token)
-        finally:
-            # Clean up
-            app.dependency_overrides.pop(get_db, None)
+    with pytest.raises(HTTPException) as excinfo:
+        await get_current_user(token=invalid_token, user_service=mock_user_service)
 
     # Check that it has the expected status code
-    assert "401" in str(excinfo.value)
+    assert excinfo.value.status_code == 401
+    
+    # The service should not be called since the token is invalid
+    mock_user_service.get_user.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -311,6 +380,9 @@ async def test_get_current_user_expired_token(mock_db, test_user):
     """Test getting current user with expired token"""
     # Create an expired token
     token_data = TokenData(user_id=test_user.id)
+
+    # Set up mocked user service
+    mock_user_service = MagicMock(spec=UserService)
 
     # Patch jwt_secret for consistent test environment
     with patch("app.components.tokens.settings.security.jwt_secret", "test-secret"):
@@ -322,41 +394,32 @@ async def test_get_current_user_expired_token(mock_db, test_user):
         expired_token = jwt.encode(to_encode, "test-secret", algorithm="HS256")
 
         # Call the function and verify it raises the expected exception
-        with pytest.raises(Exception) as excinfo:
-            # Override dependencies
-            app.dependency_overrides[get_db] = lambda: mock_db
-            try:
-                await get_current_user(token=expired_token)
-            finally:
-                # Clean up
-                app.dependency_overrides.pop(get_db, None)
+        with pytest.raises(HTTPException) as excinfo:
+            await get_current_user(token=expired_token, user_service=mock_user_service)
 
         # Check that it has the expected status code
-        assert "401" in str(excinfo.value)
+        assert excinfo.value.status_code == 401
+        
+        # The service should not be called since the token is expired
+        mock_user_service.get_user.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_get_current_user_user_not_found(test_token, mock_db):
     """Test getting current user when user doesn't exist"""
-    # Create a mock repo that returns no user
-    null_user_repo = MagicMock(spec=UserRepository)
-    null_user_repo.get_by_id.return_value = None
+    # Set up mocked user service that returns no user
+    mock_user_service = MagicMock(spec=UserService)
+    mock_user_service.get_user.return_value = None
     
-    # Override dependencies
-    app.dependency_overrides[get_db] = lambda: mock_db
-    
-    try:
-        # Call the function and verify it raises the expected exception
-        with pytest.raises(Exception) as excinfo:
-            # Patch the repository factory to return our null repo
-            with patch("app.api.auth.get_user_repository", return_value=null_user_repo):
-                await get_current_user(token=test_token)
-    finally:
-        # Clean up
-        app.dependency_overrides.pop(get_db, None)
+    # Call the function and verify it raises the expected exception
+    with pytest.raises(HTTPException) as excinfo:
+        await get_current_user(token=test_token, user_service=mock_user_service)
 
     # Check that it has the expected status code
-    assert "404" in str(excinfo.value)
+    assert excinfo.value.status_code == 404
+    
+    # The service should be called but returns None
+    mock_user_service.get_user.assert_called_once()
 
 
 def test_generate_api_key(client_with_auth_override, mock_db, test_user):

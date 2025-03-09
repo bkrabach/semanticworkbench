@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, timezone
 
 from app.main import app
 from app.config import settings
-from app.components.sse import get_sse_service
+from app.services.sse_service import get_sse_service
 
 
 # Mock response for SSE testing
@@ -104,32 +104,29 @@ def sse_test_client(monkeypatch):
 
 
 @pytest.fixture
-def clean_connections():
+def clean_connections(monkeypatch):
     """Create a clean set of connections for the test"""
-    # Get the connection manager
-    connection_manager = get_sse_service().connection_manager
+    # Create a fresh SSE service and connection manager
+    from unittest.mock import MagicMock
+    from app.components.sse.manager import SSEConnectionManager
+    from app.services.sse_service import SSEService
     
-    # Save original connections
-    original = {
-        "global": connection_manager.connections["global"].copy(),
-        "user": {k: v.copy() for k, v in connection_manager.connections["user"].items()},
-        "workspace": {k: v.copy() for k, v in connection_manager.connections["workspace"].items()},
-        "conversation": {k: v.copy() for k, v in connection_manager.connections["conversation"].items()},
-    }
-
-    # Clear connections for the test
+    # Create a mock service with a fresh connection manager
+    connection_manager = SSEConnectionManager()
+    mock_service = MagicMock(spec=SSEService)
+    mock_service.connection_manager = connection_manager
+    
+    # Override the service getter
+    monkeypatch.setattr("app.services.sse_service.get_sse_service", lambda *args, **kwargs: mock_service)
+    
+    # Return the connection manager for the test to use
+    yield connection_manager
+    
+    # Clean up after test
     connection_manager.connections["global"].clear()
     connection_manager.connections["user"].clear()
     connection_manager.connections["workspace"].clear()
     connection_manager.connections["conversation"].clear()
-
-    yield connection_manager.connections
-
-    # Restore original connections
-    connection_manager.connections["global"] = original["global"]
-    connection_manager.connections["user"] = original["user"]
-    connection_manager.connections["workspace"] = original["workspace"]
-    connection_manager.connections["conversation"] = original["conversation"]
 
 
 # Tests
@@ -212,29 +209,23 @@ def test_sse_conversation_events_endpoint(sse_test_client, valid_token, monkeypa
 @pytest.mark.asyncio
 async def test_sse_connection_tracking(clean_connections):
     """Test that connections are properly tracked and cleaned up"""
-    # Add a test connection
+    # Get the connection manager
+    connection_manager = clean_connections
+    
+    # Register a test connection
     conversation_id = str(uuid.uuid4())
-    connection_id = str(uuid.uuid4())
     user_id = str(uuid.uuid4())
-    queue = asyncio.Queue()
-
-    if conversation_id not in clean_connections["conversation"]:
-        clean_connections["conversation"][conversation_id] = []
-
-    clean_connections["conversation"][conversation_id].append({
-        "id": connection_id,
-        "user_id": user_id,
-        "queue": queue
-    })
-
+    queue, connection_id = await connection_manager.register_connection(
+        "conversation", conversation_id, user_id
+    )
+    
     # Verify connection was added
-    assert len(clean_connections["conversation"][conversation_id]) == 1
-
+    assert conversation_id in connection_manager.connections["conversation"]
+    assert len(connection_manager.connections["conversation"][conversation_id]) == 1
+    assert connection_manager.connections["conversation"][conversation_id][0].connection.id == connection_id
+    
     # Remove the connection
-    clean_connections["conversation"][conversation_id] = [
-        conn for conn in clean_connections["conversation"][conversation_id]
-        if conn["id"] != connection_id
-    ]
-
+    await connection_manager.remove_connection("conversation", conversation_id, connection_id)
+    
     # Verify connection was removed
-    assert len(clean_connections["conversation"][conversation_id]) == 0
+    assert conversation_id not in connection_manager.connections["conversation"]
