@@ -242,3 +242,12 @@ These approaches should be followed for all new features and development work.
 ## Architecture Decision Records
 
 For major architectural decisions, we maintain ADRs (Architecture Decision Records) in the `/docs/adr` directory.
+
+We currently have the following ADRs:
+
+1. [ADR-001: Automated Architecture Validation](adr/adr-001-automated-architecture-validation.md) - Implementation of automated tests and tools to enforce architectural boundaries
+2. [ADR-002: Domain-Driven Repository Architecture](adr/adr-002-domain-driven-repository-architecture.md) - Our overall architecture pattern for separation of database, domain, and API models
+3. [ADR-003: SSE Implementation with sse-starlette](adr/adr-003-sse-starlette-implementation.md) - Adoption of the sse-starlette library for improved SSE handling
+4. [ADR-004: Type Safety with SQLAlchemy and Pydantic](adr/adr-004-type-safety-sqlalchemy-pydantic.md) - Patterns for ensuring type safety between SQLAlchemy and Pydantic models
+5. [ADR-005: Service Layer Pattern](adr/adr-005-service-layer-pattern.md) - Implementation of a dedicated service layer for business logic
+

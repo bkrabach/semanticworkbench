@@ -23,6 +23,8 @@ Welcome to the Cortex Core documentation. This directory contains comprehensive 
 
 - [**Configuration**](CONFIGURATION.md) - Configuration options and environment variables
 - [**Development**](DEVELOPMENT.md) - Development guidelines and workflows
+- [**AI Assistant Guide**](AI_ASSISTANT_GUIDE.md) - Guide for AI code assistants working with this codebase
+- [**Testing**](TESTING.md) - Testing strategies and best practices
 
 ## Diagrams and Visual Aids
 

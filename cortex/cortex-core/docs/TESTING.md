@@ -16,7 +16,34 @@ python -m pytest --cov=app tests/
 
 # Run only the event system tests
 python -m pytest tests/components/test_event_system.py
+
+# Run architecture validation tests
+python -m pytest tests/architecture/test_layer_integrity.py
 ```
+
+## Architecture Validation Testing
+
+The codebase includes automated tests to enforce architectural boundaries:
+
+### Automated Architecture Tests
+
+The file `tests/architecture/test_layer_integrity.py` contains tests that validate proper layer separation by checking import patterns. These tests verify that:
+
+1. API layers never import SQLAlchemy models directly
+2. Service layers never import SQLAlchemy models directly 
+3. Components never import SQLAlchemy models directly
+
+These tests are critical for maintaining the domain-driven repository architecture.
+
+### Command-Line Validation Script
+
+For quick architecture validation, use the `check_imports.sh` script:
+
+```bash
+./check_imports.sh
+```
+
+This script checks for improper imports across the codebase and provides clear error messages when violations are detected. Add this to your workflow to catch architectural issues early.
 
 ## Test Structure
 

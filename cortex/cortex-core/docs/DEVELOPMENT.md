@@ -884,6 +884,18 @@ def test_get_user_endpoint(client):
 
 When working with SQLAlchemy ORM models, follow these guidelines to avoid common type issues:
 
+> ⚠️ **CRITICAL: SQLAlchemy models MUST be confined to repositories only!**
+> 
+> SQLAlchemy models must never cross layer boundaries:
+> - Never import SQLAlchemy models in API, service, or components 
+> - Always convert to domain models in repositories
+> - Run `./check_imports.sh` to verify architectural boundaries
+>
+> Boundary violations cause:
+> - Type errors with SQLAlchemy Column objects
+> - Leakage of database concerns into business logic
+> - Difficulty with testing and mocking
+
 1. **Never directly evaluate Column objects as booleans**:
    ```python
    # INCORRECT - causes "Invalid conditional operand of type 'Column[str]'" error
@@ -917,11 +929,14 @@ When working with SQLAlchemy ORM models, follow these guidelines to avoid common
    ```python
    # CORRECT pattern for parsing JSON from Column objects
    try:
+       # ALWAYS convert SQLAlchemy Column to string before passing to json.loads
        metadata_str = str(db_model.meta_data) if db_model.meta_data is not None else "{}"
        metadata = json.loads(metadata_str)
    except (json.JSONDecodeError, TypeError):
        metadata = {}
    ```
+   
+   **IMPORTANT**: The direct use of `json.loads(db_model.some_json)` will fail with `Argument of type "Column[str]" cannot be assigned to parameter "s" of type "str | bytes"` - Always convert to string first!
 
 5. **When converting database models to domain models, always include proper type conversion**:
    ```python

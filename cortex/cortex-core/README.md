@@ -134,12 +134,39 @@ See the [CLIENT_INTEGRATION_GUIDE.md](./CLIENT_INTEGRATION_GUIDE.md) for details
    uv run uvicorn app.main:app
    ```
 
+## Development
+
+### Running Tests
+
+```bash
+# Run all tests
+python -m pytest
+
+# Run specific tests
+python -m pytest tests/api/test_auth.py
+
+# Check architecture integrity
+python -m pytest tests/architecture/test_layer_integrity.py
+```
+
+### Architecture Validation
+
+To check for architecture boundary violations:
+
+```bash
+./check_imports.sh
+```
+
+This script validates that SQLAlchemy models are properly confined to repositories and don't leak into services, API endpoints, or components.
+
 ## Documentation
 
 For more detailed information, refer to:
 
 - [Development Guide](./docs/DEVELOPMENT.md) - For contributors and developers
+- [Architecture](./docs/ARCHITECTURE.md) - System design and principles
 - [API Reference](./docs/API_REFERENCE.md) - API endpoint documentation
 - [Configuration](./docs/CONFIGURATION.md) - Detailed configuration options
 - [Client Integration Guide](./docs/CLIENT_INTEGRATION_GUIDE.md) - Guide for client application developers
 - [Testing Guide](./docs/TESTING.md) - Best practices for testing
+- [AI Assistant Guide](./docs/AI_ASSISTANT_GUIDE.md) - Guide for AI code assistants working with this codebase
