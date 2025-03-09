@@ -4,7 +4,7 @@ Test suite for the memory system interface
 
 import pytest
 from datetime import datetime, timedelta
-from typing import Dict, List, Any, Optional
+from typing import Dict, List
 import uuid
 
 from app.interfaces.memory_system import (

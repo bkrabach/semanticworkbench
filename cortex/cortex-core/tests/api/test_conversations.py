@@ -30,7 +30,9 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.main import app
-from app.database.models import User, Workspace, Conversation
+from app.database.models import User as UserDB, Workspace, Conversation
+from app.models.domain.user import User as UserDomain
+from app.api.auth import get_current_user
 
 
 @pytest.fixture
@@ -40,22 +42,39 @@ def test_client():
 
 
 @pytest.fixture
-def mock_user():
-    """Create a mock user for authentication"""
-    return User(
+def mock_user_db():
+    """Create a mock user DB model for authentication"""
+    return UserDB(
         id=str(uuid.uuid4()),
         email="test@example.com",
         name="Test User",
-        password_hash="testpassword"
+        password_hash="testpassword",
+        created_at_utc=datetime.now(timezone.utc),
+        updated_at_utc=datetime.now(timezone.utc)
+        # The roles relationship will be mocked in the query
+    )
+
+@pytest.fixture
+def mock_user_domain(mock_user_db):
+    """Create a domain model version of the user"""
+    return UserDomain(
+        id=mock_user_db.id,
+        email=mock_user_db.email,
+        name=mock_user_db.name,
+        password_hash=mock_user_db.password_hash,
+        created_at=mock_user_db.created_at_utc,
+        updated_at=mock_user_db.updated_at_utc,
+        metadata={},
+        roles=[]
     )
 
 
 @pytest.fixture
-def mock_workspace(mock_user):
+def mock_workspace(mock_user_db):
     """Create a mock workspace"""
     return Workspace(
         id=str(uuid.uuid4()),
-        user_id=mock_user.id,
+        user_id=mock_user_db.id,
         name="Test Workspace",
         created_at_utc=datetime.now(timezone.utc),
         last_active_at_utc=datetime.now(timezone.utc),
@@ -79,13 +98,13 @@ def mock_conversation(mock_workspace):
 
 
 @pytest.fixture
-def mock_db_session(mock_user, mock_workspace, mock_conversation):
+def mock_db_session(mock_user_db, mock_workspace, mock_conversation):
     """Create a mock database session with realistic behavior"""
     mock_session = MagicMock(spec=Session)
     
     # Dict to store entities by type and ID
     entities = {
-        'users': {mock_user.id: mock_user},
+        'users': {mock_user_db.id: mock_user_db},
         'workspaces': {mock_workspace.id: mock_workspace},
         'conversations': {mock_conversation.id: mock_conversation}
     }
@@ -122,14 +141,14 @@ def mock_db_session(mock_user, mock_workspace, mock_conversation):
             
         def first(self):
             # Simple implementation that just returns the first entity
-            if self.entity_type == User and any('User.id' in str(f) for f in self.filters):
-                return mock_user
+            if self.entity_type == UserDB and any('User.id' in str(f) for f in self.filters):
+                return mock_user_db
             # Return workspace based on more flexible matching
             elif self.entity_type == Workspace:
                 if any('Workspace.id' in str(f) and mock_workspace.id in str(f) for f in self.filters):
                     return mock_workspace
                 # Match on user_id as well
-                if any('Workspace.user_id' in str(f) and mock_user.id in str(f) for f in self.filters):
+                if any('Workspace.user_id' in str(f) and mock_user_db.id in str(f) for f in self.filters):
                     return mock_workspace
                 # Match on a join condition with User
                 if any('User.id' in str(f) for f in self.filters) and Workspace in [j for j in self.joins if isinstance(j, type)]:
@@ -160,7 +179,7 @@ def mock_db_session(mock_user, mock_workspace, mock_conversation):
     
     # Implement add, commit, delete, refresh
     def mock_add(entity):
-        if isinstance(entity, User):
+        if isinstance(entity, UserDB):
             entities['users'][entity.id] = entity
         elif isinstance(entity, Workspace):
             entities['workspaces'][entity.id] = entity
@@ -168,7 +187,7 @@ def mock_db_session(mock_user, mock_workspace, mock_conversation):
             entities['conversations'][entity.id] = entity
     
     def mock_delete(entity):
-        if isinstance(entity, User) and entity.id in entities['users']:
+        if isinstance(entity, UserDB) and entity.id in entities['users']:
             del entities['users'][entity.id]
         elif isinstance(entity, Workspace) and entity.id in entities['workspaces']:
             del entities['workspaces'][entity.id]
@@ -220,8 +239,8 @@ def client_with_db_and_user_override(mock_db_session):
                 return self
                 
             def first(self):
-                if entity_type.__name__ == 'User':
-                    return mock_user
+                if entity_type.__name__ == 'User':  # Keep as 'User' since that's the actual DB class name
+                    return mock_user_db
                 elif entity_type.__name__ == 'Workspace':
                     return mock_workspace
                 elif entity_type.__name__ == 'Conversation':
@@ -240,7 +259,19 @@ def client_with_db_and_user_override(mock_db_session):
     
     # Set up the overrides for FastAPI
     app.dependency_overrides[get_db] = lambda: mock_session 
-    app.dependency_overrides[get_current_user] = lambda: mock_user
+    
+    # Convert DB user to domain user for get_current_user
+    domain_user = UserDomain(
+        id=mock_user.id,
+        email=mock_user.email,
+        name=mock_user.name,
+        password_hash=mock_user.password_hash,
+        created_at=mock_user.created_at_utc if hasattr(mock_user, 'created_at_utc') else datetime.now(timezone.utc),
+        updated_at=mock_user.updated_at_utc if hasattr(mock_user, 'updated_at_utc') else None,
+        metadata={},
+        roles=[]
+    )
+    app.dependency_overrides[get_current_user] = lambda: domain_user
     
     # Create a client with the overrides
     client = TestClient(app)
@@ -254,9 +285,13 @@ def client_with_db_and_user_override(mock_db_session):
 def test_conversation_models():
     """Test the conversation model classes"""
     # Test that the conversation-related model classes are correctly defined
-    from app.api.conversations import (
-        ConversationCreate, MessageCreate, 
-        MessageResponse, ConversationResponse
+    from app.models.api.request.conversation import (
+        CreateConversationRequest as ConversationCreate,
+        AddMessageRequest as MessageCreate
+    )
+    from app.models.api.response.conversation import (
+        ConversationDetailResponse as ConversationResponse,
+        MessageResponse
     )
     
     # Verify the models have the expected fields
@@ -412,7 +447,6 @@ def test_create_conversation(client_with_db_and_user_override, mock_db_session):
         mock_sse_service.return_value.connection_manager = mock_connection_manager
         
         # Debug endpoint and access directly
-        from app.api.conversations import create_conversation
         from app.database.models import Workspace
         
         # Verify that our workspace can be found
@@ -458,7 +492,14 @@ def test_list_conversations(client_with_db_and_user_override, mock_db_session):
     
     # Check the response
     assert response.status_code == 200
-    conversations = response.json()
+    response_data = response.json()
+    
+    # The API now returns a structure with 'conversations' and 'count' fields
+    assert "conversations" in response_data
+    assert "count" in response_data
+    
+    # Check the conversations list
+    conversations = response_data["conversations"]
     assert isinstance(conversations, list)
     assert len(conversations) > 0
     
@@ -506,7 +547,7 @@ def test_update_conversation(client_with_db_and_user_override, mock_db_session):
         mock_sse_service.return_value.connection_manager = mock_connection_manager
         
         response = client_with_db_and_user_override.patch(
-            f"/conversations/{mock_conversation.id}",
+            f"/conversations/{mock_conversation.id}/title",
             json=update_data
         )
         
@@ -553,7 +594,6 @@ def test_delete_conversation(client_with_db_and_user_override, mock_db_session):
 
 def test_add_message(client_with_db_and_user_override, mock_db_session):
     """Test adding a message to a conversation"""
-    import pytest
     
     mock_session, entities = mock_db_session
     mock_conversation = next(iter(entities['conversations'].values()))
@@ -565,18 +605,17 @@ def test_add_message(client_with_db_and_user_override, mock_db_session):
     }
     
     # Simple test approach - just verify the API endpoint works
-    with patch('app.api.conversations.simulate_assistant_response'):
-        response = client_with_db_and_user_override.post(
-            f"/conversations/{mock_conversation.id}/messages",
-            json=message_data
-        )
-        
-        # Check the response
-        assert response.status_code in [200, 201]  # Accept either status code
-        message = response.json()
-        assert message["role"] == message_data["role"]
-        assert message["content"] == message_data["content"]
-        assert "id" in message
+    response = client_with_db_and_user_override.post(
+        f"/conversations/{mock_conversation.id}/messages",
+        json=message_data
+    )
+    
+    # Check the response
+    assert response.status_code in [200, 201]  # Accept either status code
+    message = response.json()
+    assert message["role"] == message_data["role"]
+    assert message["content"] == message_data["content"]
+    assert "id" in message
 
 
 def test_get_messages(client_with_db_and_user_override, mock_db_session):
@@ -584,43 +623,33 @@ def test_get_messages(client_with_db_and_user_override, mock_db_session):
     mock_session, entities = mock_db_session
     mock_conversation = next(iter(entities['conversations'].values()))
     
-    # Setup mock entries
-    mock_entries = [
-        {"id": str(uuid.uuid4()), "role": "user", "content": "Hello", "created_at_utc": datetime.now(timezone.utc).isoformat()},
-        {"id": str(uuid.uuid4()), "role": "assistant", "content": "Hi there", "created_at_utc": datetime.now(timezone.utc).isoformat()}
-    ]
+    # Get the messages
+    response = client_with_db_and_user_override.get(
+        f"/conversations/{mock_conversation.id}/messages"
+    )
     
-    # Update the mock conversation's entries
-    with patch('app.api.conversations.json.loads', return_value=mock_entries):
-        # Get the messages
-        response = client_with_db_and_user_override.get(
-            f"/conversations/{mock_conversation.id}/messages"
-        )
-        
-        # Check the response
-        assert response.status_code == 200
-        messages = response.json()
-        assert isinstance(messages, list)
-        # The number of messages doesn't need to match the mock entries exactly
-        
-        # Check that pagination parameters work
-        response = client_with_db_and_user_override.get(
-            f"/conversations/{mock_conversation.id}/messages?limit=1&offset=0"
-        )
-        assert response.status_code == 200
+    # Check the response
+    assert response.status_code == 200
+    messages = response.json()
+    assert isinstance(messages, list)
+    
+    # Check that pagination parameters work
+    response = client_with_db_and_user_override.get(
+        f"/conversations/{mock_conversation.id}/messages?limit=1&offset=0"
+    )
+    assert response.status_code == 200
 
 
 def test_integration_conversation_workflow(client_with_db_and_user_override, mock_db_session):
     """Test the entire conversation workflow (create, update, add messages, delete)"""
     # Let's simplify this test to focus on the end-to-end flow without deep mocking
     mock_session, entities = mock_db_session
-    mock_workspace = next(iter(entities['workspaces'].values()))
+    # Get the first conversation from the test data
     mock_conversation = next(iter(entities['conversations'].values()))
     
     # Skip deep mocking and just verify each endpoint works in sequence
     # Patch only what's necessary to avoid complex interactions
-    with patch('app.api.conversations.simulate_assistant_response'), \
-         patch('app.components.sse.get_sse_service') as mock_sse_service:
+    with patch('app.components.sse.get_sse_service') as mock_sse_service:
         # Setup the mock SSE service
         mock_connection_manager = AsyncMock()
         mock_connection_manager.send_event = AsyncMock()
@@ -635,7 +664,7 @@ def test_integration_conversation_workflow(client_with_db_and_user_override, moc
         }
         
         update_response = client_with_db_and_user_override.patch(
-            f"/conversations/{conversation_id}",
+            f"/conversations/{conversation_id}/title",
             json=update_data
         )
         

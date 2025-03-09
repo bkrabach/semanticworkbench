@@ -206,7 +206,7 @@ class EventSystem(EventSystemInterface):
         uptime = time.time() - self.stats["start_time"]
 
         # Create a copy of stats with additional derived metrics
-        stats = self.stats.copy()
+        stats = dict(self.stats)
         stats["uptime_seconds"] = uptime
 
         # Calculate events per second if uptime > 0

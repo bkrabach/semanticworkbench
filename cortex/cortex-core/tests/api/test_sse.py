@@ -3,20 +3,18 @@ Test suite for the SSE (Server-Sent Events) API endpoints
 """
 
 import pytest
-import json
 import asyncio
 import uuid
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import MagicMock, AsyncMock
 from datetime import datetime, timezone
 from fastapi.testclient import TestClient
 from typing import Optional
-from fastapi import HTTPException, BackgroundTasks
+from fastapi import HTTPException
 from fastapi.responses import StreamingResponse
 from jose import jwt
 
 from app.main import app
 from app.config import settings
-from app.api.auth import get_current_user
 from app.database.connection import get_db
 from app.services.sse_service import get_sse_service, SSEService
 
@@ -105,14 +103,14 @@ def mock_sse_service():
         )
     )
     
-    # Setup the dependency override
+    # Setup the dependency override using FastAPI's built-in mechanism
     from app.services.sse_service import get_sse_service
-    get_sse_service.override = mock_service
+    app.dependency_overrides[get_sse_service] = lambda: mock_service
     
     yield mock_service
     
     # Clean up after the test
-    get_sse_service.override = None
+    app.dependency_overrides.pop(get_sse_service, None)
 
 
 def test_events_endpoint_no_token():
@@ -158,7 +156,7 @@ async def test_events_handler():
     mock_service.remove_connection = AsyncMock()
     
     # Create a custom function for testing without dependence on real app
-    from fastapi import APIRouter, Request, HTTPException
+    from fastapi import Request
     from fastapi.responses import StreamingResponse
     from fastapi.background import BackgroundTasks
     
@@ -176,7 +174,7 @@ async def test_events_handler():
         # Validate channel type
         valid_channels = ["user", "workspace", "conversation"]
         if channel_type not in valid_channels:
-            raise HTTPException(status_code=400, detail=f"Invalid channel type")
+            raise HTTPException(status_code=400, detail="Invalid channel type")
             
         # Authenticate user
         user_info = await sse_service.authenticate_token(token)
@@ -188,7 +186,7 @@ async def test_events_handler():
             )
             
             if not has_access:
-                raise HTTPException(status_code=403, detail=f"Not authorized")
+                raise HTTPException(status_code=403, detail="Not authorized")
         
         # Register connection
         queue, connection_id = await sse_service.register_connection(
@@ -304,7 +302,6 @@ async def test_events_handler_unauthorized():
     request = MagicMock()
     
     # Create mock service that raises unauthorized exception
-    from fastapi import HTTPException
     mock_service = AsyncMock()
     mock_service.create_sse_stream = AsyncMock(
         side_effect=HTTPException(status_code=403, detail="Not authorized to access workspace events")

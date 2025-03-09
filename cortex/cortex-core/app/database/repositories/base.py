@@ -6,7 +6,7 @@ implementations should follow.
 """
 
 from abc import ABC, abstractmethod
-from typing import TypeVar, Generic, Optional, List, Type
+from typing import TypeVar, Generic
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 

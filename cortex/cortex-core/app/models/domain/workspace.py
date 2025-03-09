@@ -6,7 +6,7 @@ are isolated environments for organizing user content.
 """
 
 from datetime import datetime
-from typing import Optional, Dict, Any, List
+from typing import Dict, Any, List
 from pydantic import Field
 
 from app.models.domain.base import TimestampedModel, MetadataModel

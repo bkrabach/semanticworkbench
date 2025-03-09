@@ -5,8 +5,8 @@ This module defines the response models for SSE-related API endpoints.
 """
 
 from datetime import datetime
-from typing import Dict, Any, Optional
-from pydantic import BaseModel, Field
+from typing import Dict
+from pydantic import BaseModel
 
 
 class SSEConnectionStatsResponse(BaseModel):

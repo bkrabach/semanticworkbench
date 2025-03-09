@@ -2,12 +2,10 @@
 Conversation Input Receiver and Output Publisher Implementations
 """
 
-import json
 import logging
 from uuid import uuid4
 from datetime import datetime, timezone
 
-from app.utils.json_helpers import DateTimeEncoder
 from app.interfaces.router import (
     InputReceiverInterface,
     OutputPublisherInterface,
@@ -17,8 +15,7 @@ from app.interfaces.router import (
 )
 from app.components.event_system import get_event_system
 from app.components.cortex_router import get_router
-from app.components.sse import get_sse_service
-from app.database.models import Conversation
+from app.services.sse_service import get_sse_service
 from sqlalchemy.orm import Session
 
 
@@ -223,7 +220,7 @@ class ConversationOutputPublisher(OutputPublisherInterface):
             
             # Check if we have a DB session in metadata to persist the message
             db = message.metadata.get("db_session")
-            if db:
+            if db is not None:
                 try:
                     await self._persist_message(message, db)
                 except Exception as e:
@@ -244,7 +241,7 @@ class ConversationOutputPublisher(OutputPublisherInterface):
             db: Database session
         """
         # Use repository to persist the message
-        from app.database.repositories import get_conversation_repository
+        from app.database.repositories.conversation_repository import get_conversation_repository
         
         repository = get_conversation_repository(db)
         
@@ -304,12 +301,15 @@ class OutputPublisherRegistry:
         """
         if conversation_id not in self.publishers:
             # Create a new publisher
-            self.publishers[conversation_id] = ConversationOutputPublisher(conversation_id)
+            publisher = ConversationOutputPublisher(conversation_id)
+            self.publishers[conversation_id] = publisher
             # Initialize its subscriptions
-            await self.publishers[conversation_id]._subscribe_to_events()
+            await publisher._subscribe_to_events()
             self.logger.info(f"Created new output publisher for conversation {conversation_id}")
-            
-        return self.publishers[conversation_id]
+        
+        # Explicitly cast to ensure type checking passes
+        result: ConversationOutputPublisher = self.publishers[conversation_id]
+        return result
 
 
 # Global registry instance
@@ -317,4 +317,6 @@ publisher_registry = OutputPublisherRegistry()
 
 async def get_conversation_publisher(conversation_id: str) -> ConversationOutputPublisher:
     """Get or create a conversation output publisher"""
-    return await publisher_registry.get_conversation_publisher(conversation_id)
+    publisher = await publisher_registry.get_conversation_publisher(conversation_id)
+    # The registry already ensures the return value is typed correctly
+    return publisher

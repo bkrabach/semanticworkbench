@@ -16,7 +16,6 @@ from app.database.repositories.resource_access_repository import ResourceAccessR
 from app.database.connection import get_db
 from app.models.domain.user import UserInfo
 from app.models.domain.sse import SSEConnectionStats
-from app.services.base import Service
 from app.utils.logger import logger
 import jwt
 from app.config import settings
@@ -128,7 +127,7 @@ class SSEService:
         """
         # Users can only access their own user events
         if resource_type == "user":
-            return bool(user_info.id == resource_id)
+            return user_info.id == resource_id
 
         # For workspace access, check ownership and sharing
         if resource_type == "workspace":
@@ -320,7 +319,7 @@ def get_sse_service(db: Session = Depends(get_db)) -> SSEService:
 
     # For production use, create a real service
     from app.database.repositories.resource_access_repository import get_resource_access_repository
-
+    
     repository = get_resource_access_repository(db)
     return SSEService(db, repository)
 

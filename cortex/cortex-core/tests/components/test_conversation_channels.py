@@ -29,7 +29,7 @@ def mock_send_event():
     mock_sse_service = AsyncMock()
     mock_sse_service.connection_manager = mock_connection_manager
     
-    with patch("app.components.conversation_channels.get_sse_service", return_value=mock_sse_service) as mock:
+    with patch("app.components.conversation_channels.get_sse_service", return_value=mock_sse_service):
         yield mock_connection_manager.send_event
 
 

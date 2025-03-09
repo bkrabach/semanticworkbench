@@ -95,7 +95,12 @@ class SecurityManager:
             The encrypted data
         """
         try:
-            return self.fernet.encrypt(data.encode()).decode()
+            # Encrypt the data
+            encoded = data.encode()
+            encrypted = self.fernet.encrypt(encoded)
+            # Convert bytes to string and return
+            result = encrypted.decode('utf-8')
+            return result  # type: ignore
         except Exception as e:
             logger.error(f"Encryption failed: {str(e)}")
             raise
@@ -111,7 +116,12 @@ class SecurityManager:
             The decrypted data
         """
         try:
-            return self.fernet.decrypt(encrypted_data.encode()).decode()
+            # Decode the encrypted data
+            encoded = encrypted_data.encode()
+            decrypted = self.fernet.decrypt(encoded)
+            # Convert bytes to string and return
+            result = decrypted.decode('utf-8')
+            return result  # type: ignore
         except Exception as e:
             logger.error(f"Decryption failed: {str(e)}")
             raise
@@ -127,7 +137,8 @@ class SecurityManager:
             JSON string
         """
         try:
-            return json.dumps(data)
+            result = json.dumps(data)
+            return str(result) if result is not None else "{}"
         except Exception as e:
             logger.error(f"JSON stringify failed: {str(e)}")
             return "{}"

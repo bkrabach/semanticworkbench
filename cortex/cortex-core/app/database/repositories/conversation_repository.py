@@ -81,7 +81,7 @@ class ConversationRepository(Repository):
             ConversationDB.id == conversation_id
         ).first()
         
-        if not db_model:
+        if db_model is None:
             return None
             
         return self._to_domain(db_model)
@@ -152,12 +152,12 @@ class ConversationRepository(Repository):
             ConversationDB.id == conversation_id
         ).first()
         
-        if not db_model:
+        if db_model is None:
             return None
         
         # Parse existing entries
         try:
-            entries_str = str(db_model.entries) if db_model.entries else "[]"
+            entries_str = str(db_model.entries) if db_model.entries is not None else "[]"
             entries = json.loads(entries_str)
         except (json.JSONDecodeError, TypeError) as e:
             logger.error(f"Error parsing conversation entries: {e}")
@@ -209,7 +209,7 @@ class ConversationRepository(Repository):
             ConversationDB.id == conversation_id
         ).first()
         
-        if not db_model:
+        if db_model is None:
             return None
         
         setattr(db_model, 'title', title)
@@ -232,7 +232,7 @@ class ConversationRepository(Repository):
             ConversationDB.id == conversation_id
         ).first()
         
-        if not db_model:
+        if db_model is None:
             return None
         
         metadata_json = json.dumps(metadata, cls=DateTimeEncoder)
@@ -255,7 +255,7 @@ class ConversationRepository(Repository):
             ConversationDB.id == conversation_id
         ).first()
         
-        if not db_model:
+        if db_model is None:
             return False
         
         self.db.delete(db_model)
@@ -275,14 +275,14 @@ class ConversationRepository(Repository):
         """
         # Parse JSON fields
         try:
-            meta_data_str = str(db_model.meta_data) if db_model.meta_data else "{}"
+            meta_data_str = str(db_model.meta_data) if db_model.meta_data is not None else "{}"
             metadata = json.loads(meta_data_str)
         except (json.JSONDecodeError, TypeError) as e:
             logger.error(f"Error parsing conversation metadata: {e}")
             metadata = {}
             
         try:
-            entries_str = str(db_model.entries) if db_model.entries else "[]"
+            entries_str = str(db_model.entries) if db_model.entries is not None else "[]"
             entries = json.loads(entries_str)
         except (json.JSONDecodeError, TypeError) as e:
             logger.error(f"Error parsing conversation entries: {e}")
@@ -307,26 +307,13 @@ class ConversationRepository(Repository):
                 # Skip invalid messages
         
         # Create and return domain model
-        # Convert SQLAlchemy column values to Python types
-        created_at_value = db_model.created_at_utc
-        if isinstance(created_at_value, datetime):
-            created_at = created_at_value
-        else:
-            # Default to now if we can't get the value (shouldn't happen)
-            created_at = datetime.now(timezone.utc)
-            
-        last_active_at_value = db_model.last_active_at_utc
-        if isinstance(last_active_at_value, datetime):
-            last_active_at = last_active_at_value
-        else:
-            # Default to now if we can't get the value (shouldn't happen)
-            last_active_at = datetime.now(timezone.utc)
-            
+        # Use parse_datetime that handles mock objects and various formats safely
+        created_at = parse_datetime(db_model.created_at_utc) if db_model.created_at_utc is not None else datetime.now(timezone.utc)
+        last_active_at = parse_datetime(db_model.last_active_at_utc) if db_model.last_active_at_utc is not None else datetime.now(timezone.utc)
+        
         updated_at = None
-        if hasattr(db_model, "updated_at_utc"):
-            updated_at_value = db_model.updated_at_utc
-            if isinstance(updated_at_value, datetime):
-                updated_at = updated_at_value
+        if hasattr(db_model, "updated_at_utc") and db_model.updated_at_utc is not None:
+            updated_at = parse_datetime(db_model.updated_at_utc)
         
         return Conversation(
             id=str(db_model.id),

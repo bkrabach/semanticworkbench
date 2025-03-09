@@ -6,7 +6,7 @@ which enable real-time client updates.
 """
 
 from datetime import datetime
-from typing import Optional, Dict, Any, List
+from typing import Dict, Any
 from pydantic import Field, validator
 
 from app.models.domain.base import DomainModel, MetadataModel

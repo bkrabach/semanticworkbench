@@ -5,7 +5,6 @@ Test suite for the Integration Hub component
 import pytest
 import asyncio
 from unittest.mock import patch, MagicMock, AsyncMock
-import json
 
 from app.components.integration_hub import (
     IntegrationHub,
@@ -31,10 +30,10 @@ class TestCortexMcpClient:
     @pytest.mark.asyncio
     async def test_connect(self, mock_mcp_client):
         """Test connection initialization"""
-        # Patch sse_client to return mock streams
+        # Use individual import patches instead of attribute paths
         with patch("app.components.integration_hub.sse_client"), \
              patch("app.components.integration_hub.ClientSession", return_value=mock_mcp_client), \
-             patch("app.components.integration_hub.asyncio.create_task"):
+             patch("asyncio.create_task"):
             client = CortexMcpClient(endpoint="http://test.endpoint", service_name="test-service")
             
             # Initially client should be None
@@ -121,7 +120,7 @@ class TestCortexMcpClient:
         """Test closing the connection"""
         with patch("app.components.integration_hub.sse_client"), \
              patch("app.components.integration_hub.ClientSession", return_value=mock_mcp_client), \
-             patch("app.components.integration_hub.asyncio.create_task"):
+             patch("asyncio.create_task"):
             client = CortexMcpClient(endpoint="http://test.endpoint", service_name="test-service")
             
             # Set the client directly
@@ -136,9 +135,8 @@ class TestCortexMcpClient:
     @pytest.mark.asyncio
     async def test_connect_error_handling(self):
         """Test error handling during connection"""
-        with patch("app.components.integration_hub.sse_client") as mock_sse, \
-             patch("app.components.integration_hub.ClientSession") as mock_client_class, \
-             patch("app.components.integration_hub.asyncio.create_task"):
+        with patch("app.components.integration_hub.ClientSession") as mock_client_class, \
+             patch("asyncio.create_task"):
             # Make the initialize method raise an exception
             mock_client = AsyncMock()
             mock_client.initialize.side_effect = Exception("Connection failed")

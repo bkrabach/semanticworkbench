@@ -3,7 +3,7 @@ Tests for the workspace service
 """
 
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, AsyncMock
 from datetime import datetime, timezone
 
 from app.services.workspace_service import WorkspaceService
@@ -19,7 +19,10 @@ def mock_repository():
 @pytest.fixture
 def mock_event_system():
     """Create a mock event system"""
-    return MagicMock(spec=EventSystem)
+    mock = MagicMock(spec=EventSystem)
+    # Mock the async publish method
+    mock.publish = AsyncMock()
+    return mock
 
 @pytest.fixture
 def workspace_service(mock_repository, mock_event_system):
@@ -67,13 +70,14 @@ def test_get_user_workspaces(workspace_service, mock_repository, test_workspace)
     assert workspaces[0] == test_workspace
     mock_repository.get_user_workspaces.assert_called_once_with("test-user-id", None)
 
-def test_create_workspace(workspace_service, mock_repository, mock_event_system, test_workspace):
+@pytest.mark.asyncio
+async def test_create_workspace(workspace_service, mock_repository, mock_event_system, test_workspace):
     """Test creating a workspace"""
     # Configure mock repository
     mock_repository.create_workspace.return_value = test_workspace
     
     # Call the service
-    workspace = workspace_service.create_workspace(
+    workspace = await workspace_service.create_workspace(
         user_id="test-user-id",
         name="Test Workspace",
         description="Test workspace description"
@@ -93,13 +97,14 @@ def test_create_workspace(workspace_service, mock_repository, mock_event_system,
     assert event_data["event_type"] == "workspace.created"
     assert event_data["data"]["workspace_id"] == test_workspace.id
 
-def test_update_workspace(workspace_service, mock_repository, mock_event_system, test_workspace):
+@pytest.mark.asyncio
+async def test_update_workspace(workspace_service, mock_repository, mock_event_system, test_workspace):
     """Test updating a workspace"""
     # Configure mock repository
     mock_repository.update_workspace.return_value = test_workspace
     
     # Call the service
-    workspace = workspace_service.update_workspace(
+    workspace = await workspace_service.update_workspace(
         workspace_id="test-workspace-id",
         name="Updated Workspace",
         metadata={"description": "Updated description"}
@@ -119,14 +124,15 @@ def test_update_workspace(workspace_service, mock_repository, mock_event_system,
     assert event_data["event_type"] == "workspace.updated"
     assert event_data["data"]["workspace_id"] == test_workspace.id
 
-def test_delete_workspace(workspace_service, mock_repository, mock_event_system, test_workspace):
+@pytest.mark.asyncio
+async def test_delete_workspace(workspace_service, mock_repository, mock_event_system, test_workspace):
     """Test deleting a workspace"""
     # Configure mock repository
     mock_repository.get_by_id.return_value = test_workspace
     mock_repository.delete_workspace.return_value = True
     
     # Call the service
-    result = workspace_service.delete_workspace("test-workspace-id")
+    result = await workspace_service.delete_workspace("test-workspace-id")
     
     # Verify result
     assert result is True

@@ -6,7 +6,6 @@ import pytest
 from unittest.mock import patch, MagicMock
 from datetime import datetime, timedelta, timezone
 from jose import jwt
-import time
 
 from app.components.tokens import TokenData, generate_jwt_token, verify_jwt_token
 

@@ -3,6 +3,7 @@ Test suite for Redis client module with comprehensive functional tests
 """
 
 import pytest
+import pytest_asyncio
 import uuid
 import time
 import asyncio
@@ -16,7 +17,7 @@ from app.cache.redis_client import (
 )
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def clean_redis_state():
     """Create a clean state for Redis client tests"""
     # Save original module state
@@ -36,7 +37,7 @@ async def clean_redis_state():
     redis_module.memory_cache = original_cache
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def mock_redis_client():
     """Create a mock Redis client for testing"""
     # Create a mock Redis client
@@ -50,9 +51,11 @@ async def mock_redis_client():
     mock_client.expire = AsyncMock(return_value=1)
     mock_client.ttl = AsyncMock(return_value=-1)
     mock_client.ping = AsyncMock(return_value=True)
+    mock_client.close = AsyncMock(return_value=None)
+    mock_client.flushall = AsyncMock(return_value="OK")
     
     # Return the mock client
-    return mock_client
+    yield mock_client
 
 
 @pytest.mark.asyncio
@@ -133,8 +136,8 @@ async def test_memory_fallback_ttl(clean_redis_state):
     assert "expiry" in clean_redis_state.memory_cache[test_key]
     assert clean_redis_state.memory_cache[test_key]["expiry"] > time.time()
     
-    # Wait for expiration (slightly longer than our 1 second TTL)
-    await asyncio.sleep(1.1)
+    # Wait for expiration (use a longer wait to ensure expiration in various environments)
+    await asyncio.sleep(2.0)
     
     # Value should be gone now
     expired_result = await RedisClient.get(test_key)
@@ -291,13 +294,13 @@ async def test_redis_client_ttl_operations(clean_redis_state, mock_redis_client)
 async def test_redis_connection_failure(clean_redis_state):
     """Test Redis connection failure fallback"""
     # Mock Redis to raise an exception
-    with patch('redis.asyncio.from_url', side_effect=Exception("Connection failed")):
+    with patch('redis.asyncio.Redis', side_effect=Exception("Connection failed")):
         # Try to connect
-        client = await connect_redis()
+        await connect_redis()
         
-        # Should get None and set fallback mode
-        assert client is None
+        # Should set fallback mode
         assert clean_redis_state.using_memory_fallback is True
+        assert clean_redis_state.redis_client is None
 
 
 def test_redis_fallback_existence():

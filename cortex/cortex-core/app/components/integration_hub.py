@@ -5,11 +5,38 @@ This component manages connections to Domain Expert services using the Model Con
 providing a standardized interface for discovering and executing tools from these services.
 """
 
-from typing import Dict, Any, List, Optional, Union
-import asyncio
+from typing import Dict, Any, List, Optional, Protocol, Union
 from app.config import settings
 from app.utils.logger import logger
 from app.utils.circuit_breaker import CircuitBreaker
+
+# Define protocol for client interface that captures expected methods
+class ClientProtocol(Protocol):
+    """Protocol defining the interface for client objects"""
+    
+    async def initialize(self) -> Dict[str, Any]:
+        """Initialize the client connection"""
+        ...
+        
+    async def list_tools(self) -> Dict[str, Any]:
+        """List available tools"""
+        ...
+        
+    async def call_tool(self, name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
+        """Call a tool"""
+        ...
+        
+    async def read_resource(self, uri: str) -> Dict[str, Any]:
+        """Read a resource"""
+        ...
+        
+    async def close(self) -> None:
+        """Close the client connection"""
+        ...
+        
+    async def shutdown(self) -> None:
+        """Alternative method to close client connection"""
+        ...
 
 # Import libraries for MCP when available
 try:
@@ -39,9 +66,13 @@ except ImportError:
         async def read_resource(self, uri):
             """Read a resource"""
             return {"content": "test"}
+        
+        async def close(self):
+            """Close the client session"""
+            pass
             
         async def shutdown(self):
-            """Shut down the session"""
+            """Shutdown the client session (alternative to close)"""
             pass
 
 logger = logger.getChild("integration_hub")
@@ -53,7 +84,7 @@ class CortexMcpClient:
     def __init__(self, endpoint: str, service_name: str):
         self.endpoint = endpoint
         self.service_name = service_name
-        self.client: Optional[ClientSession] = None
+        self.client: Optional[Union[ClientSession, ClientProtocol]] = None
 
     async def connect(self) -> None:
         """Connect to the MCP server"""
@@ -145,9 +176,18 @@ class CortexMcpClient:
     async def close(self) -> None:
         """Close the MCP client"""
         if self.client:
-            # In production, this would call shutdown on the client
-            # but for testing purposes, we'll just set it to None
-            self.client = None
+            try:
+                # In production, this would close/shutdown the client
+                # For aiohttp ClientSession, use .close() instead of .shutdown()
+                if hasattr(self.client, 'close'):
+                    await self.client.close()
+                elif hasattr(self.client, 'shutdown'):
+                    await self.client.shutdown()
+            except Exception as e:
+                logger.error(f"Error during MCP client shutdown: {str(e)}")
+            finally:
+                # Always set client to None to clean up resources
+                self.client = None
             logger.info(f"Closed connection to MCP endpoint: {self.service_name}")
 
 

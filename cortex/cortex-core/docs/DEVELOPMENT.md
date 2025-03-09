@@ -733,6 +733,8 @@ When integrating with FastAPI, be aware of these common issues:
 2. **Direct JSON string manipulation in API layer**: Handle serialization consistently
 3. **Heavy database logic in API handlers**: Move this to repositories
 4. **Complex mocking in tests**: Mock at interface boundaries, not implementation details
+5. **Direct boolean evaluation of SQLAlchemy Column objects**: This causes type errors since Column.__bool__ returns NoReturn
+6. **Missing awaits for coroutines**: Failing to await async methods causes "unused coroutine" errors
 
 ### Testing with Domain-Driven Architecture
 
@@ -850,6 +852,93 @@ def test_get_user_endpoint(client):
         app.dependency_overrides.pop(get_user_service)
 ```
 
+### SQLAlchemy Column Handling Best Practices
+
+When working with SQLAlchemy ORM models, follow these guidelines to avoid common type issues:
+
+1. **Never directly evaluate Column objects as booleans**:
+   ```python
+   # INCORRECT - causes "Invalid conditional operand of type 'Column[str]'" error
+   if db_model.name:
+       # do something
+   
+   # CORRECT - explicitly check against None
+   if db_model.name is not None:
+       # do something
+   ```
+
+2. **Convert Column datetime objects to Python datetime objects**:
+   ```python
+   # INCORRECT - passes a Column[datetime] to a function expecting datetime
+   created_at = db_model.created_at_utc
+   
+   # CORRECT - convert to Python datetime object first
+   created_at = datetime.fromisoformat(str(db_model.created_at_utc)) if db_model.created_at_utc is not None else datetime.now(timezone.utc)
+   ```
+
+3. **Convert Column string objects to Python strings when necessary**:
+   ```python
+   # INCORRECT - uses Column[str] directly
+   metadata_json = db_model.meta_data
+   
+   # CORRECT - convert to Python string first
+   metadata_json = str(db_model.meta_data) if db_model.meta_data is not None else "{}"
+   ```
+
+4. **Handle JSON fields consistently**:
+   ```python
+   # CORRECT pattern for parsing JSON from Column objects
+   try:
+       metadata_str = str(db_model.meta_data) if db_model.meta_data is not None else "{}"
+       metadata = json.loads(metadata_str)
+   except (json.JSONDecodeError, TypeError):
+       metadata = {}
+   ```
+
+5. **When converting database models to domain models, always include proper type conversion**:
+   ```python
+   return User(
+       id=str(db_model.id),
+       email=str(db_model.email),
+       name=str(db_model.name) if db_model.name is not None else None,
+       created_at=created_at,  # Already converted to Python datetime
+       # ...
+   )
+   ```
+
+### Async/Await Consistency
+
+When working with asynchronous code:
+
+1. **Always await coroutine functions**:
+   ```python
+   # INCORRECT - causes "Value of type 'Coroutine[Any, Any, None]' must be used" error
+   self.event_system.publish(event_type="user.created", data=data, source="user_service")
+   
+   # CORRECT - use await keyword
+   await self.event_system.publish(event_type="user.created", data=data, source="user_service")
+   ```
+
+2. **Methods that call coroutines must also be async**:
+   ```python
+   # INCORRECT - method calls a coroutine but is not async itself
+   def create_user(self, email: str, name: str):
+       # ...
+       self.event_system.publish(...)  # This is a coroutine
+   
+   # CORRECT - method is declared as async
+   async def create_user(self, email: str, name: str):
+       # ...
+       await self.event_system.publish(...)
+   ```
+
+3. **Chain async method calls properly**:
+   ```python
+   # CORRECT pattern for calling async publish methods
+   if self.event_system:
+       await self._publish_user_created_event(user)
+   ```
+
 ### Code Review Checklist
 
 Before approving a PR, check:
@@ -860,6 +949,9 @@ Before approving a PR, check:
 - [ ] Is there proper error handling between layers?
 - [ ] Is there clear separation between API handlers and business logic?
 - [ ] Are database operations contained within repositories?
+- [ ] Are SQLAlchemy Column objects handled correctly (no direct boolean evaluation)?
+- [ ] Are all coroutine functions properly awaited?
+- [ ] Are domain models properly converted from database models with correct types?
 
 ### Refactoring Strategy
 

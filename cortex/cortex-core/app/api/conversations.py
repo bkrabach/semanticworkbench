@@ -5,19 +5,14 @@ This module provides the API endpoints for managing conversations,
 following the domain-driven repository architecture pattern.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
-from sqlalchemy.orm import Session
-from typing import List, Optional, Dict, Any
 import uuid
 from datetime import datetime, timezone
 import json
 import asyncio
 
-from app.utils.json_helpers import DateTimeEncoder
-from app.exceptions import ResourceNotFoundError
-from app.database.connection import get_db
-from app.database.models import User, Workspace, Conversation
+from app.database.models import User
 from app.models.api.request.conversation import (
     CreateConversationRequest,
     AddMessageRequest,
@@ -32,8 +27,6 @@ from app.models.api.response.conversation import (
 )
 from app.services.conversation_service import ConversationService, get_conversation_service
 from app.api.auth import get_current_user
-from app.utils.logger import logger
-from app.components.sse import get_sse_service
 from app.models.domain.user import UserInfo
 
 router = APIRouter()
@@ -68,12 +61,12 @@ async def list_conversations(
     # Verify workspace access (in a real implementation, this would be handled by a workspace service)
     # For now, we'll just proceed with the current user's permissions
     
-    # Convert User DB model to UserInfo domain model
+    # Convert User domain model to UserInfo domain model
     user_info = UserInfo(
-        id=user.id,
-        email=user.email,
-        name=user.name or "",
-        created_at=user.created_at_utc
+        id=str(user.id),
+        email=str(user.email),
+        name=str(user.name) if user.name is not None else "",
+        created_at=user.created_at if hasattr(user, 'created_at') else datetime.now(timezone.utc)
     )
     
     # Get conversations from the service
@@ -128,12 +121,12 @@ async def create_conversation(
     # Verify workspace access (in a real implementation, this would be handled by a workspace service)
     # For now, we'll just proceed with the current user's permissions
     
-    # Convert User DB model to UserInfo domain model for the service
+    # Convert User domain model to UserInfo domain model for the service
     user_info = UserInfo(
-        id=user.id,
-        email=user.email,
-        name=user.name or "",
-        created_at=user.created_at_utc
+        id=str(user.id),
+        email=str(user.email),
+        name=str(user.name) if user.name is not None else "",
+        created_at=user.created_at if hasattr(user, 'created_at') else datetime.now(timezone.utc)
     )
     
     # Create the conversation using the service
@@ -197,7 +190,7 @@ async def get_conversation(
     conversation = await service.get_conversation(conversation_id)
     
     # Handle not found case
-    if not conversation:
+    if conversation is None:
         raise HTTPException(
             status_code=404,
             detail=f"Conversation with ID {conversation_id} not found"
@@ -258,7 +251,7 @@ async def update_conversation_title(
     )
     
     # Handle not found case
-    if not conversation:
+    if conversation is None:
         raise HTTPException(
             status_code=404,
             detail=f"Conversation with ID {conversation_id} not found"
@@ -313,7 +306,7 @@ async def update_conversation_metadata(
     )
     
     # Handle not found case
-    if not conversation:
+    if conversation is None:
         raise HTTPException(
             status_code=404,
             detail=f"Conversation with ID {conversation_id} not found"
@@ -369,7 +362,7 @@ async def delete_conversation(
     success = await service.delete_conversation(conversation_id)
     
     # Handle failure case
-    if not success:
+    if success is False:
         raise HTTPException(
             status_code=404,
             detail=f"Conversation with ID {conversation_id} not found or could not be deleted"
@@ -377,6 +370,58 @@ async def delete_conversation(
     
     # Return success response
     return {"message": "Conversation deleted successfully"}
+
+
+@router.get("/conversations/{conversation_id}/messages", response_model=list[MessageResponse])
+async def get_messages(
+    conversation_id: str,
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    user: User = Depends(get_current_user),
+    service: ConversationService = Depends(get_conversation_service)
+):
+    """
+    Get messages from a conversation.
+    
+    This endpoint demonstrates the domain-driven repository pattern by:
+    1. Using pagination parameters for large result sets
+    2. Using the service layer to handle business logic
+    3. Converting domain models to API response models
+    
+    Args:
+        conversation_id: Conversation ID
+        limit: Maximum number of messages to return
+        offset: Number of messages to skip
+        user: Authenticated user
+        service: Conversation service
+        
+    Returns:
+        List of messages in the conversation
+    """
+    # Get the conversation to retrieve messages
+    conversation = await service.get_conversation(conversation_id)
+    
+    # Handle not found case
+    if conversation is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Conversation with ID {conversation_id} not found"
+        )
+    
+    # Apply pagination (in a real implementation, this would be more efficient)
+    paginated_messages = conversation.messages[offset:offset+limit]
+    
+    # Convert domain models to API response models
+    return [
+        MessageResponse(
+            id=message.id,
+            content=message.content,
+            role=message.role,
+            created_at=message.created_at,
+            metadata=message.metadata
+        )
+        for message in paginated_messages
+    ]
 
 
 @router.post("/conversations/{conversation_id}/messages", response_model=MessageResponse, status_code=201)
@@ -463,7 +508,7 @@ async def stream_message(
     )
     
     # Handle not found case
-    if not message:
+    if message is None:
         raise HTTPException(
             status_code=404,
             detail=f"Conversation with ID {conversation_id} not found"
@@ -481,6 +526,12 @@ async def stream_message(
     
     # Get the conversation to get workspace_id
     conversation = await service.get_conversation(conversation_id)
+    
+    if conversation is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Conversation with ID {conversation_id} not found"
+        )
     
     # Send the message to the router (fire and forget)
     # This would typically trigger the LLM processing

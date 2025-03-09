@@ -5,13 +5,82 @@ Subscribes to relevant events in the event system and broadcasts them
 to the appropriate SSE connections. Uses domain models for events.
 """
 
-from typing import Dict, Any, List, Optional, Callable, Awaitable
+from typing import Dict, Any, List, Optional, TYPE_CHECKING
 from datetime import datetime, timezone
 
 from app.utils.logger import logger
 from app.interfaces.router import EventSystemInterface
 from app.components.sse.manager import SSEConnectionManager
 from app.models.domain.sse import SSEEvent
+
+if TYPE_CHECKING:
+    from app.components.event_system import EventPayload
+
+# Create a type-safe adapter class that implements the EventCallback protocol
+class SSEEventHandler:
+    """
+    Adapter class that implements the EventCallback protocol
+    while encapsulating the channel-specific logic.
+    """
+    def __init__(
+        self, 
+        subscriber: 'SSEEventSubscriber', 
+        resource_id_key: Optional[str], 
+        channel_type: str
+    ):
+        """
+        Initialize the event handler
+        
+        Args:
+            subscriber: The SSE event subscriber instance
+            resource_id_key: Key to extract resource ID from event payload (None for global)
+            channel_type: Type of channel (conversation, workspace, user, global)
+        """
+        self.subscriber = subscriber
+        self.resource_id_key = resource_id_key
+        self.channel_type = channel_type
+        
+    async def __call__(self, event_type: str, payload: 'EventPayload') -> None:
+        """
+        Handle an event - implementation of the EventCallback protocol
+        
+        Args:
+            event_type: Type of the event
+            payload: Event payload with full event data
+        """
+        # For global events, resource ID is always "global"
+        if self.channel_type == "global":
+            resource_id = "global"
+        else:
+            # Extract resource ID from payload
+            if self.resource_id_key is not None:
+                resource_id_value = payload.data.get(self.resource_id_key)
+                if not resource_id_value:
+                    logger.warning(
+                        f"Missing {self.resource_id_key} in {event_type} event payload: {payload.data}"
+                    )
+                    return
+                # Ensure we have a string
+                resource_id = str(resource_id_value)
+            else:
+                # Safety fallback
+                resource_id = "unknown"
+        
+        # Create domain model for the event
+        event = self.subscriber._create_sse_event(
+            event_type=event_type,
+            data=payload.data,
+            channel_type=self.channel_type,
+            resource_id=resource_id
+        )
+        
+        # Send event to connection manager
+        await self.subscriber.connection_manager.send_event(
+            event.channel_type,
+            event.resource_id,
+            event.event_type,
+            event.data
+        )
 
 class SSEEventSubscriber:
     """
@@ -55,67 +124,21 @@ class SSEEventSubscriber:
         """Subscribe to all relevant events"""
         # Subscribe to all event patterns
         for pattern, (id_key, channel_type) in self.event_patterns.items():
-            sub_id = await self.event_system.subscribe(
-                pattern, self._create_event_handler(id_key, channel_type)
+            # Create a handler that properly implements the EventCallback protocol
+            handler = SSEEventHandler(
+                subscriber=self,
+                resource_id_key=id_key,
+                channel_type=channel_type
             )
+            
+            # The handler now properly satisfies the EventCallback protocol
+            sub_id = await self.event_system.subscribe(pattern, handler)
             self.subscriptions.append(sub_id)
             logger.debug(f"Subscribed to {pattern} events with subscription ID {sub_id}")
         
         logger.info(f"SSE Event Subscriber initialized with {len(self.subscriptions)} event pattern subscriptions")
     
-    def _create_event_handler(self, 
-                             resource_id_key: Optional[str], 
-                             channel_type: str) -> Callable[[str, Any], Awaitable[None]]:
-        """
-        Create an event handler function for a specific channel type.
-        
-        This factory method creates specialized event handlers for different
-        channel types, with common handling logic but specific resource ID extraction.
-        
-        Args:
-            resource_id_key: Key to extract resource ID from event payload (None for global)
-            channel_type: Type of channel (conversation, workspace, user, global)
-            
-        Returns:
-            Async function that handles events for the specified channel type
-        """
-        async def event_handler(event_type: str, payload):
-            """
-            Handle events for a specific channel type
-            
-            Args:
-                event_type: Type of the event
-                payload: Event payload with full event data
-            """
-            # For global events, resource ID is always "global"
-            if channel_type == "global":
-                resource_id = "global"
-            else:
-                # Extract resource ID from payload
-                resource_id = payload.data.get(resource_id_key)
-                if not resource_id:
-                    logger.warning(
-                        f"Missing {resource_id_key} in {event_type} event payload: {payload.data}"
-                    )
-                    return
-            
-            # Create domain model for the event
-            event = self._create_sse_event(
-                event_type=event_type,
-                data=payload.data,
-                channel_type=channel_type,
-                resource_id=resource_id
-            )
-            
-            # Send event to connection manager
-            await self.connection_manager.send_event(
-                event.channel_type,
-                event.resource_id,
-                event.event_type,
-                event.data
-            )
-        
-        return event_handler
+    # _create_event_handler method removed and replaced with SSEEventHandler class
         
     def _create_sse_event(self, event_type: str, data: Dict[str, Any],
                          channel_type: str, resource_id: str) -> SSEEvent:

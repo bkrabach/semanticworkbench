@@ -13,17 +13,17 @@ import hashlib
 
 from app.database.connection import get_db
 from app.database.models import ApiKey
-from app.database.repositories.user_repository import get_user_repository, UserRepository
-from app.database.repositories.workspace_repository import get_workspace_repository, WorkspaceRepository
+from app.database.repositories.user_repository import get_user_repository
+from app.database.repositories.workspace_repository import get_workspace_repository
 from app.services.user_service import get_user_service, UserService
-from app.models.domain.user import User, UserInfo
+from app.models.domain.user import User
 from app.models.api.request.user import UserLoginRequest, UserRegisterRequest
 from app.models.api.response.user import LoginResponse, RegisterResponse, UserInfoResponse
 from app.config import settings
 from app.utils.logger import logger
 from app.components.security_manager import SecurityManager
 from app.components.tokens import TokenData, generate_jwt_token, verify_jwt_token
-from app.components.event_system import get_event_system, EventSystem
+from app.components.event_system import get_event_system
 
 # Create router
 router = APIRouter()
@@ -51,12 +51,14 @@ class ApiKeyResponse(BaseModel):
     }
 
 # Factory functions for dependency injection
-def get_user_service_with_events() -> UserService:
+def get_user_service_with_events(db: Session = Depends(get_db)) -> UserService:
     """Get a user service instance with event system"""
-    db = get_db()
     repository = get_user_repository(db)
+    from app.components.event_system import EventSystem
+    # Get the event system and explicitly cast it to the expected type
     event_system = get_event_system()
-    return get_user_service(db, repository, event_system)
+    event_system_instance = event_system if isinstance(event_system, EventSystem) else None
+    return get_user_service(db, repository, event_system_instance)
 
 # Authentication dependency
 async def get_current_user(
@@ -84,6 +86,7 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    # This method doesn't need to be awaited since it's synchronous
     user = user_service.get_user(token_data.user_id)
     if not user:
         raise HTTPException(
@@ -96,15 +99,18 @@ async def get_current_user(
 # Routes
 @router.post("/login", response_model=LoginResponse)
 async def login(
-    credentials: UserLoginRequest
+    credentials: UserLoginRequest,
+    user_service: UserService = Depends(get_user_service_with_events),
+    db: Session = Depends(get_db)
 ) -> LoginResponse:
     """
     Authenticate user and create a session token
     """
-    user_service = get_user_service_with_events()
-    workspace_repo = get_workspace_repository(get_db())
+    workspace_repo = get_workspace_repository(db)
     try:
         logger.info(f"Authentication attempt for {credentials.email}")
+
+        # Normal authentication flow continues
 
         # Get user from database
         user = user_service.get_user_by_email(credentials.email)
@@ -120,7 +126,7 @@ async def login(
             password_hash = hashlib.sha256(credentials.password.encode()).hexdigest()
 
             # Create test user
-            user = user_service.create_user(
+            user = await user_service.create_user(
                 email=credentials.email,
                 name="Test User",
                 password_hash=password_hash
@@ -129,7 +135,7 @@ async def login(
             logger.info(f"Created test user: {credentials.email}")
 
             # Create default workspace for test user
-            default_workspace = workspace_repo.create_workspace(
+            workspace_repo.create_workspace(
                 user_id=user.id,
                 name="My Workspace"
             )
@@ -145,8 +151,9 @@ async def login(
 
         # Verify password
         password_hash = hashlib.sha256(credentials.password.encode()).hexdigest()
+        password_valid = (password_hash == user.password_hash)
 
-        if password_hash != user.password_hash:
+        if not password_valid:
             logger.warning(f"Invalid password for user: {credentials.email}")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -154,7 +161,7 @@ async def login(
             )
 
         # Update last login time
-        user = user_service.update_last_login(user.id)
+        user = await user_service.update_last_login(user.id)
         if not user:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -165,20 +172,18 @@ async def login(
         workspaces = workspace_repo.get_user_workspaces(user.id, limit=1)
         if not workspaces:
             # Create default workspace for existing user
-            default_workspace = workspace_repo.create_workspace(
+            workspace_repo.create_workspace(
                 user_id=user.id,
                 name="My Workspace"
             )
             
             logger.info(f"Created default workspace for existing user: {user.id}")
 
-        # Generate JWT token
-        token_expires = datetime.now(timezone.utc) + timedelta(
-            seconds=settings.security.token_expiry_seconds
-        )
+        # Generate JWT token with expiry
+        expires_delta = timedelta(seconds=settings.security.token_expiry_seconds)
         token = generate_jwt_token(
             TokenData(user_id=user.id),
-            expires_delta=timedelta(seconds=settings.security.token_expiry_seconds),
+            expires_delta=expires_delta,
         )
 
         logger.info(f"User {user.id} authenticated successfully")
@@ -226,11 +231,12 @@ async def logout():
 
 @router.post("/register", response_model=RegisterResponse)
 async def register(
-    request: UserRegisterRequest
+    request: UserRegisterRequest,
+    user_service: UserService = Depends(get_user_service_with_events),
+    db: Session = Depends(get_db)
 ):
     """Register a new user account"""
-    user_service = get_user_service_with_events()
-    workspace_repo = get_workspace_repository(get_db())
+    workspace_repo = get_workspace_repository(db)
     try:
         # Check if user already exists
         existing_user = user_service.get_user_by_email(request.email)
@@ -244,14 +250,14 @@ async def register(
         password_hash = hashlib.sha256(request.password.encode()).hexdigest()
         
         # Create new user
-        user = user_service.create_user(
+        user = await user_service.create_user(
             email=request.email,
             name=request.name,
             password_hash=password_hash
         )
         
         # Create default workspace
-        default_workspace = workspace_repo.create_workspace(
+        workspace_repo.create_workspace(
             user_id=user.id,
             name="My Workspace"
         )
@@ -278,10 +284,10 @@ async def register(
 
 @router.get("/me", response_model=UserInfoResponse)
 async def get_current_user_info(
-    token: str = Depends(oauth2_scheme)
+    token: str = Depends(oauth2_scheme),
+    user_service: UserService = Depends(get_user_service_with_events)
 ):
     """Get the current authenticated user's information"""
-    user_service = get_user_service_with_events()
     user = await get_current_user(token, user_service)
     return UserInfoResponse(
         id=user.id,
@@ -294,13 +300,13 @@ async def get_current_user_info(
 @router.post("/key/generate", response_model=ApiKeyResponse)
 async def generate_api_key(
     request: ApiKeyRequest,
-    token: str = Depends(oauth2_scheme)
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+    user_service: UserService = Depends(get_user_service_with_events)
 ):
     """
     Generate an API key for programmatic access
     """
-    db = get_db()
-    user_service = get_user_service_with_events()
     user = await get_current_user(token, user_service)
     try:
         # Calculate expiry date if provided

@@ -1,7 +1,6 @@
 """User service for handling user-related business logic."""
 
-from datetime import datetime
-from typing import List, Optional, Dict, Any
+from typing import Optional
 
 from sqlalchemy.orm import Session
 
@@ -30,7 +29,7 @@ class UserService(Service[User, UserRepository]):
         """Get limited user information by ID"""
         return self.repository.get_user_info(user_id)
         
-    def create_user(self, email: str, name: str, password_hash: str) -> User:
+    async def create_user(self, email: str, name: str, password_hash: str) -> User:
         """Create a new user"""
         # Business logic - pre-creation validations can go here
         
@@ -43,27 +42,27 @@ class UserService(Service[User, UserRepository]):
         
         # Post-creation logic (e.g., publish events)
         if self.event_system:
-            self._publish_user_created_event(user)
+            await self._publish_user_created_event(user)
             
         return user
         
-    def update_last_login(self, user_id: str) -> Optional[User]:
+    async def update_last_login(self, user_id: str) -> Optional[User]:
         """Update user's last login timestamp"""
         # Update user
         user = self.repository.update_last_login(user_id)
         
         # Publish event
         if user and self.event_system:
-            self._publish_user_login_event(user)
+            await self._publish_user_login_event(user)
             
         return user
     
-    def _publish_user_created_event(self, user: User) -> None:
+    async def _publish_user_created_event(self, user: User) -> None:
         """Publish user created event"""
         if not self.event_system:
             return
             
-        self.event_system.publish(
+        await self.event_system.publish(
             event_type="user.created",
             data={
                 "user_id": user.id,
@@ -73,12 +72,12 @@ class UserService(Service[User, UserRepository]):
             source="user_service"
         )
         
-    def _publish_user_login_event(self, user: User) -> None:
+    async def _publish_user_login_event(self, user: User) -> None:
         """Publish user login event"""
         if not self.event_system:
             return
             
-        self.event_system.publish(
+        await self.event_system.publish(
             event_type="user.login",
             data={
                 "user_id": user.id,

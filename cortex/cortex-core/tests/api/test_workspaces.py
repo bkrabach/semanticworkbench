@@ -51,9 +51,11 @@ def mock_workspace_service():
     # Setup method returns for the service mock
     service.get_user_workspaces.return_value = sample_workspaces
     service.get_workspace.return_value = sample_workspaces[0]
-    service.create_workspace.return_value = sample_workspaces[0]
-    service.update_workspace.return_value = sample_workspaces[0]
-    service.delete_workspace.return_value = True
+    
+    # Use AsyncMock for async methods
+    service.create_workspace = AsyncMock(return_value=sample_workspaces[0])
+    service.update_workspace = AsyncMock(return_value=sample_workspaces[0])
+    service.delete_workspace = AsyncMock(return_value=True)
     
     return service
 
@@ -65,7 +67,8 @@ def mock_user():
         id="user1",
         email="user@example.com",
         name="Test User",
-        created_at=datetime.now(timezone.utc)
+        created_at=datetime.now(timezone.utc),
+        password_hash="test_password_hash"
     )
 
 

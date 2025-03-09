@@ -4,7 +4,6 @@ Integration tests for Server-Sent Events (SSE) endpoints
 
 import pytest
 import uuid
-import asyncio
 from fastapi.testclient import TestClient
 from unittest.mock import patch
 from jose import jwt
@@ -12,7 +11,6 @@ from datetime import datetime, timedelta, timezone
 
 from app.main import app
 from app.config import settings
-from app.services.sse_service import get_sse_service
 
 
 # Mock response for SSE testing

@@ -5,9 +5,6 @@ Test suite for the security manager component
 import pytest
 from unittest.mock import patch, MagicMock
 import json
-import base64
-from cryptography.fernet import Fernet
-import hashlib
 
 from app.components.security_manager import (
     SecurityManager,

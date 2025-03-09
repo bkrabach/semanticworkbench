@@ -123,7 +123,8 @@ class RedisClient:
             if redis_client is None:
                 logger.error("Redis client is None, unable to set key")
                 return "ERROR"
-            return await redis_client.set(key, value, ex=ex, px=px)
+            result = await redis_client.set(key, value, ex=ex, px=px)
+            return str(result) if result is not None else "ERROR"
 
     @staticmethod
     async def get(key: str) -> Optional[str]:
@@ -140,12 +141,19 @@ class RedisClient:
                 memory_cache.pop(key, None)
                 return None
 
-            return entry["value"]
+            # Memory cache always stores strings in "value"
+            value = entry["value"]
+            return str(value) if value is not None else None
         else:
             if redis_client is None:
                 logger.error("Redis client is None, unable to get key")
                 return None
-            return await redis_client.get(key)
+                
+            result = await redis_client.get(key)
+            # Explicitly handle the None case and string conversion
+            if result is None:
+                return None
+            return str(result)
 
     @staticmethod
     async def delete(key: str) -> int:
@@ -159,7 +167,8 @@ class RedisClient:
             if redis_client is None:
                 logger.error("Redis client is None, unable to delete key")
                 return 0
-            return await redis_client.delete(key)
+            result = await redis_client.delete(key)
+            return int(result) if result is not None else 0
 
     @staticmethod
     async def exists(key: str) -> int:
@@ -180,7 +189,8 @@ class RedisClient:
             if redis_client is None:
                 logger.error("Redis client is None, unable to check if key exists")
                 return 0
-            return await redis_client.exists(key)
+            result = await redis_client.exists(key)
+            return int(result) if result is not None else 0
 
     @staticmethod
     async def expire(key: str, seconds: int) -> int:
@@ -204,7 +214,8 @@ class RedisClient:
             if redis_client is None:
                 logger.error("Redis client is None, unable to set expiry on key")
                 return 0
-            return await redis_client.expire(key, seconds)
+            result = await redis_client.expire(key, seconds)
+            return int(result) if result is not None else 0
 
     @staticmethod
     async def ttl(key: str) -> int:
@@ -233,7 +244,8 @@ class RedisClient:
             if redis_client is None:
                 logger.error("Redis client is None, unable to get TTL for key")
                 return -2
-            return await redis_client.ttl(key)
+            result = await redis_client.ttl(key)
+            return int(result) if result is not None else -2
 
     @staticmethod
     async def incr(key: str) -> int:
@@ -263,7 +275,8 @@ class RedisClient:
             if redis_client is None:
                 logger.error("Redis client is None, unable to increment key")
                 return 0
-            return await redis_client.incr(key)
+            result = await redis_client.incr(key)
+            return int(result) if result is not None else 0
 
     @staticmethod
     async def incrby(key: str, amount: int) -> int:
@@ -293,7 +306,8 @@ class RedisClient:
             if redis_client is None:
                 logger.error("Redis client is None, unable to increment key by amount")
                 return 0
-            return await redis_client.incrby(key, amount)
+            result = await redis_client.incrby(key, amount)
+            return int(result) if result is not None else 0
 
     @staticmethod
     async def setnx(key: str, value: str) -> int:
@@ -311,7 +325,8 @@ class RedisClient:
             if redis_client is None:
                 logger.error("Redis client is None, unable to set key if not exists")
                 return 0
-            return await redis_client.setnx(key, value)
+            result = await redis_client.setnx(key, value)
+            return int(result) if result is not None else 0
 
     @staticmethod
     async def flushall() -> str:
@@ -323,7 +338,8 @@ class RedisClient:
             if redis_client is None:
                 logger.error("Redis client is None, unable to flush all data")
                 return "ERROR"
-            return await redis_client.flushall()
+            result = await redis_client.flushall()
+            return str(result) if result is not None else "ERROR"
 
     @staticmethod
     def is_using_memory_fallback() -> bool:

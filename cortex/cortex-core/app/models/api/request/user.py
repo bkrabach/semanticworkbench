@@ -1,6 +1,6 @@
 """API request models for user endpoints."""
 
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional
 from pydantic import BaseModel, Field, EmailStr, validator
 
 class UserLoginRequest(BaseModel):

@@ -10,8 +10,6 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 from app.database.models import Workspace, WorkspaceSharing, Conversation
-from app.models.domain.workspace import Workspace as WorkspaceDomain
-from app.database.repositories.base import Repository
 
 
 class ResourceAccessRepository(ABC):

@@ -1,10 +1,10 @@
 """User repository for accessing user data."""
 
-from abc import ABC, abstractmethod
 from datetime import datetime, timezone
-from typing import List, Optional, Dict, Any
+from typing import Optional, Dict, Any
 import uuid
 import json
+from app.utils.json_helpers import parse_datetime
 
 from sqlalchemy.orm import Session
 
@@ -44,7 +44,7 @@ class UserRepository(Repository[User, UserDB]):
         now = datetime.now(timezone.utc)
         
         # Extract metadata if provided
-        metadata = {}
+        metadata: Dict[str, Any] = {}
         
         # Convert metadata to JSON
         metadata_json = json.dumps(metadata) if metadata else "{}"
@@ -74,8 +74,9 @@ class UserRepository(Repository[User, UserDB]):
             return None
             
         now = datetime.now(timezone.utc)
-        user_db.last_login_at_utc = now
-        user_db.updated_at_utc = now
+        # Convert from SQLAlchemy Column to plain python type
+        setattr(user_db, 'last_login_at_utc', now)
+        setattr(user_db, 'updated_at_utc', now)
         
         self.db.commit()
         self.db.refresh(user_db)
@@ -86,40 +87,51 @@ class UserRepository(Repository[User, UserDB]):
         """Convert DB model to domain model"""
         # Parse metadata
         try:
-            metadata = json.loads(db_model.meta_data) if db_model.meta_data else {}
+            metadata = json.loads(db_model.meta_data) if db_model.meta_data is not None else {}
         except (json.JSONDecodeError, TypeError):
             metadata = {}
             
         # Parse roles
         try:
-            roles = json.loads(db_model.roles) if db_model.roles else []
+            roles = json.loads(db_model.roles) if db_model.roles is not None else []
         except (json.JSONDecodeError, TypeError):
             roles = []
+        
+        # Extract the values from SQLAlchemy Column objects
+        # Use parse_datetime that handles various formats safely
+        created_at = parse_datetime(db_model.created_at_utc) if db_model.created_at_utc is not None else datetime.now(timezone.utc)
+        updated_at = parse_datetime(db_model.updated_at_utc) if db_model.updated_at_utc is not None else None
+        last_login_at = parse_datetime(db_model.last_login_at_utc) if db_model.last_login_at_utc is not None else None
             
         return User(
-            id=db_model.id,
-            email=db_model.email,
-            name=db_model.name,
-            created_at=db_model.created_at_utc,
-            updated_at=db_model.updated_at_utc,
-            last_login_at=db_model.last_login_at_utc,
+            id=str(db_model.id),
+            email=str(db_model.email),
+            name=str(db_model.name) if db_model.name is not None else None,
+            created_at=created_at,
+            updated_at=updated_at,
+            last_login_at=last_login_at,
             metadata=metadata,
-            roles=roles
+            roles=roles,
+            password_hash=str(db_model.password_hash)
         )
         
     def _to_user_info(self, db_model: UserDB) -> UserInfo:
         """Convert DB model to UserInfo domain model"""
         # Parse roles
         try:
-            roles = json.loads(db_model.roles) if db_model.roles else []
+            roles = json.loads(db_model.roles) if db_model.roles is not None else []
         except (json.JSONDecodeError, TypeError):
             roles = []
+        
+        # Extract the value from SQLAlchemy Column object and convert to Python type
+        # Use parse_datetime that handles various formats safely
+        created_at = parse_datetime(db_model.created_at_utc) if db_model.created_at_utc is not None else datetime.now(timezone.utc)
             
         return UserInfo(
-            id=db_model.id,
-            email=db_model.email,
-            name=db_model.name,
-            created_at=db_model.created_at_utc,
+            id=str(db_model.id),
+            email=str(db_model.email),
+            name=str(db_model.name) if db_model.name is not None else None,
+            created_at=created_at,
             roles=roles
         )
         
@@ -133,6 +145,7 @@ class UserRepository(Repository[User, UserDB]):
             id=domain_model.id,
             email=domain_model.email,
             name=domain_model.name,
+            password_hash=domain_model.password_hash,
             created_at_utc=domain_model.created_at,
             updated_at_utc=domain_model.updated_at or datetime.now(timezone.utc),
             last_login_at_utc=domain_model.last_login_at,

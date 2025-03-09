@@ -5,7 +5,7 @@ This module defines base service classes that provide common functionality
 and structure for all service implementations.
 """
 
-from typing import TypeVar, Generic, Type
+from typing import TypeVar, Generic
 from sqlalchemy.orm import Session
 
 from app.database.repositories.base import Repository

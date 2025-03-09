@@ -6,7 +6,7 @@ which are central to the user interaction within the system.
 """
 
 from datetime import datetime
-from typing import Optional, Dict, Any, List
+from typing import List
 from pydantic import Field
 
 from app.models.domain.base import TimestampedModel, MetadataModel

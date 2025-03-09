@@ -22,12 +22,19 @@ router = APIRouter()
 
 def get_service(db: Session = Depends(get_db)) -> WorkspaceService:
     """Get workspace service with dependencies"""
+    # Create repository inside function to avoid FastAPI dependency issues
     repo = get_workspace_repository(db)
+    
     # We need to cast the event_system to the concrete type expected by the service
     from app.components.event_system import EventSystem
     event_system = get_event_system()
+    
     # Cast to the concrete type for type checking
-    return get_workspace_service(db, repo, event_system if isinstance(event_system, EventSystem) else None)
+    return get_workspace_service(
+        db, 
+        repo, 
+        event_system if isinstance(event_system, EventSystem) else None
+    )
 
 
 @router.get("/workspaces", response_model=WorkspaceListResponse)
@@ -65,7 +72,7 @@ async def create_workspace(
 ) -> WorkspaceResponse:
     """Create a new workspace"""
     # Create workspace using service layer
-    workspace = service.create_workspace(
+    workspace = await service.create_workspace(
         user_id=user.id,
         name=request.name,
         description=request.description
@@ -144,7 +151,7 @@ async def update_workspace(
         raise HTTPException(status_code=403, detail="Access denied to this workspace")
     
     # Update the workspace
-    updated_workspace = service.update_workspace(
+    updated_workspace = await service.update_workspace(
         workspace_id=workspace_id,
         name=request.name,
         metadata=request.metadata
@@ -181,7 +188,7 @@ async def delete_workspace(
         raise HTTPException(status_code=403, detail="Access denied to this workspace")
     
     # Delete the workspace
-    success = service.delete_workspace(workspace_id)
+    success = await service.delete_workspace(workspace_id)
     
     if not success:
         raise HTTPException(status_code=500, detail="Failed to delete workspace")

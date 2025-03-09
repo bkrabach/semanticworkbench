@@ -4,7 +4,7 @@ Test suite for the router interface
 
 import pytest
 from datetime import datetime
-from typing import Dict, List, Any, Optional
+from typing import Dict, List
 import uuid
 import asyncio
 

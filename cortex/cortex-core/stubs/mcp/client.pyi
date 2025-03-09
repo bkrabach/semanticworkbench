@@ -1,4 +1,4 @@
-from typing import Dict, Any, Optional, Union, List
+from typing import Dict, Any
 
 class McpClient:
     """Type stub for McpClient class"""

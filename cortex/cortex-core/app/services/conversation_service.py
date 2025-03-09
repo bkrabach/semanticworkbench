@@ -7,14 +7,13 @@ domain-driven repository architecture pattern.
 
 from typing import Optional, List, Dict, Any
 from sqlalchemy.orm import Session
-from fastapi import Depends, HTTPException
+from fastapi import Depends
 
 from app.database.connection import get_db
 from app.database.repositories.conversation_repository import ConversationRepository, get_conversation_repository
 from app.models.domain.conversation import Conversation, Message
 from app.models.domain.user import UserInfo
 from app.services.base import Service
-from app.utils.logger import logger
 from app.components.event_system import get_event_system
 
 

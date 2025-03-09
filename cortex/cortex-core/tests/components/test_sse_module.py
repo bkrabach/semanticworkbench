@@ -304,9 +304,13 @@ async def test_event_subscriber_event_handling(mock_event_system):
     event_payload = MagicMock()
     event_payload.data = {"conversation_id": "conv-123", "message": "Hello"}
     
-    # Handle the event using the factory method output
-    # Get the handler for conversation events
-    conversation_handler = subscriber._create_event_handler("conversation_id", "conversation")
+    # Create and use the event handler class directly
+    from app.components.sse.events import SSEEventHandler
+    conversation_handler = SSEEventHandler(
+        subscriber=subscriber,
+        resource_id_key="conversation_id",
+        channel_type="conversation"
+    )
     await conversation_handler("message_received", event_payload)
     
     # Check the event was added to the queue

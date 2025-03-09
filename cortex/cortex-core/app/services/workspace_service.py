@@ -1,6 +1,5 @@
 """Workspace service for handling workspace-related business logic."""
 
-from datetime import datetime
 from typing import List, Optional, Dict, Any
 
 from sqlalchemy.orm import Session
@@ -26,7 +25,7 @@ class WorkspaceService(Service[Workspace, WorkspaceRepository]):
         """Get all workspaces for a user"""
         return self.repository.get_user_workspaces(user_id, limit)
         
-    def create_workspace(self, user_id: str, name: str, description: Optional[str] = None) -> Workspace:
+    async def create_workspace(self, user_id: str, name: str, description: Optional[str] = None) -> Workspace:
         """Create a new workspace"""
         # Business logic - pre-creation validations can go here
         
@@ -39,11 +38,11 @@ class WorkspaceService(Service[Workspace, WorkspaceRepository]):
         
         # Post-creation logic (e.g., publish events)
         if self.event_system:
-            self._publish_workspace_created_event(workspace)
+            await self._publish_workspace_created_event(workspace)
             
         return workspace
         
-    def update_workspace(self, workspace_id: str, name: Optional[str] = None, metadata: Optional[Dict[str, Any]] = None) -> Optional[Workspace]:
+    async def update_workspace(self, workspace_id: str, name: Optional[str] = None, metadata: Optional[Dict[str, Any]] = None) -> Optional[Workspace]:
         """Update a workspace"""
         # Business logic - pre-update validations can go here
         
@@ -56,11 +55,11 @@ class WorkspaceService(Service[Workspace, WorkspaceRepository]):
         
         # Post-update logic (e.g., publish events)
         if workspace and self.event_system:
-            self._publish_workspace_updated_event(workspace)
+            await self._publish_workspace_updated_event(workspace)
             
         return workspace
         
-    def delete_workspace(self, workspace_id: str) -> bool:
+    async def delete_workspace(self, workspace_id: str) -> bool:
         """Delete a workspace"""
         # Business logic - pre-deletion validations can go here
         
@@ -74,16 +73,16 @@ class WorkspaceService(Service[Workspace, WorkspaceRepository]):
         
         # Post-deletion logic (e.g., publish events)
         if result and self.event_system:
-            self._publish_workspace_deleted_event(workspace)
+            await self._publish_workspace_deleted_event(workspace)
             
         return result
     
-    def _publish_workspace_created_event(self, workspace: Workspace) -> None:
+    async def _publish_workspace_created_event(self, workspace: Workspace) -> None:
         """Publish workspace created event"""
         if not self.event_system:
             return
             
-        self.event_system.publish(
+        await self.event_system.publish(
             event_type="workspace.created",
             data={
                 "workspace_id": workspace.id,
@@ -93,12 +92,12 @@ class WorkspaceService(Service[Workspace, WorkspaceRepository]):
             source="workspace_service"
         )
         
-    def _publish_workspace_updated_event(self, workspace: Workspace) -> None:
+    async def _publish_workspace_updated_event(self, workspace: Workspace) -> None:
         """Publish workspace updated event"""
         if not self.event_system:
             return
             
-        self.event_system.publish(
+        await self.event_system.publish(
             event_type="workspace.updated",
             data={
                 "workspace_id": workspace.id,
@@ -108,12 +107,12 @@ class WorkspaceService(Service[Workspace, WorkspaceRepository]):
             source="workspace_service"
         )
         
-    def _publish_workspace_deleted_event(self, workspace: Workspace) -> None:
+    async def _publish_workspace_deleted_event(self, workspace: Workspace) -> None:
         """Publish workspace deleted event"""
         if not self.event_system:
             return
             
-        self.event_system.publish(
+        await self.event_system.publish(
             event_type="workspace.deleted",
             data={
                 "workspace_id": workspace.id,

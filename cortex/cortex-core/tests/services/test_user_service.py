@@ -3,7 +3,7 @@ Tests for the user service
 """
 
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, AsyncMock
 from datetime import datetime, timezone
 
 from app.services.user_service import UserService
@@ -19,7 +19,10 @@ def mock_repository():
 @pytest.fixture
 def mock_event_system():
     """Create a mock event system"""
-    return MagicMock(spec=EventSystem)
+    mock = MagicMock(spec=EventSystem)
+    # Mock the async publish method
+    mock.publish = AsyncMock()
+    return mock
 
 @pytest.fixture
 def user_service(mock_repository, mock_event_system):
@@ -67,13 +70,14 @@ def test_get_user_by_email(user_service, mock_repository, test_user):
     assert user == test_user
     mock_repository.get_by_email.assert_called_once_with("test@example.com")
 
-def test_create_user(user_service, mock_repository, mock_event_system, test_user):
+@pytest.mark.asyncio
+async def test_create_user(user_service, mock_repository, mock_event_system, test_user):
     """Test creating a user"""
     # Configure mock repository
     mock_repository.create.return_value = test_user
     
     # Call the service
-    user = user_service.create_user(
+    user = await user_service.create_user(
         email="test@example.com",
         name="Test User",
         password_hash="test-hash"
@@ -93,7 +97,8 @@ def test_create_user(user_service, mock_repository, mock_event_system, test_user
     assert event_data["event_type"] == "user.created"
     assert event_data["data"]["user_id"] == test_user.id
 
-def test_update_last_login(user_service, mock_repository, mock_event_system, test_user):
+@pytest.mark.asyncio
+async def test_update_last_login(user_service, mock_repository, mock_event_system, test_user):
     """Test updating user's last login time"""
     # Create a user with login time
     user_with_login = test_user.model_copy(deep=True)
@@ -103,7 +108,7 @@ def test_update_last_login(user_service, mock_repository, mock_event_system, tes
     mock_repository.update_last_login.return_value = user_with_login
     
     # Call the service
-    user = user_service.update_last_login("test-id")
+    user = await user_service.update_last_login("test-id")
     
     # Verify result
     assert user == user_with_login

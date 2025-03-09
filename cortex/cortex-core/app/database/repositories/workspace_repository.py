@@ -1,10 +1,10 @@
 """Workspace repository for accessing workspace data."""
 
-from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any
 import uuid
 import json
+from app.utils.json_helpers import parse_datetime
 
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
@@ -75,10 +75,12 @@ class WorkspaceRepository(Repository[Workspace, WorkspaceDB]):
         workspace_db.updated_at_utc = now
         
         if name:
-            workspace_db.name = name
+            # Set the value directly - SQLAlchemy handles the conversion
+            setattr(workspace_db, "name", name)
             
         if metadata is not None:
-            workspace_db.meta_data = json.dumps(metadata)
+            # Set the value directly - SQLAlchemy handles the conversion
+            setattr(workspace_db, "meta_data", json.dumps(metadata))
             
         self.db.commit()
         self.db.refresh(workspace_db)
@@ -98,19 +100,28 @@ class WorkspaceRepository(Repository[Workspace, WorkspaceDB]):
         
     def _to_domain(self, db_model: WorkspaceDB) -> Workspace:
         """Convert DB model to domain model"""
-        # Parse metadata
+        # Parse metadata - ensure we're working with string values
         try:
-            metadata = json.loads(db_model.meta_data) if db_model.meta_data else {}
+            meta_data_str = str(db_model.meta_data) if db_model.meta_data is not None else "{}"
+            metadata = json.loads(meta_data_str)
         except (json.JSONDecodeError, TypeError):
             metadata = {}
             
+        # Convert SQLAlchemy Column datetime objects to Python datetime objects
+        # Use parse_datetime that handles mock objects and various formats safely
+        created_at = parse_datetime(db_model.created_at_utc) if db_model.created_at_utc is not None else datetime.now(timezone.utc)
+        updated_at = parse_datetime(db_model.updated_at_utc) if db_model.updated_at_utc is not None else None
+        
+        # Since last_active_at is required and cannot be None, we need to provide a valid datetime
+        last_active_at = updated_at if updated_at is not None else created_at
+        
         return Workspace(
-            id=db_model.id,
-            user_id=db_model.user_id,
-            name=db_model.name,
-            created_at=db_model.created_at_utc,
-            updated_at=db_model.updated_at_utc,
-            last_active_at=db_model.updated_at_utc,  # Use updated_at as last_active_at
+            id=str(db_model.id),
+            user_id=str(db_model.user_id),
+            name=str(db_model.name),
+            created_at=created_at,
+            updated_at=updated_at,
+            last_active_at=last_active_at,
             metadata=metadata,
             config={}  # Default empty config
         )
@@ -120,7 +131,9 @@ class WorkspaceRepository(Repository[Workspace, WorkspaceDB]):
         # This is used for update operations
         metadata_json = json.dumps(domain_model.metadata) if domain_model.metadata else "{}"
         
-        return WorkspaceDB(
+        # Create a new WorkspaceDB instance with string values
+        # SQLAlchemy handles mapping these to the appropriate Column types
+        workspace_db = WorkspaceDB(
             id=domain_model.id,
             user_id=domain_model.user_id,
             name=domain_model.name,
@@ -128,6 +141,8 @@ class WorkspaceRepository(Repository[Workspace, WorkspaceDB]):
             updated_at_utc=domain_model.updated_at or datetime.now(timezone.utc),
             meta_data=metadata_json
         )
+        
+        return workspace_db
 
 # Factory function for dependency injection
 def get_workspace_repository(db_session: Session) -> WorkspaceRepository:

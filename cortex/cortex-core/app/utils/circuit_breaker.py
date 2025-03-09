@@ -99,7 +99,7 @@ class CircuitBreaker:
 
             return result
 
-        except Exception as e:
+        except Exception:
             # Track failure
             self.failure_count += 1
             self.last_failure_time = time.time()
