@@ -30,6 +30,16 @@ async def lifespan(app: FastAPI):
     """
     # Startup
     logger.info("Starting Cortex Core")
+    
+    # Check debug log settings
+    import os
+    debug_log_enabled = os.environ.get("DEBUG_LOG_ENABLED", "false").lower() == "true"
+    logger.info(f"Debug log enabled: {debug_log_enabled}")
+    if debug_log_enabled:
+        debug_main_path = os.environ.get("DEBUG_MAIN_LOG_PATH", "logs/cortex.log.debug_current")
+        debug_error_path = os.environ.get("DEBUG_ERROR_LOG_PATH", "logs/cortex-error.log.debug_current")
+        debug_requests_path = os.environ.get("DEBUG_REQUESTS_LOG_PATH", "logs/cortex-requests.log.debug_current")
+        logger.info(f"Debug log paths: main={debug_main_path}, error={debug_error_path}, requests={debug_requests_path}")
 
     # Connect to database
     await db.connect()

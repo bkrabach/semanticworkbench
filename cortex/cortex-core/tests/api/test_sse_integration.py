@@ -220,7 +220,7 @@ async def test_sse_connection_tracking(clean_connections):
     # Verify connection was added
     assert conversation_id in connection_manager.connections["conversation"]
     assert len(connection_manager.connections["conversation"][conversation_id]) == 1
-    assert connection_manager.connections["conversation"][conversation_id][0].connection.id == connection_id
+    assert connection_manager.connections["conversation"][conversation_id][0].id == connection_id
     
     # Remove the connection
     await connection_manager.remove_connection("conversation", conversation_id, connection_id)

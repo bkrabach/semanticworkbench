@@ -680,6 +680,76 @@
                 // Show typing indicator
                 showTypingIndicator();
                 
+                // Use the direct echo endpoint to get an immediate response
+                try {
+                    const directResponse = await fetch(`${API_URL}/direct/echo/${currentConversation.id}`, {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${authToken}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            content: content,
+                            user_id: currentUser.id
+                        })
+                    });
+                    
+                    if (directResponse.ok) {
+                        // Parse the direct echo response
+                        const echoMessage = await directResponse.json();
+                        console.log('Direct echo response:', echoMessage);
+                        
+                        // Add to conversation
+                        currentConversation.messages.push(echoMessage);
+                        
+                        // Render messages
+                        renderMessages();
+                        hideTypingIndicator();
+                    } else {
+                        console.error('Direct echo failed:', directResponse.status);
+                        
+                        // Fall back to client-side echo
+                        setTimeout(() => {
+                            const message = {
+                                id: `client-echo-${Date.now()}`,
+                                content: `CLIENT ECHO: ${content}`,
+                                role: 'assistant',
+                                created_at_utc: new Date().toISOString()
+                            };
+                            
+                            // Add to local messages array
+                            currentConversation.messages.push(message);
+                            
+                            // Render messages and hide typing indicator
+                            renderMessages();
+                            hideTypingIndicator();
+                            
+                            console.log('Client-side echo response added');
+                        }, 2000);
+                    }
+                } catch (error) {
+                    console.error('Error calling direct echo:', error);
+                    
+                    // Fall back to client-side echo
+                    setTimeout(() => {
+                        const message = {
+                            id: `client-echo-${Date.now()}`,
+                            content: `CLIENT ECHO (fallback): ${content}`,
+                            role: 'assistant',
+                            created_at_utc: new Date().toISOString()
+                        };
+                        
+                        // Add to local messages array
+                        currentConversation.messages.push(message);
+                        
+                        // Render messages and hide typing indicator
+                        renderMessages();
+                        hideTypingIndicator();
+                        
+                        console.log('Fallback client-side echo response added');
+                    }, 2000);
+                }
+                
             } catch (error) {
                 console.error('Error sending message:', error);
                 alert('Failed to send message');
@@ -710,6 +780,7 @@
                     console.error('Invalid SSE type:', type);
                     return;
             }
+            console.log(`Connecting to SSE endpoint: ${url.toString()}`);
             
             // Add token to URL
             url.searchParams.append('token', authToken);
@@ -798,9 +869,16 @@
         }
         
         function setupConversationEvents(eventSource, conversationId) {
+            // Add a listener for the test event
+            eventSource.addEventListener('test_event', (event) => {
+                console.log('SSE TEST EVENT RECEIVED:', event);
+            });
+            
             eventSource.addEventListener('message_received', (event) => {
-                const message = JSON.parse(event.data);
-                console.log('New message received:', message);
+                console.log('Raw message_received event:', event);
+                try {
+                    const message = JSON.parse(event.data);
+                    console.log('New message received:', message);
                 
                 // Only process if this is the current conversation
                 if (currentConversation && currentConversation.id === conversationId) {
@@ -835,6 +913,9 @@
                     if (message.role === 'assistant') {
                         hideTypingIndicator();
                     }
+                }
+                } catch (e) {
+                    console.error('Error parsing message:', e, event.data);
                 }
             });
             

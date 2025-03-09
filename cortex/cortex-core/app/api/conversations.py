@@ -11,8 +11,10 @@ import uuid
 from datetime import datetime, timezone
 import json
 import asyncio
+import traceback
 
-from app.database.models import User
+from app.models.domain.user import User
+from app.utils.logger import logger
 from app.models.api.request.conversation import (
     CreateConversationRequest,
     AddMessageRequest,
@@ -428,7 +430,7 @@ async def get_messages(
 async def add_message(
     conversation_id: str,
     message_request: AddMessageRequest,
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),  # User is a domain model from app.models.domain.user
     service: ConversationService = Depends(get_conversation_service)
 ):
     """
@@ -463,6 +465,91 @@ async def add_message(
             status_code=404,
             detail=f"Conversation with ID {conversation_id} not found"
         )
+    
+    # Process message through the router to generate the response
+    import uuid
+    from datetime import datetime, timezone
+    import asyncio
+    import traceback
+    
+    # Import the router and necessary components
+    from app.utils.logger import logger
+    from app.components.cortex_router import get_router
+    from app.interfaces.router import InputMessage, ChannelType
+    
+    # Create an async task to process through the router
+    async def process_through_router():
+        try:
+            # Get the SSE service for showing typing indicator
+            from app.services.sse_service import get_sse_service
+            sse_service = get_sse_service()
+            
+            # Show typing indicator
+            await sse_service.connection_manager.send_event(
+                "conversation",
+                conversation_id,
+                "typing",
+                {
+                    "conversation_id": conversation_id,
+                    "active": True,
+                    "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+                },
+                republish=True
+            )
+            
+            # Create an input message targeting the conversation channel
+            channel_id = f"conversation-{conversation_id}"
+            
+            # Create a properly formatted input message for the router
+            input_message = InputMessage(
+                message_id=str(uuid.uuid4()),
+                channel_id=channel_id,
+                channel_type=ChannelType.CONVERSATION,
+                content=message_request.content,  # Pass the original content
+                user_id=user.id if user is not None else None,  # Domain model ID is already a string
+                workspace_id=None,  # This might be retrieved in the future
+                conversation_id=conversation_id,
+                timestamp=datetime.now(timezone.utc),
+                metadata={
+                    "source": "cortex_core_api",
+                    "user_email": user.email if hasattr(user, 'email') else None
+                }
+            )
+            
+            # Get the router and process the input
+            router = get_router()
+            logger.info(f"Sending message to router for processing: {conversation_id}")
+            
+            # Process through the router
+            success = await router.process_input(input_message)
+            
+            # Log the result
+            if success:
+                logger.info(f"Successfully processed message through router for conversation {conversation_id}")
+            else:
+                logger.error(f"Failed to process message through router for conversation {conversation_id}")
+                
+                # If router fails, turn off typing indicator directly
+                await sse_service.connection_manager.send_event(
+                    "conversation",
+                    conversation_id,
+                    "typing",
+                    {
+                        "conversation_id": conversation_id,
+                        "active": False,
+                        "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+                    },
+                    republish=True
+                )
+                
+        except Exception as e:
+            # Log any errors
+            logger.error(f"Error in router processing: {e}")
+            logger.error(f"Error details: {traceback.format_exc()}")
+    
+    # Create and run the task
+    # Note: We don't await this task because we want it to run in the background
+    asyncio.create_task(process_through_router())
     
     # Convert domain model to API response model
     return MessageResponse(
@@ -570,6 +657,43 @@ async def stream_message(
             "choices": [{"delta": {}, "finish_reason": "listen_for_sse", "index": 0}]
         }
         yield f"data: {json.dumps(final_data)}\n\n"
+        
+        # Immediately send an echo message via SSE for testing
+        from app.services.sse_service import get_sse_service
+        message_content = f"STREAM ECHO: {message_request.content}"
+        message_id = str(uuid.uuid4())
+        
+        # Get the SSE service and send a response message after a short delay
+        sse_service = get_sse_service()
+        
+        # Create an async task to send the message after a delay
+        async def send_delayed_echo():
+            # Wait a moment to ensure SSE connection is established
+            await asyncio.sleep(2.0)
+            # Send the message
+            await sse_service.connection_manager.send_event(
+                "conversation",
+                conversation_id,
+                "message_received",
+                {
+                    "id": message_id,
+                    "content": message_content,
+                    "role": "assistant", 
+                    "created_at_utc": datetime.now(timezone.utc).isoformat(),
+                    "metadata": {"source": "stream_delayed_echo"}
+                }
+            )
+            
+            # Also add to database
+            await service.add_message(
+                conversation_id=conversation_id,
+                content=message_content,
+                role="assistant",
+                metadata={"source": "stream_delayed_echo"}
+            )
+            
+        # Start the task to send delayed echo
+        asyncio.create_task(send_delayed_echo())
     
     # Return the streaming response
     return StreamingResponse(

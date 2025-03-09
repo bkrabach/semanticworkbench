@@ -9,7 +9,7 @@ from typing import Tuple
 import asyncio
 from sqlalchemy.orm import Session
 
-from app.components.sse.manager import SSEConnectionManager
+from app.components.sse.starlette_manager import SSEStarletteManager
 from app.components.sse.events import SSEEventSubscriber
 from app.components.event_system import get_event_system
 from app.database.repositories.resource_access_repository import ResourceAccessRepository
@@ -33,7 +33,7 @@ class SSEService:
     This service implements the domain-driven repository pattern by:
     1. Using domain models for all business logic and communications
     2. Isolating data access in repositories
-    3. Providing a façade over internal components
+    3. Providing an interface over internal components
     4. Handling conversions between domain and API models
     5. Maintaining clear separation of concerns
     
@@ -52,7 +52,7 @@ class SSEService:
         """
         self.db = db_session
         self.repository = repository
-        self.connection_manager = SSEConnectionManager()
+        self.connection_manager = SSEStarletteManager()
         self.event_subscriber = SSEEventSubscriber(get_event_system(), self.connection_manager)
 
     async def initialize(self):
@@ -178,7 +178,7 @@ class SSEService:
         """
         await self.connection_manager.remove_connection(channel_type, resource_id, connection_id)
 
-    def generate_sse_events(self, queue: asyncio.Queue):
+    async def generate_sse_events(self, queue: asyncio.Queue):
         """
         Generate SSE events from a queue.
 
@@ -190,29 +190,29 @@ class SSEService:
         """
         return self.connection_manager.generate_sse_events(queue)
 
-    async def create_sse_stream(self, channel_type: str, resource_id: str, token: str):
+    async def create_sse_stream(self, channel_type: str, resource_id: str, token: str, request):
         """
         Create an SSE stream for a specific channel type and resource.
         
         This method encapsulates all the logic needed to set up an SSE stream,
-        including authentication, authorization, connection registration, and
-        cleanup. It follows the domain-driven repository pattern by:
+        including authentication, authorization, and connection registration.
+        It follows the domain-driven repository pattern by:
         
         1. Handling all business logic in the service layer
         2. Isolating the API layer from implementation details
         3. Using domain models for all operations
-        4. Managing component lifecycles internally
+        4. Managing component life cycles internally
         
         Args:
             channel_type: Type of events to subscribe to
             resource_id: ID of the resource to subscribe to
             token: Authentication token
+            request: The FastAPI request object from the API endpoint
             
         Returns:
-            FastAPI StreamingResponse with SSE stream
+            EventSourceResponse from sse-starlette with SSE stream
         """
-        from fastapi import HTTPException, BackgroundTasks
-        from fastapi.responses import StreamingResponse
+        from fastapi import HTTPException
         
         # Authenticate user
         user_info = await self.authenticate_token(token)
@@ -227,42 +227,26 @@ class SSEService:
                     detail=f"Not authorized to access {channel_type} events for {resource_id}"
                 )
         
-        # Register connection
-        queue, connection_id = await self.register_connection(channel_type, resource_id, user_info.id)
-        
-        # Create background tasks object
-        background_tasks = BackgroundTasks()
+        # Log connection status for debugging
+        logger.info(f"SSE Connection requested - type: {channel_type}, resource: {resource_id}, user: {user_info.id}")
         
         # Handle special case for conversation channel - start publisher
         if channel_type == "conversation":
             try:
                 from app.components.conversation_channels import get_conversation_publisher
                 
-                # Add publisher task to background tasks
-                background_tasks.add_task(get_conversation_publisher, resource_id)
+                # Start the publisher, but await it directly instead of creating a task
+                await get_conversation_publisher(resource_id)
             except Exception as e:
                 logger.error(f"Error initializing conversation publisher: {e}")
         
-        # Add cleanup task to background tasks
-        background_tasks.add_task(
-            self.remove_connection, 
-            channel_type, 
-            resource_id, 
-            connection_id
-        )
-        
-        # Create event generator
-        generator = self.generate_sse_events(queue)
-        
-        # Return streaming response with background tasks
-        return StreamingResponse(
-            generator,
-            media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "Connection": "keep-alive",
-            },
-            background=background_tasks,
+        # Use the actual request from the API endpoint
+        # This ensures that the client disconnect detection works properly
+        return await self.connection_manager.create_sse_response(
+            channel_type=channel_type,
+            resource_id=resource_id,
+            user_id=user_info.id,
+            request=request
         )
     
     def get_connection_stats(self) -> SSEConnectionStats:

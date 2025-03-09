@@ -8,15 +8,7 @@ from datetime import datetime
 from enum import Enum
 
 from app.components.cortex_router import CortexRouter
-from app.interfaces.router import InputMessage, RoutingDecision, ChannelType
-
-
-# Define action types for testing since they're used as strings in the router
-class ActionType(str, Enum):
-    RESPOND = "respond"
-    PROCESS = "process" 
-    DELEGATE = "delegate"
-    IGNORE = "ignore"
+from app.interfaces.router import InputMessage, RoutingDecision, ChannelType, ActionType
 
 
 @pytest.fixture
@@ -52,7 +44,7 @@ async def test_send_status_message(cortex_router, mock_event_system):
     
     # Create a decision with status message
     decision = RoutingDecision(
-        action_type="process",
+        action_type=ActionType.PROCESS,
         status_message="Processing your request..."
     )
     
@@ -138,7 +130,7 @@ async def test_handle_respond_action(cortex_router, mock_event_system):
     # Our custom metadata doesn't get passed through, so just check the basic structure
     assert "message_type" in response_message.metadata
     assert "action_type" in response_message.metadata
-    assert response_message.metadata["action_type"] == "respond"
+    assert response_message.metadata["action_type"] == ActionType.RESPOND.value
 
 
 @pytest.mark.asyncio

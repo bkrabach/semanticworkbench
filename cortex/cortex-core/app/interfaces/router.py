@@ -31,6 +31,19 @@ class ChannelType(str, Enum):
     CUSTOM = "custom"              # Custom channel type
 
 
+# ===== Action Types =====
+
+class ActionType(str, Enum):
+    """Types of actions the router can take with a message"""
+    RESPOND = "respond"       # Generate an immediate response
+    PROCESS = "process"       # Process the message with LLMs or other systems
+    DELEGATE = "delegate"     # Delegate to another system
+    IGNORE = "ignore"         # Take no action
+    CLARIFY = "clarify"       # Ask for clarification
+    SEARCH = "search"         # Search for information
+    ROUTE = "route"           # Route to a specific handler
+
+
 # ===== Message Models =====
 
 class CortexMessage(BaseModel):
@@ -66,6 +79,11 @@ class OutputMessage(CortexMessage):
     
     # Content
     content: str
+    
+    # Context - same fields as InputMessage for consistency
+    user_id: Optional[str] = None
+    workspace_id: Optional[str] = None
+    conversation_id: Optional[str] = None
     
     # Relationship
     reference_message_id: Optional[str] = None  # ID of a message this is responding to
@@ -238,8 +256,8 @@ class RoutingDecision(BaseModel):
     """
     
     # Core decision info
-    action_type: str = "process"  # "respond", "process", "delegate", "ignore", etc.
-    priority: int = 3             # 1 (lowest) to 5 (highest)
+    action_type: ActionType = ActionType.PROCESS  # Type of action to take
+    priority: int = 3                            # 1 (lowest) to 5 (highest)
     
     # Destinations
     target_channels: List[str] = Field(default_factory=list)  # Channel IDs

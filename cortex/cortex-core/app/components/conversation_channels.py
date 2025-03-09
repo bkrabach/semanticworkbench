@@ -187,7 +187,8 @@ class ConversationOutputPublisher(OutputPublisherInterface):
                 "message": data.content,
                 "timestamp": data.timestamp.isoformat(),
                 "metadata": data.metadata
-            }
+            },
+            republish=True  # Enable republishing for better delivery
         )
     
     async def publish(self, message: OutputMessage) -> bool:
@@ -213,7 +214,8 @@ class ConversationOutputPublisher(OutputPublisherInterface):
                     "role": "assistant",  # Hardcoded for now
                     "created_at_utc": message.timestamp.isoformat(),
                     "metadata": message.metadata
-                }
+                },
+                republish=True  # Enable republishing to ensure delivery across all channels
             )
             
             self.logger.info(f"Published message {message.message_id} to conversation {self.conversation_id}")

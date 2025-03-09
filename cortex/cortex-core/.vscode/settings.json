@@ -58,7 +58,8 @@
     "node_modules",
     "package-lock.json",
     "settings.json",
-    "uv.lock"
+    "uv.lock",
+    "logs"
   ],
   "cSpell.words": [
     "abstractmethod",
@@ -100,6 +101,7 @@
     "onupdate",
     "preconfigured",
     "pydantic",
+    "pyjwt",
     "pyproject",
     "pytest",
     "qualname",
@@ -109,6 +111,7 @@
     "setnx",
     "sharings",
     "sqlalchemy",
+    "starlette",
     "stringifying",
     "tablename",
     "testpaths",

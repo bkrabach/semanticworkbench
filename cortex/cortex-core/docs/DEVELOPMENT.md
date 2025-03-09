@@ -729,12 +729,40 @@ When integrating with FastAPI, be aware of these common issues:
 
 ### Common Anti-patterns to Avoid
 
-1. **Mixing SQL queries with business logic**: Keep data access contained within repositories
-2. **Direct JSON string manipulation in API layer**: Handle serialization consistently
-3. **Heavy database logic in API handlers**: Move this to repositories
-4. **Complex mocking in tests**: Mock at interface boundaries, not implementation details
-5. **Direct boolean evaluation of SQLAlchemy Column objects**: This causes type errors since Column.__bool__ returns NoReturn
-6. **Missing awaits for coroutines**: Failing to await async methods causes "unused coroutine" errors
+1. **CRITICAL: SQLAlchemy models in API or service layers**: SQLAlchemy database models must NEVER be imported or used outside the repository layer
+   ```python
+   # INCORRECT - NEVER do this
+   from app.database.models import User  # In API or service layer
+   
+   # CORRECT - Always use domain models in API and service layers
+   from app.models.domain.user import User
+   ```
+
+2. **Mixing SQL queries with business logic**: Keep data access contained within repositories
+3. **Direct JSON string manipulation in API layer**: Handle serialization consistently
+4. **Heavy database logic in API handlers**: Move this to repositories
+5. **Complex mocking in tests**: Mock at interface boundaries, not implementation details
+6. **Direct boolean evaluation of SQLAlchemy Column objects**: This causes type errors since Column.__bool__ returns NoReturn
+7. **Missing awaits for coroutines**: Failing to await async methods causes "unused coroutine" errors
+
+### Layer Boundary Rules
+
+These rules MUST be followed to maintain clean architecture:
+
+1. **Database models (SQLAlchemy)**: 
+   - MUST remain confined to the repositories layer
+   - MUST NOT be imported in services, API, or components
+   - MUST NOT be returned from repository methods
+
+2. **Domain models (Pydantic)**:
+   - MUST be used for all business logic
+   - MUST be the only models used in the service layer
+   - MUST be the only models used across layer boundaries
+
+3. **API models (Pydantic)**:
+   - MUST be used for all API endpoints
+   - MUST be converted to/from domain models in API handlers
+   - MUST NOT interact directly with repositories
 
 ### Testing with Domain-Driven Architecture
 
@@ -943,15 +971,25 @@ When working with asynchronous code:
 
 Before approving a PR, check:
 
-- [ ] Is business logic separate from data access?
-- [ ] Are JSON manipulations encapsulated in appropriate layers?
-- [ ] Are tests mocking at interface boundaries, not implementation details?
-- [ ] Is there proper error handling between layers?
-- [ ] Is there clear separation between API handlers and business logic?
-- [ ] Are database operations contained within repositories?
-- [ ] Are SQLAlchemy Column objects handled correctly (no direct boolean evaluation)?
-- [ ] Are all coroutine functions properly awaited?
-- [ ] Are domain models properly converted from database models with correct types?
+#### Architecture Integrity
+- [ ] **Layer Separation**: Is business logic separate from data access?
+- [ ] **CRITICAL: No Database Model Leaks**: Are database models (SQLAlchemy) strictly confined to repositories?
+- [ ] **Import Safety**: Do API and service files ONLY import domain models, never database models?
+- [ ] **Repository Contracts**: Do all repository methods return only domain models, never database models?
+- [ ] **Component Boundaries**: Is there clear separation between API handlers and business logic?
+
+#### Quality Checks
+- [ ] **Type Safety**: Are SQLAlchemy Column objects handled correctly (no direct boolean evaluation)?
+- [ ] **Async Correctness**: Are all coroutine functions properly awaited?
+- [ ] **Model Conversions**: Are domain models properly converted from database models with correct types?
+- [ ] **JSON Handling**: Are JSON manipulations encapsulated in appropriate layers?
+- [ ] **Test Approach**: Are tests mocking at interface boundaries, not implementation details?
+- [ ] **Error Handling**: Is there proper error handling between layers?
+
+#### Anti-Pattern Detection
+- [ ] **No SQLAlchemy Imports**: Check all API and service files to ensure they never import from app.database.models
+- [ ] **No Repository Access in API**: Ensure API endpoints use services, never repositories directly
+- [ ] **No Database Logic**: Ensure database operations are contained within repositories only
 
 ### Refactoring Strategy
 
@@ -965,3 +1003,27 @@ When refactoring existing code:
 6. **Remove old implementations**: Delete deprecated code completely rather than leaving it for compatibility
 
 Remember: This is a pre-production codebase, so prioritize clean implementation over compatibility.
+
+## Architecture Validation Tools
+
+### SQLAlchemy Import Checker
+
+To help prevent architectural boundary violations, you can use this script to detect improper imports:
+
+```bash
+#!/bin/bash
+# Check for SQLAlchemy model imports in API and service layers
+
+echo "Checking for SQLAlchemy model imports in API layer..."
+grep -r "from app.database.models import" --include="*.py" app/api/
+
+echo "Checking for SQLAlchemy model imports in service layer..."
+grep -r "from app.database.models import" --include="*.py" app/services/
+
+echo "Checking for SQLAlchemy model imports in components..."
+grep -r "from app.database.models import" --include="*.py" app/components/
+
+# Save as check_imports.sh and run with: bash check_imports.sh
+```
+
+Run this regularly to catch architecture violations early.

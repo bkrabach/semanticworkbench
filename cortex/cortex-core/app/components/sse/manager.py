@@ -6,7 +6,7 @@ removal, and communication with connected clients. Uses domain models for
 internal state management.
 """
 
-from typing import Dict, List, Any, Tuple, AsyncGenerator
+from typing import Dict, List, Any, Tuple, AsyncGenerator, Callable, Awaitable
 import asyncio
 import uuid
 from datetime import datetime, timezone
@@ -19,60 +19,73 @@ from app.models.domain.sse import SSEConnection
 # Type for internal connection tracking with queue
 class ConnectionInfo:
     """
-    Internal class to track connection information with queue.
+    Internal class to attach a queue to a connection
     
-    This class encapsulates the relationship between a domain model connection
-    and its associated queue for event delivery, ensuring type safety and
-    following the domain-driven design pattern.
-    
-    Attributes:
-        connection: The domain model representing the connection
-        queue: The asyncio queue used for event delivery to this connection
+    This provides a way to store an asyncio.Queue with the connection
+    since Pydantic models don't support dynamic attributes
     """
+    
     def __init__(self, connection: SSEConnection, queue: asyncio.Queue):
-        """
-        Initialize a new connection info object.
-        
-        Args:
-            connection: The domain model representing the connection
-            queue: The asyncio queue for this connection
-        """
-        self.connection = connection
+        self._connection = connection
         self.queue = queue
+        
+    @property
+    def connection(self):
+        return self._connection
+        
+    # Pass through all connection properties
+    @property
+    def id(self):
+        return self._connection.id
+        
+    @property
+    def user_id(self):
+        return self._connection.user_id
+        
+    @property
+    def channel_type(self):
+        return self._connection.channel_type
+        
+    @property
+    def resource_id(self):
+        return self._connection.resource_id
+        
+    @property
+    def connected_at(self):
+        return self._connection.connected_at
+        
+    @property
+    def last_active_at(self):
+        return self._connection.last_active_at
+        
+    def __str__(self):
+        return f"ConnectionInfo(id={self.id}, user={self.user_id})"
 
 
 class SSEConnectionManager:
     """
-    Manages SSE connections with proper lifecycle handling.
+    Manages Server-Sent Event connections for real-time messaging.
     
-    Uses domain models for internal state management following the domain-driven
-    repository architecture. Instead of using raw dictionaries to store connection
-    information, this manager uses strongly-typed domain models (SSEConnection)
-    encapsulated in ConnectionInfo objects.
-    
-    This approach provides several benefits:
-    1. Type safety and validation through Pydantic models
-    2. Clear separation of concerns with domain model encapsulation
-    3. Better maintainability with consistent naming conventions
-    4. Improved testability with well-defined interfaces
+    This base class provides the core connection lifecycle management,
+    with support for channel types and resource-based subscriptions.
     """
     
     def __init__(self):
         """Initialize the connection manager with empty connection collections"""
         # Store connection objects by type and resource
         self.connections = {
-            "global": [],  # List of ConnectionInfo for global connections
-            "user": collections.defaultdict(list),  # Dict of resource_id to list of ConnectionInfo
+            "global": [],  # List of SSEConnection for global connections
+            "user": collections.defaultdict(list),  # Dict of resource_id to list of SSEConnection
             "workspace": collections.defaultdict(list),
             "conversation": collections.defaultdict(list)
         }
         
-    async def register_connection(self, 
-                               channel_type: str, 
-                               resource_id: str, 
-                               user_id: str) -> Tuple[asyncio.Queue, str]:
+    async def register_connection(self,
+                             channel_type: str,
+                             resource_id: str,
+                             user_id: str) -> Tuple[asyncio.Queue, str]:
         """
-        Register an SSE connection and return the queue and connection ID
+        Register an SSE connection and return the connection ID
         
         Args:
             channel_type: Type of channel (global, user, workspace, conversation)
@@ -82,8 +95,6 @@ class SSEConnectionManager:
         Returns:
             Tuple containing the event queue and unique connection ID
         """
-        # Create new queue for this connection
-        queue: asyncio.Queue = asyncio.Queue()
         connection_id = str(uuid.uuid4())
         
         # Create domain model for the connection
@@ -96,7 +107,10 @@ class SSEConnectionManager:
             last_active_at=datetime.now(timezone.utc)
         )
         
-        # Create internal connection info
+        # Create event queue
+        queue = asyncio.Queue()
+        
+        # Create combined connection object that has the queue
         connection_info = ConnectionInfo(connection, queue)
         
         # Add to appropriate channel
@@ -108,10 +122,10 @@ class SSEConnectionManager:
         logger.info(f"SSE connection {connection_id} established: user={user_id}, {channel_type}={resource_id}")
         return queue, connection_id
         
-    async def remove_connection(self, 
-                             channel_type: str, 
-                             resource_id: str, 
-                             connection_id: str):
+    async def remove_connection(self,
+                           channel_type: str,
+                           resource_id: str,
+                           connection_id: str):
         """
         Remove an SSE connection
         
@@ -123,12 +137,12 @@ class SSEConnectionManager:
         # Handle global connections
         if channel_type == "global":
             self.connections["global"] = [
-                conn for conn in self.connections["global"] 
-                if conn.connection.id != connection_id
+                conn for conn in self.connections["global"]
+                if conn.id != connection_id
             ]
             logger.info(f"Removed SSE connection {connection_id} for global channel")
             return
-        
+            
         # Handle typed connections
         if not self.connections[channel_type][resource_id]:
             logger.warning(f"Attempted to remove non-existent connection: {channel_type}/{resource_id}/{connection_id}")
@@ -137,48 +151,35 @@ class SSEConnectionManager:
         # Remove the connection
         self.connections[channel_type][resource_id] = [
             conn for conn in self.connections[channel_type][resource_id]
-            if conn.connection.id != connection_id
+            if conn.id != connection_id
         ]
         
         # Clean up empty resource entries
         if not self.connections[channel_type][resource_id]:
             del self.connections[channel_type][resource_id]
-        
+            
         logger.info(f"Removed SSE connection {connection_id} for {channel_type} {resource_id}")
         
-    async def broadcast_to_channel(self, 
-                                connections: List[ConnectionInfo], 
-                                event_type: str, 
-                                data: Dict[str, Any]):
+    async def register_event_callback(self, channel_type: str, resource_id: str, callback: Callable[[str, Dict[str, Any]], None] | Callable[[str, Dict[str, Any]], Awaitable[None]]):
         """
-        Broadcast an event to all connections in a channel
+        Register a callback for events on a specific channel.
+        Base implementation does nothing - this is provided for interface compatibility.
+        Implementations should override this method if they support callbacks.
         
         Args:
-            connections: List of connection info objects
-            event_type: Type of event to broadcast
-            data: Event data payload
+            channel_type: Type of channel (global, user, workspace, conversation)
+            resource_id: ID of the resource
+            callback: Function to call when an event is sent to this channel
         """
-        for conn_info in connections:
-            try:
-                # Create a domain event model
-                event = {
-                    "event": event_type, 
-                    "data": data
-                }
-                
-                # Update the last_active_at timestamp
-                conn_info.connection.last_active_at = datetime.now(timezone.utc)
-                
-                # Send to the connection's queue
-                await conn_info.queue.put(event)
-            except Exception as e:
-                logger.error(f"Failed to send event to queue: {e}")
-    
+        # Base implementation does nothing
+        logger.warning("register_event_callback not implemented in base SSEConnectionManager")
+        
     async def send_event(self,
                       channel_type: str,
                       resource_id: str,
                       event_type: str,
-                      data: Dict[str, Any]):
+                      data: Dict[str, Any],
+                      republish: bool = False):
         """
         Send an event to a specific channel
         
@@ -187,22 +188,33 @@ class SSEConnectionManager:
             resource_id: ID of the resource
             event_type: Type of event to send
             data: Event data payload
+            republish: Whether to republish to the event system (used by subclasses)
         """
+        # Log the event being sent
+        logger.info(f"Sending {event_type} event to {channel_type}/{resource_id}")
+        
         if channel_type == "global":
+            if not self.connections["global"]:
+                logger.warning(f"No global connections to send {event_type} event to")
             await self.broadcast_to_channel(
                 self.connections["global"], event_type, data
             )
         elif resource_id in self.connections[channel_type]:
+            logger.info(f"Found {len(self.connections[channel_type][resource_id])} connections for {channel_type}/{resource_id}")
             await self.broadcast_to_channel(
                 self.connections[channel_type][resource_id], event_type, data
             )
+        else:
+            # Don't broadcast to all channel types - this causes message leakage
+            # Just log that no connections were found
+            logger.info(f"No active connections found for {channel_type}/{resource_id}")
     
     def get_stats(self) -> Dict[str, Any]:
         """
         Get statistics about active connections
         
         Returns:
-            Dictionary with connection statistics formatted for SSEConnectionStats
+            Dictionary with connection statistics
         """
         # Count connections by channel and user
         connections_by_channel = {"global": len(self.connections["global"])}
@@ -223,19 +235,19 @@ class SSEConnectionManager:
                 connections_by_channel[key] = count
                 
                 # Track counts by user
-                for conn_info in connections:
-                    user_id = conn_info.connection.user_id
+                for conn in connections:
+                    user_id = conn.user_id
                     connections_by_user[user_id] = connections_by_user.get(user_id, 0) + 1
-            
+                    
             # Add total for this channel type
             connections_by_channel[channel_type] = channel_count
             total_connections += channel_count
             
         # For global connections, add their users
-        for conn_info in self.connections["global"]:
-            user_id = conn_info.connection.user_id
+        for conn in self.connections["global"]:
+            user_id = conn.user_id
             connections_by_user[user_id] = connections_by_user.get(user_id, 0) + 1
-        
+            
         return {
             "total_connections": total_connections,
             "connections_by_channel": connections_by_channel,
@@ -243,6 +255,60 @@ class SSEConnectionManager:
             "generated_at": datetime.now(timezone.utc)
         }
         
+    async def broadcast_to_channel(self,
+                              connections: List[SSEConnection],
+                              event_type: str,
+                              data: Dict[str, Any]):
+        """
+        Broadcast an event to all connections in a channel
+        
+        Args:
+            connections: List of SSE connections to send to
+            event_type: Type of event to send
+            data: Event data payload
+        """
+        # Format the event as SSE format
+        event_data = {
+            "event": event_type,
+            "data": data
+        }
+        
+        # Put the event on each connection's queue
+        for conn in connections:
+            # Get the queue directly from the connection object
+            queue = getattr(conn, "queue", None)
+            if queue:
+                try:
+                    await queue.put(event_data)
+                    logger.debug(f"Added {event_type} event to queue for connection {conn.id}")
+                except Exception as e:
+                    logger.error(f"Failed to add event to queue: {e}")
+                
+    async def create_heartbeat_task(self, queue: asyncio.Queue, interval: float = 30.0):
+        """
+        Create a heartbeat task that sends periodic heartbeats to a queue
+        
+        Args:
+            queue: Queue to send heartbeats to
+            interval: Time in seconds between heartbeats
+        
+        Returns:
+            Heartbeat task
+        """
+        try:
+            while True:
+                # Send a heartbeat with the current timestamp
+                timestamp = datetime.now(timezone.utc).isoformat()
+                await queue.put({
+                    "event": "heartbeat",
+                    "data": {"timestamp_utc": timestamp}
+                })
+                await asyncio.sleep(interval)
+        except asyncio.CancelledError:
+            # Clean exit on cancellation
+            logger.debug("Heartbeat task cancelled")
+            raise
+            
     async def generate_sse_events(self,
                               queue: asyncio.Queue,
                               heartbeat_interval: float = 30.0) -> AsyncGenerator[str, None]:
@@ -256,67 +322,44 @@ class SSEConnectionManager:
         Yields:
             Formatted SSE event strings
         """
-        # Send initial connection message
+        # Send initial connection event
         yield f"event: connect\ndata: {json.dumps({'connected': True})}\n\n"
         
-        # Create a heartbeat task
-        heartbeat_task = asyncio.create_task(self._send_heartbeats(queue, heartbeat_interval))
+        # Create heartbeat task
+        heartbeat_task = asyncio.create_task(
+            self.create_heartbeat_task(queue, heartbeat_interval)
+        )
         
         try:
             # Process events from the queue
             while True:
                 try:
-                    # Wait for a message with a timeout
-                    event = await asyncio.wait_for(
-                        queue.get(), 
-                        timeout=heartbeat_interval + 5  # Longer than heartbeat interval
-                    )
+                    # Wait for the next event with a small timeout
+                    # Don't block forever in case of connection issues
+                    event = await asyncio.wait_for(queue.get(), timeout=5.0)
                     
-                    # Format SSE message
-                    event_type = event.get("event", "message")
-                    data = event.get("data", {})
-                    yield f"event: {event_type}\ndata: {json.dumps(data)}\n\n"
+                    # Format the event as SSE
+                    event_name = event.get("event", "message")
+                    event_data = json.dumps(event.get("data", {}))
+                    
+                    # Yield the formatted SSE event
+                    yield f"event: {event_name}\ndata: {event_data}\n\n"
                     
                     # Mark as processed
                     queue.task_done()
                     
                 except asyncio.TimeoutError:
-                    # No events received, but that's ok - heartbeats are handled separately
-                    # Just check if client is still connected
+                    # No event received, continue loop
                     continue
+                    
+        except asyncio.CancelledError:
+            # This is expected when client disconnects
+            logger.info("SSE event generator cancelled")
+            
         finally:
-            # Clean up heartbeat task
+            # Clean up the heartbeat task
             heartbeat_task.cancel()
             try:
-                await asyncio.wait_for(
-                    asyncio.shield(heartbeat_task), 
-                    timeout=0.1
-                )
+                await asyncio.wait_for(asyncio.shield(heartbeat_task), timeout=0.1)
             except (asyncio.CancelledError, asyncio.TimeoutError):
-                # Expected during cancellation
                 pass
-                
-    async def _send_heartbeats(self, queue: asyncio.Queue, heartbeat_interval: float = 30.0):
-        """
-        Send periodic heartbeats to an SSE connection
-        
-        Args:
-            queue: Event queue for the connection
-            heartbeat_interval: Time in seconds between heartbeats
-        """
-        try:
-            while True:
-                # Create a task that will let us detect cancellation
-                sleep_task = asyncio.create_task(asyncio.sleep(heartbeat_interval))
-                await sleep_task
-                
-                # Send heartbeat
-                timestamp = datetime.now(timezone.utc).isoformat()
-                await queue.put({
-                    "event": "heartbeat",
-                    "data": {"timestamp_utc": timestamp}
-                })
-        except asyncio.CancelledError:
-            # Clean exit on cancellation
-            logger.debug("Heartbeat task cancelled")
-            raise

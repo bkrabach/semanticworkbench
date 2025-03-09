@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, Request, HTTPException
 from typing import Optional
 from app.services.sse_service import get_sse_service, SSEService
 from app.models.api.response.sse import SSEConnectionStatsResponse
+from sse_starlette.sse import EventSourceResponse
 
 router = APIRouter(prefix="/v1", tags=["Events"])
 
@@ -40,11 +41,12 @@ async def global_events(
     if not token:
         raise HTTPException(status_code=422, detail="Missing required parameter: token")
 
-    # Use service to handle connection setup
+    # Pass the request object to the service
     streaming_response = await sse_service.create_sse_stream(
         channel_type="global",
         resource_id="global",
-        token=token
+        token=token,
+        request=request
     )
     
     return streaming_response
@@ -83,11 +85,12 @@ async def events(
             status_code=400, detail=f"Invalid channel type: {channel_type}. Must be one of: {', '.join(valid_channels)}"
         )
 
-    # Use service to handle connection setup
+    # Pass the request object to the service
     streaming_response = await sse_service.create_sse_stream(
         channel_type=channel_type,
         resource_id=resource_id,
-        token=token
+        token=token,
+        request=request
     )
     
     return streaming_response

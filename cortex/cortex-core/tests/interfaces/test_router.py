@@ -9,6 +9,7 @@ import uuid
 import asyncio
 
 from app.interfaces.router import (
+    ActionType,
     ChannelType,
     CortexMessage,
     InputMessage,
@@ -35,7 +36,7 @@ class MockRouter(RouterInterface):
         
         # Create a dummy routing decision
         decision = RoutingDecision(
-            action_type="respond",
+            action_type=ActionType.RESPOND,
             priority=3,
             target_channels=[message.channel_id],
             reference_id=message.message_id,
@@ -210,7 +211,7 @@ async def test_routing_decision_model():
     """Test RoutingDecision model"""
     # Test default values
     decision = RoutingDecision()
-    assert decision.action_type == "process"
+    assert decision.action_type == ActionType.PROCESS
     assert decision.priority == 3
     assert decision.target_channels == []
     assert decision.status_message is None
@@ -219,7 +220,7 @@ async def test_routing_decision_model():
     
     # Test with custom values
     custom_decision = RoutingDecision(
-        action_type="delegate",
+        action_type=ActionType.DELEGATE,
         priority=5,
         target_channels=["channel-1", "channel-2"],
         status_message="Processing request...",
@@ -227,7 +228,7 @@ async def test_routing_decision_model():
         metadata={"handler": "expert_system", "timeout": 30}
     )
     
-    assert custom_decision.action_type == "delegate"
+    assert custom_decision.action_type == ActionType.DELEGATE
     assert custom_decision.priority == 5
     assert custom_decision.target_channels == ["channel-1", "channel-2"]
     assert custom_decision.status_message == "Processing request..."

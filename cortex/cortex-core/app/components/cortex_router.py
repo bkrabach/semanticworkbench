@@ -8,14 +8,16 @@ import uuid
 import logging
 import threading
 import queue
-from datetime import datetime
+from datetime import datetime, timezone
 from queue import Queue
 
 from app.interfaces.router import (
     RouterInterface,
     InputMessage,
     OutputMessage,
-    RoutingDecision
+    RoutingDecision,
+    ChannelType,
+    ActionType
 )
 from app.components.event_system import get_event_system
 
@@ -131,20 +133,20 @@ class CortexRouter(RouterInterface):
                 await self._send_status_message(message, decision)
             
             # Handle the message based on the decision
-            if decision.action_type == "respond":
+            if decision.action_type == ActionType.RESPOND:
                 # For now, we'll just echo the message
                 await self._handle_respond_action(message, decision)
                 
-            elif decision.action_type == "process":
+            elif decision.action_type == ActionType.PROCESS:
                 # This would involve more complex processing, potentially
                 # across multiple systems before generating a response
                 await self._handle_process_action(message, decision)
                 
-            elif decision.action_type == "delegate":
+            elif decision.action_type == ActionType.DELEGATE:
                 # This would forward the message to another system
                 await self._handle_delegate_action(message, decision)
                 
-            elif decision.action_type == "ignore":
+            elif decision.action_type == ActionType.IGNORE:
                 # Do nothing
                 self.logger.info(f"Ignoring message {message.message_id}")
                 
@@ -177,14 +179,23 @@ class CortexRouter(RouterInterface):
         
         # For now, always decide to respond to the same channel
         # In a real implementation, this would be more sophisticated
+        
+        # Check if this is a special echo request
+        if message.metadata and message.metadata.get('is_echo_request'):
+            # Use RESPOND for echo requests
+            action = ActionType.RESPOND
+        else:
+            # Use RESPOND by default
+            action = ActionType.RESPOND
+        
         decision = RoutingDecision(
-            action_type="respond",
+            action_type=action,
             priority=3,
             target_channels=[message.channel_id],
             status_message="Processing your request...",
             reference_id=reference_id,
             metadata={
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "input_length": len(message.content)
             }
         )
@@ -235,27 +246,91 @@ class CortexRouter(RouterInterface):
             message: The input message
             decision: The routing decision
         """
-        # For demo, sleep based on priority
-        wait_time = max(0.5, 6 - decision.priority)
+        # Send typing indicator first
+        if message.channel_type == ChannelType.CONVERSATION and message.conversation_id:
+            from app.services.sse_service import get_sse_service
+            sse_service = get_sse_service()
+            
+            # Ensure typing indicator stays visible for a moment
+            await sse_service.connection_manager.send_event(
+                "conversation",
+                message.conversation_id,
+                "typing",
+                {
+                    "conversation_id": message.conversation_id,
+                    "active": True,
+                    "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+                },
+                republish=True
+            )
+        
+        # For demo, sleep based on priority 
+        wait_time = max(2.0, 6 - decision.priority)  # Increased minimum to 2 seconds
+        self.logger.info(f"Waiting {wait_time} seconds before sending response via router")
         await asyncio.sleep(wait_time)
         
-        # Generate a simple echo response
-        response_content = f"ECHO: {message.content}"
+        # Generate response - use predefined echo content if available 
+        echo_content = message.metadata.get('echo_content') if message.metadata.get('is_echo_request') else None
+        response_content = echo_content if echo_content is not None else f"ECHO: {message.content}"
+        
+        # Ensure content is a string, never None
+        if response_content is None:
+            response_content = ""
         
         # Create response message
         response = OutputMessage(
+            message_id=str(uuid.uuid4()),  # Generate new ID
             channel_id=message.channel_id,
             channel_type=message.channel_type,
-            content=response_content,
+            content=str(response_content),  # Ensure string type
+            user_id=message.user_id,  # Pass user ID if available
+            workspace_id=message.workspace_id,  # Pass workspace ID if available
+            conversation_id=message.conversation_id,  # Pass conversation ID
+            timestamp=datetime.now(timezone.utc),
             reference_message_id=message.message_id,
             context_ids=[message.conversation_id] if message.conversation_id else [],
             metadata={
                 "message_type": "response",
                 "action_type": decision.action_type,
                 "priority": decision.priority,
-                "reference_id": decision.reference_id
+                "reference_id": decision.reference_id,
+                "source": "cortex_router"
             }
         )
+        
+        # Turn off typing indicator if applicable
+        if message.channel_type == ChannelType.CONVERSATION and message.conversation_id:
+            from app.services.sse_service import get_sse_service
+            sse_service = get_sse_service()
+            
+            await sse_service.connection_manager.send_event(
+                "conversation",
+                message.conversation_id,
+                "typing",
+                {
+                    "conversation_id": message.conversation_id,
+                    "active": False,
+                    "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+                },
+                republish=True
+            )
+            
+            # Save the assistant message to the conversation
+            try:
+                from app.services.conversation_service import get_conversation_service
+                conversation_service = get_conversation_service()
+                await conversation_service.add_message(
+                    conversation_id=message.conversation_id,
+                    content=response.content,
+                    role="assistant",
+                    metadata={
+                        "source": "router_respond",
+                        "router_action_type": str(decision.action_type)
+                    }
+                )
+                self.logger.info(f"Saved router response to conversation {message.conversation_id}")
+            except Exception as e:
+                self.logger.error(f"Error saving response to conversation: {e}")
         
         # Send via the event system
         event_name = f"output.{message.channel_type}.message"
@@ -306,6 +381,24 @@ class CortexRouter(RouterInterface):
                 "reference_id": decision.reference_id
             }
         )
+        
+        # Save the assistant message to the conversation if applicable
+        if message.channel_type == ChannelType.CONVERSATION and message.conversation_id:
+            try:
+                from app.services.conversation_service import get_conversation_service
+                conversation_service = get_conversation_service()
+                await conversation_service.add_message(
+                    conversation_id=message.conversation_id,
+                    content=response.content,
+                    role="assistant", 
+                    metadata={
+                        "source": "router_process",
+                        "router_action_type": str(decision.action_type)
+                    }
+                )
+                self.logger.info(f"Saved processed response to conversation {message.conversation_id}")
+            except Exception as e:
+                self.logger.error(f"Error saving processed response to conversation: {e}")
         
         # Send via the event system
         event_name = f"output.{message.channel_type}.message"
