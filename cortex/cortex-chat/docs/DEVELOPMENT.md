@@ -14,28 +14,32 @@ This document provides guidelines, workflows, and best practices for developing 
 ### Setup Steps
 
 1. Clone the repository:
-   ```bash
-   git clone https://github.com/your-org/cortex-chat.git
-   cd cortex-chat
-   ```
+
+    ```bash
+    git clone https://github.com/your-org/cortex-chat.git
+    cd cortex-chat
+    ```
 
 2. Install dependencies:
-   ```bash
-   npm install
-   # or
-   yarn install
-   ```
+
+    ```bash
+    npm install
+    # or
+    yarn install
+    ```
 
 3. Configure development environment:
-   - Copy `.env.example` to `.env`
-   - Update the API endpoint and other configuration as needed
+
+    - Copy `.env.example` to `.env`
+    - Update the API endpoint and other configuration as needed
 
 4. Start the development server:
-   ```bash
-   npm start
-   # or 
-   yarn start
-   ```
+
+    ```bash
+    pnpm dev
+    ```
+
+    The server will start on port 5000 (http://localhost:5000)
 
 ## Development Workflow
 
@@ -136,34 +140,31 @@ import { Message } from '../types';
 import MessageItem from './MessageItem';
 
 type MessageListProps = {
-  messages: Message[];
-  isLoading?: boolean;
-  onRetry?: () => void;
+    messages: Message[];
+    isLoading?: boolean;
+    onRetry?: () => void;
 };
 
-export const MessageList: React.FC<MessageListProps> = ({ 
-  messages, 
-  isLoading = false,
-  onRetry 
+export const MessageList: React.FC<MessageListProps> = ({
+    messages,
+    isLoading = false,
+    onRetry,
 }) => {
-  if (isLoading) {
-    return <div className="loading-indicator">Loading messages...</div>;
-  }
-  
-  if (messages.length === 0) {
-    return <div className="empty-state">No messages yet</div>;
-  }
-  
-  return (
-    <div className="message-list">
-      {messages.map(message => (
-        <MessageItem 
-          key={message.id} 
-          message={message} 
-        />
-      ))}
-    </div>
-  );
+    if (isLoading) {
+        return <div className="loading-indicator">Loading messages...</div>;
+    }
+
+    if (messages.length === 0) {
+        return <div className="empty-state">No messages yet</div>;
+    }
+
+    return (
+        <div className="message-list">
+            {messages.map((message) => (
+                <MessageItem key={message.id} message={message} />
+            ))}
+        </div>
+    );
 };
 ```
 
@@ -186,40 +187,40 @@ import { ConversationService } from '../services/api';
 import { Conversation, Message } from '../types';
 
 export function useConversation(conversationId: string) {
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
-  
-  useEffect(() => {
-    let mounted = true;
-    
-    async function loadMessages() {
-      try {
-        setIsLoading(true);
-        const data = await ConversationService.getMessages(conversationId);
-        if (mounted) {
-          setMessages(data);
-          setError(null);
+    const [messages, setMessages] = useState<Message[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState<Error | null>(null);
+
+    useEffect(() => {
+        let mounted = true;
+
+        async function loadMessages() {
+            try {
+                setIsLoading(true);
+                const data = await ConversationService.getMessages(conversationId);
+                if (mounted) {
+                    setMessages(data);
+                    setError(null);
+                }
+            } catch (err) {
+                if (mounted) {
+                    setError(err as Error);
+                }
+            } finally {
+                if (mounted) {
+                    setIsLoading(false);
+                }
+            }
         }
-      } catch (err) {
-        if (mounted) {
-          setError(err as Error);
-        }
-      } finally {
-        if (mounted) {
-          setIsLoading(false);
-        }
-      }
-    }
-    
-    loadMessages();
-    
-    return () => {
-      mounted = false;
-    };
-  }, [conversationId]);
-  
-  return { messages, isLoading, error };
+
+        loadMessages();
+
+        return () => {
+            mounted = false;
+        };
+    }, [conversationId]);
+
+    return { messages, isLoading, error };
 }
 ```
 
@@ -235,42 +236,42 @@ import axios from 'axios';
 import { authManager } from './authManager';
 
 const apiClient = axios.create({
-  baseURL: process.env.REACT_APP_API_URL,
-  timeout: 10000,
-  headers: {
-    'Content-Type': 'application/json',
-  },
+    baseURL: process.env.REACT_APP_API_URL,
+    timeout: 10000,
+    headers: {
+        'Content-Type': 'application/json',
+    },
 });
 
 // Request interceptor for adding auth token
 apiClient.interceptors.request.use(
-  (config) => {
-    const token = authManager.getToken();
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-  },
-  (error) => Promise.reject(error)
+    (config) => {
+        const token = authManager.getToken();
+        if (token) {
+            config.headers.Authorization = `Bearer ${token}`;
+        }
+        return config;
+    },
+    (error) => Promise.reject(error)
 );
 
 // Response interceptor for handling errors
 apiClient.interceptors.response.use(
-  (response) => response,
-  async (error) => {
-    // Handle token refresh on 401 errors
-    if (error.response?.status === 401) {
-      try {
-        await authManager.refreshToken();
-        return apiClient(error.config);
-      } catch (refreshError) {
-        // Handle auth failure
-        authManager.logout();
-        return Promise.reject(refreshError);
-      }
+    (response) => response,
+    async (error) => {
+        // Handle token refresh on 401 errors
+        if (error.response?.status === 401) {
+            try {
+                await authManager.refreshToken();
+                return apiClient(error.config);
+            } catch (refreshError) {
+                // Handle auth failure
+                authManager.logout();
+                return Promise.reject(refreshError);
+            }
+        }
+        return Promise.reject(error);
     }
-    return Promise.reject(error);
-  }
 );
 
 export default apiClient;
@@ -287,74 +288,76 @@ The `SSEManager` class handles connection lifecycle, event routing, and error re
 ```tsx
 // src/services/sse/sseManager.ts
 export class SSEManager {
-  private baseUrl: string;
-  private eventSources: Record<ChannelType, EventSource> = {};
-  private reconnectAttempts: Record<ChannelType, number> = {};
-  private eventListeners: Record<string, Record<string, EventCallback[]>> = {};
-  private hasConnected: Record<ChannelType, boolean> = {};
-  private tokenProvider: () => string | null = () => null;
-  private MAX_RECONNECT_ATTEMPTS = 5;
+    private baseUrl: string;
+    private eventSources: Record<ChannelType, EventSource> = {};
+    private reconnectAttempts: Record<ChannelType, number> = {};
+    private eventListeners: Record<string, Record<string, EventCallback[]>> = {};
+    private hasConnected: Record<ChannelType, boolean> = {};
+    private tokenProvider: () => string | null = () => null;
+    private MAX_RECONNECT_ATTEMPTS = 5;
 
-  constructor(baseUrl: string) {
-    this.baseUrl = baseUrl;
-  }
-
-  setTokenProvider(provider: () => string | null): void {
-    this.tokenProvider = provider;
-  }
-
-  connectToSSE(type: ChannelType, resourceId?: string): EventSource | null {
-    const token = this.tokenProvider();
-    
-    // Verify we have a valid token before connecting
-    if (!token) {
-      console.error(`[SSE:${type}] Cannot connect: No auth token available`);
-      return null;
+    constructor(baseUrl: string) {
+        this.baseUrl = baseUrl;
     }
-    
-    // Check if we already have a connection to this channel
-    if (this.eventSources[type]) {
-      const existingConnection = this.eventSources[type];
-      
-      // If the connection is open or connecting, don't create a new one
-      if (existingConnection.readyState === EventSource.OPEN || 
-          existingConnection.readyState === EventSource.CONNECTING) {
-        return existingConnection;
-      }
-      
-      // Close the existing connection if it's in a bad state
-      this.closeConnection(type);
-    }
-    
-    // Build the SSE URL based on channel type
-    const url = this.buildSseUrl(type, resourceId);
-    
-    try {
-      // Create new EventSource
-      const eventSource = new EventSource(url);
-      
-      // Reset connection state
-      this.hasConnected[type] = false;
-      this.reconnectAttempts[type] = 0;
-      
-      // Set up event handlers
-      this.setupEventHandlers(eventSource, type, resourceId);
-      
-      // Store connection
-      this.eventSources[type] = eventSource;
-      
-      return eventSource;
-    } catch (error) {
-      console.error(`[SSE:${type}] Error creating connection:`, error);
-      // Only attempt reconnect if we don't already have one in progress
-      if (!(type in this.reconnectAttempts) || this.reconnectAttempts[type] === 0) {
-        this.reconnect(type, resourceId);
-      }
-      return null;
-    }
-  }
 
-  // Additional methods for connection management, event handling, etc.
+    setTokenProvider(provider: () => string | null): void {
+        this.tokenProvider = provider;
+    }
+
+    connectToSSE(type: ChannelType, resourceId?: string): EventSource | null {
+        const token = this.tokenProvider();
+
+        // Verify we have a valid token before connecting
+        if (!token) {
+            console.error(`[SSE:${type}] Cannot connect: No auth token available`);
+            return null;
+        }
+
+        // Check if we already have a connection to this channel
+        if (this.eventSources[type]) {
+            const existingConnection = this.eventSources[type];
+
+            // If the connection is open or connecting, don't create a new one
+            if (
+                existingConnection.readyState === EventSource.OPEN ||
+                existingConnection.readyState === EventSource.CONNECTING
+            ) {
+                return existingConnection;
+            }
+
+            // Close the existing connection if it's in a bad state
+            this.closeConnection(type);
+        }
+
+        // Build the SSE URL based on channel type
+        const url = this.buildSseUrl(type, resourceId);
+
+        try {
+            // Create new EventSource
+            const eventSource = new EventSource(url);
+
+            // Reset connection state
+            this.hasConnected[type] = false;
+            this.reconnectAttempts[type] = 0;
+
+            // Set up event handlers
+            this.setupEventHandlers(eventSource, type, resourceId);
+
+            // Store connection
+            this.eventSources[type] = eventSource;
+
+            return eventSource;
+        } catch (error) {
+            console.error(`[SSE:${type}] Error creating connection:`, error);
+            // Only attempt reconnect if we don't already have one in progress
+            if (!(type in this.reconnectAttempts) || this.reconnectAttempts[type] === 0) {
+                this.reconnect(type, resourceId);
+            }
+            return null;
+        }
+    }
+
+    // Additional methods for connection management, event handling, etc.
 }
 ```
 
@@ -365,48 +368,48 @@ A custom React hook simplifies SSE integration in components:
 ```tsx
 // src/hooks/useSSE.ts
 export function useSSE(
-  type: ChannelType,
-  resourceId: string | undefined,
-  eventHandlers: Record<string, EventHandler>,
-  enabled: boolean = true
+    type: ChannelType,
+    resourceId: string | undefined,
+    eventHandlers: Record<string, EventHandler>,
+    enabled: boolean = true
 ) {
-  const [status, setStatus] = useState<ConnectionStatus>(ConnectionStatus.DISCONNECTED);
-  const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
-  
-  // Use refs to track current values without triggering effect reruns
-  const handlerRef = useRef(eventHandlers);
-  const resourceIdRef = useRef(resourceId);
-  const enabledRef = useRef(enabled);
-  const typeRef = useRef(type);
-  
-  // Keep refs updated without triggering effects
-  useEffect(() => {
-    handlerRef.current = eventHandlers;
-    resourceIdRef.current = resourceId;
-    enabledRef.current = enabled;
-    typeRef.current = type;
-  }, [eventHandlers, resourceId, enabled, type]);
+    const [status, setStatus] = useState<ConnectionStatus>(ConnectionStatus.DISCONNECTED);
+    const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
 
-  // Determine whether we need to connect or disconnect
-  const shouldConnect = enabled && (type === 'global' || !!resourceId);
-  
-  // Main connection effect - only triggered on enabled/disabled or type/resource changes
-  useEffect(() => {
-    if (!shouldConnect) {
-      sseManager.closeConnection(type);
-      setStatus(ConnectionStatus.DISCONNECTED);
-      return;
-    }
-    
-    const eventSource = connect();
-    
-    return () => {
-      // Cleanup on unmount or when dependencies change
-      sseManager.closeConnection(type);
-    };
-  }, [type, shouldConnect]);
-  
-  return { status, isConnected: status === ConnectionStatus.CONNECTED, isOnline };
+    // Use refs to track current values without triggering effect reruns
+    const handlerRef = useRef(eventHandlers);
+    const resourceIdRef = useRef(resourceId);
+    const enabledRef = useRef(enabled);
+    const typeRef = useRef(type);
+
+    // Keep refs updated without triggering effects
+    useEffect(() => {
+        handlerRef.current = eventHandlers;
+        resourceIdRef.current = resourceId;
+        enabledRef.current = enabled;
+        typeRef.current = type;
+    }, [eventHandlers, resourceId, enabled, type]);
+
+    // Determine whether we need to connect or disconnect
+    const shouldConnect = enabled && (type === 'global' || !!resourceId);
+
+    // Main connection effect - only triggered on enabled/disabled or type/resource changes
+    useEffect(() => {
+        if (!shouldConnect) {
+            sseManager.closeConnection(type);
+            setStatus(ConnectionStatus.DISCONNECTED);
+            return;
+        }
+
+        const eventSource = connect();
+
+        return () => {
+            // Cleanup on unmount or when dependencies change
+            sseManager.closeConnection(type);
+        };
+    }, [type, shouldConnect]);
+
+    return { status, isConnected: status === ConnectionStatus.CONNECTED, isOnline };
 }
 ```
 
@@ -415,15 +418,21 @@ export function useSSE(
 1. **Memoize Event Handlers**: When using SSE in components, always memoize event handlers to prevent unnecessary reconnections:
 
 ```tsx
-const messageReceivedHandler = useCallback((data) => {
-  console.log('Message received:', data);
-  handleMessage(data);
-}, [handleMessage]);
+const messageReceivedHandler = useCallback(
+    (data) => {
+        console.log('Message received:', data);
+        handleMessage(data);
+    },
+    [handleMessage]
+);
 
-const eventHandlers = useMemo(() => ({
-  message_received: messageReceivedHandler,
-  typing_indicator: handleTypingIndicator
-}), [messageReceivedHandler, handleTypingIndicator]);
+const eventHandlers = useMemo(
+    () => ({
+        message_received: messageReceivedHandler,
+        typing_indicator: handleTypingIndicator,
+    }),
+    [messageReceivedHandler, handleTypingIndicator]
+);
 
 useSSE('conversation', conversationId, eventHandlers);
 ```
@@ -445,16 +454,16 @@ useSSE('conversation', selectedConversationId, conversationEventHandlers, !!sele
 
 ```tsx
 useEffect(() => {
-  const handleOnline = () => setIsOnline(true);
-  const handleOffline = () => setIsOnline(false);
-  
-  window.addEventListener('online', handleOnline);
-  window.addEventListener('offline', handleOffline);
-  
-  return () => {
-    window.removeEventListener('online', handleOnline);
-    window.removeEventListener('offline', handleOffline);
-  };
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+        window.removeEventListener('online', handleOnline);
+        window.removeEventListener('offline', handleOffline);
+    };
 }, []);
 ```
 
@@ -462,13 +471,13 @@ useEffect(() => {
 
 ```tsx
 useEffect(() => {
-  // Setup connection
-  const connection = sseManager.connect(channel, resourceId);
-  
-  return () => {
-    // Clean up connection on unmount
-    sseManager.disconnect(channel);
-  };
+    // Setup connection
+    const connection = sseManager.connect(channel, resourceId);
+
+    return () => {
+        // Clean up connection on unmount
+        sseManager.disconnect(channel);
+    };
 }, [channel, resourceId]);
 ```
 
@@ -479,21 +488,22 @@ useEffect(() => {
 private handleConnectionError(type: ChannelType, resourceId?: string) {
   // Track number of attempts
   this.reconnectAttempts[type] = (this.reconnectAttempts[type] || 0) + 1;
-  
+
   // Limit reconnection attempts
   if (this.reconnectAttempts[type] > this.MAX_RECONNECT_ATTEMPTS) {
     console.error(`[SSE:${type}] Max reconnection attempts reached`);
     return;
   }
-  
+
   // Exponential backoff
   const delay = Math.min(1000 * (2 ** (this.reconnectAttempts[type] - 1)), 30000);
-  
+
   setTimeout(() => {
     this.connectToSSE(type, resourceId);
   }, delay);
 }
 ```
+
 ```
 
 ## Error Handling
@@ -537,3 +547,4 @@ Implement consistent error handling throughout the application:
 - [TypeScript Handbook](https://www.typescriptlang.org/docs/handbook/intro.html)
 - [WAI-ARIA Practices](https://www.w3.org/TR/wai-aria-practices-1.1/)
 - [Cortex Core API Reference](../cortex-core/docs/API_REFERENCE.md)
+```
