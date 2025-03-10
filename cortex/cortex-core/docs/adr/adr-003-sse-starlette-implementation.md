@@ -182,3 +182,67 @@ We rejected this approach because:
 - [MDN Server-Sent Events](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events)
 - [Fastapi Streaming Response](https://fastapi.tiangolo.com/advanced/custom-response/#streamingresponse)
 - [SSE improvements document](../SSE_IMPROVEMENTS.md)
+
+## Update: Shared Connection State
+
+After implementing the initial solution, we encountered an issue where connections were being properly established but not consistently tracked across different service instances. This occurred because FastAPI's dependency injection system creates new service instances for each request, leading to fragmented connection tracking.
+
+### Problem
+
+- Each SSE service instance maintained its own connection tracking state
+- When a client connected via one instance, other instances wouldn't see the connection
+- Messages sent via different service instances would fail with "No active connections" errors
+- Router components couldn't reliably deliver messages to clients
+
+### Solution
+
+We implemented a shared-state pattern for connection tracking:
+
+1. **Global Connection Structures**:
+   ```python
+   # Global singleton structures for connection tracking
+   _global_connections = {
+       "global": {"global": []},
+       "user": {},
+       "workspace": {},
+       "conversation": {}
+   }
+   
+   # Global event callbacks and queue tracking
+   _global_event_callbacks = {...}
+   _global_connection_queues = {}
+   ```
+
+2. **Instance Sharing**:
+   ```python
+   def __init__(self):
+       # Use global connection structures for shared state
+       global _global_connections, _global_event_callbacks, _global_connection_queues
+       
+       # Store connection objects by type and resource
+       self.connections = _global_connections
+       self.event_callbacks = _global_event_callbacks
+       self.connection_queues = _global_connection_queues
+   ```
+
+3. **Multi-Path Message Delivery**:
+   ```python
+   async def send_message_to_client(self, conversation_id, message_id, content, role, metadata):
+       # First publish through the event system
+       await event_system.publish(
+           f"conversation.message_received",
+           payload,
+           source="cortex_router"
+       )
+       
+       # Also try direct SSE path for active connections
+       await sse_service.connection_manager.send_event(
+           "conversation",
+           conversation_id,
+           "message_received",
+           payload,
+           republish=False  # Already published through event system
+       )
+   ```
+
+This approach ensures that all SSE manager instances share the same connection state, allowing any service instance to see all active connections and deliver messages regardless of which instance created the connection.

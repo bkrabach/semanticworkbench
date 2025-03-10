@@ -8,15 +8,16 @@ The Cortex Core SSE implementation provides real-time event streaming to clients
 
 The SSE architecture consists of the following key components:
 
-1. **SSE Service** (`app/components/sse/manager.py`):
+1. **SSE Service** (`app/services/sse_service.py`):
    - Central service that coordinates all SSE functionality
-   - Handles connection management and event delivery
-   - Performs basic authentication and access control
+   - Handles authentication and access control
+   - Creates connection managers for handling client connections
 
-2. **Connection Manager** (part of the SSE Service):
-   - Manages the lifecycle of SSE connections
+2. **Connection Manager** (`app/components/sse/starlette_manager.py`):
+   - Manages the lifecycle of SSE connections using global state
    - Handles connection registration, removal, and clean-up
    - Provides efficient queuing and event delivery
+   - Ensures consistent connection tracking across service instances
 
 3. **Authentication** (`app/components/sse/auth.py`):
    - Contains authentication-related models and functions
@@ -89,3 +90,16 @@ eventSource.addEventListener("error", (e) => {
 - Resource access is verified for each connection
 - Connections are properly cleaned up when clients disconnect
 - Heartbeat mechanism ensures stale connections are detected
+
+## Connection Management
+
+The SSE implementation uses a shared-state pattern to ensure connections are properly tracked across multiple service instances:
+
+- Global connection data structures are used to track all active connections
+- All instances of the SSE Manager share the same connection tracking state
+- Connection IDs are generated as UUIDs to ensure uniqueness
+- Message delivery follows multiple paths to ensure reliability:
+  1. Direct delivery to connections via the SSE manager
+  2. Event system publishing for cross-component coordination
+
+This approach ensures that even when services are created through dependency injection, they maintain a consistent view of active connections.

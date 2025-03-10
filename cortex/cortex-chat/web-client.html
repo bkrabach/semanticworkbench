@@ -767,6 +767,10 @@
                     // DO NOT automatically close the connection on first error
                     // This was causing connections to close prematurely
                     
+                    // Note: The server has improved connection tracking that maintains
+                    // connection state across service instances, ensuring more reliable
+                    // message delivery even when connections are managed by different instances
+                    
                     // If we never established a connection, the server may be down or rejecting
                     if (!hasConnected && reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
                         console.error(`Failed to connect to ${type} events after ${MAX_RECONNECT_ATTEMPTS} attempts, giving up`);

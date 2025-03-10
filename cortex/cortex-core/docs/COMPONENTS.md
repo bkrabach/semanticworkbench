@@ -283,11 +283,11 @@ class CortexRouter(RouterInterface):
 
 The Router handles messages in a predictable sequence:
 
-1. Show typing indicator
+1. Show typing indicator (sent via event system and direct SSE)
 2. Process message and generate response
 3. Save response to database
-4. Hide typing indicator
-5. Send message to client via SSE
+4. Hide typing indicator (sent via event system and direct SSE)
+5. Send message to client (sent via event system and direct SSE)
 
 ### Client-Router-Output Communication Flow
 
@@ -385,6 +385,7 @@ sequenceDiagram
     participant API as API Layer
     participant DB as Database
     participant Router as Cortex Router
+    participant EventSys as Event System
     participant SSE as SSE Manager
 
     Client->>API: Send message (HTTP POST)
@@ -393,16 +394,21 @@ sequenceDiagram
     API->>Client: Return acknowledgment
     Note right of API: API processing complete
 
-    Router->>SSE: Show typing indicator
-
+    Router->>EventSys: Publish typing indicator event
+    Router->>SSE: Send typing indicator directly
+    
     Router->>Router: Process message
 
     Router->>DB: Save response message
-    Router->>SSE: Hide typing indicator
-    Router->>SSE: Send response message
+    Router->>EventSys: Publish hide typing event
+    Router->>SSE: Hide typing indicator directly
+    Router->>EventSys: Publish message event
+    Router->>SSE: Send response message directly
 
     SSE->>Client: Send typing indicator (SSE)
     SSE->>Client: Send response message (SSE)
+    
+    Note right of Router: Dual-path delivery ensures<br/>reliable message delivery
 ```
 
 #### Multi-Modal Interaction Example
