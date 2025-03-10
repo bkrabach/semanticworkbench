@@ -20,7 +20,11 @@ const useStyles = makeStyles({
     container: {
         display: 'flex',
         width: '100%',
-        ...shorthands.gap('12px'),
+        ...shorthands.gap('0.75rem'),
+        // Reduce gap on mobile
+        '@media (max-width: 640px)': {
+            ...shorthands.gap('0.5rem'),
+        },
     },
     userMessage: {
         alignItems: 'flex-start',
@@ -37,54 +41,108 @@ const useStyles = makeStyles({
         display: 'flex',
         flexDirection: 'column',
         maxWidth: '80%',
+        // Wider message bubbles on mobile
+        '@media (max-width: 640px)': {
+            maxWidth: '85%',
+        },
+        '@media (max-width: 480px)': {
+            maxWidth: '90%',
+        },
     },
     card: {
-        ...shorthands.padding('12px', '16px'),
+        ...shorthands.padding('0.75rem', '1rem'),
         width: 'fit-content',
         boxShadow: tokens.shadow4,
+        // Less padding on mobile
+        '@media (max-width: 640px)': {
+            ...shorthands.padding('0.625rem', '0.875rem'),
+        },
     },
     userCard: {
         backgroundColor: tokens.colorBrandBackground,
-        ...shorthands.borderRadius('16px', '4px', '16px', '16px'),
+        ...shorthands.borderRadius('1rem', '0.25rem', '1rem', '1rem'),
         alignSelf: 'flex-end',
         color: tokens.colorNeutralForegroundOnBrand,
     },
     assistantCard: {
         backgroundColor: tokens.colorNeutralBackground1,
-        ...shorthands.borderRadius('4px', '16px', '16px', '16px'),
+        ...shorthands.borderRadius('0.25rem', '1rem', '1rem', '1rem'),
     },
     systemCard: {
         backgroundColor: tokens.colorNeutralBackground3,
-        ...shorthands.borderRadius('16px'),
+        ...shorthands.borderRadius('1rem'),
         color: tokens.colorNeutralForeground2,
         fontStyle: 'italic',
         maxWidth: '70%',
         margin: '0 auto',
+        // Wider on mobile
+        '@media (max-width: 640px)': {
+            maxWidth: '80%',
+        },
     },
     header: {
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
-        marginBottom: '4px',
+        marginBottom: '0.25rem',
+        // Smaller font on mobile
+        '@media (max-width: 640px)': {
+            '& span': {
+                fontSize: tokens.fontSizeBase300,
+            },
+        },
     },
     messageText: {
         whiteSpace: 'pre-wrap',
         wordBreak: 'break-word',
         lineHeight: '1.5',
+        // Adjust font size on mobile
+        '@media (max-width: 640px)': {
+            fontSize: tokens.fontSizeBase300,
+            lineHeight: '1.4',
+        },
     },
     timestamp: {
         fontSize: tokens.fontSizeBase200,
         color: tokens.colorNeutralForeground3,
         alignSelf: 'flex-end',
-        marginTop: '4px',
+        marginTop: '0.25rem',
+        // Smaller on mobile
+        '@media (max-width: 640px)': {
+            fontSize: tokens.fontSizeBase100,
+        },
     },
     codeBlock: {
         backgroundColor: tokens.colorNeutralBackground3,
-        ...shorthands.padding('8px'),
-        ...shorthands.borderRadius('4px'),
+        ...shorthands.padding('0.5rem'),
+        ...shorthands.borderRadius('0.25rem'),
         overflowX: 'auto',
         fontFamily: 'monospace',
-        fontSize: '14px',
+        fontSize: '0.875rem',
+        // Smaller on mobile
+        '@media (max-width: 640px)': {
+            fontSize: '0.75rem',
+            ...shorthands.padding('0.375rem'),
+        },
+    },
+    avatar: {
+        flexShrink: 0,
+        // Smaller avatars on mobile
+        '@media (max-width: 640px)': {
+            '& div': {
+                width: '1.75rem !important',
+                height: '1.75rem !important',
+            },
+        },
+    },
+    menuButton: {
+        minWidth: 'unset',
+        // Even smaller on mobile
+        '@media (max-width: 640px)': {
+            ...shorthands.padding('0.125rem'),
+            height: '1.5rem',
+            width: '1.5rem',
+        },
     },
 });
 
@@ -169,12 +227,14 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message }) => {
     return (
         <div className={`${styles.container} ${containerStyle}`}>
             {message.role !== 'user' && (
-                <Avatar
-                    name={message.role === 'assistant' ? 'Assistant' : 'System'}
-                    icon={message.role === 'assistant' ? <Bot24Regular /> : undefined}
-                    color={message.role === 'assistant' ? 'brand' : 'neutral'}
-                    size={32}
-                />
+                <div className={styles.avatar}>
+                    <Avatar
+                        name={message.role === 'assistant' ? 'Assistant' : 'System'}
+                        icon={message.role === 'assistant' ? <Bot24Regular /> : undefined}
+                        color={message.role === 'assistant' ? 'brand' : 'neutral'}
+                        size={32}
+                    />
+                </div>
             )}
             
             <div className={styles.messageContent}>
@@ -187,6 +247,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message }) => {
                         <Menu>
                             <MenuTrigger disableButtonEnhancement>
                                 <Button
+                                    className={styles.menuButton}
                                     appearance="subtle"
                                     icon={<MoreHorizontal20Regular />}
                                     size="small"
@@ -217,12 +278,14 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message }) => {
             </div>
             
             {message.role === 'user' && (
-                <Avatar
-                    name="You"
-                    icon={<PersonRegular />}
-                    color="colorful"
-                    size={32}
-                />
+                <div className={styles.avatar}>
+                    <Avatar
+                        name="You"
+                        icon={<PersonRegular />}
+                        color="colorful"
+                        size={32}
+                    />
+                </div>
             )}
         </div>
     );

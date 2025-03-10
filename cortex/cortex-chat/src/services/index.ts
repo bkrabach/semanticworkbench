@@ -2,8 +2,8 @@ import { ApiClient } from './api/apiClient';
 import { AuthService } from './auth/authService';
 import { SSEManager } from './sse/sseManager';
 
-// API base URL - in a real app, this would come from an environment variable
-const API_URL = 'http://localhost:8000';
+// API base URL - match what's used in web-client.html
+const API_URL = 'http://127.0.0.1:8000';
 
 // Create service instances
 export const apiClient = new ApiClient(API_URL);

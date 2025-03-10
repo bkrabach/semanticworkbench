@@ -1,25 +1,18 @@
-import { EventSourcePolyfill } from 'event-source-polyfill';
 import { ChannelType, ConnectionStatus, SSEEvent } from '@/types';
-
-// Use the polyfill or native EventSource depending on environment
-const EventSourceImpl = EventSourcePolyfill || EventSource;
 
 // Type for event callbacks
 export type EventCallback = (data: any) => void;
 
 /**
  * SSE Manager for handling Server-Sent Events connections
- * Implements the pattern described in ADR-001
+ * Simplified implementation that follows web-client.html patterns exactly
  */
 export class SSEManager {
     private baseUrl: string;
     private eventSources: Record<string, EventSource> = {};
-    private eventHandlers: Record<string, Record<string, EventCallback[]>> = {};
-    private connectionStatus: Record<string, ConnectionStatus> = {};
-    private reconnectTimeouts: Record<string, NodeJS.Timeout> = {};
     private reconnectAttempts: Record<string, number> = {};
-    private maxReconnectAttempts: number = 5;
     private tokenProvider: () => string | null = () => null;
+    private MAX_RECONNECT_ATTEMPTS = 5;
 
     /**
      * Create a new SSEManager
@@ -39,148 +32,152 @@ export class SSEManager {
 
     /**
      * Connect to an SSE channel
-     * @param channel The channel type (global, workspace, conversation)
+     * @param type The channel type (global, workspace, conversation)
      * @param resourceId Optional resource ID for workspace or conversation channels
      * @returns The EventSource instance or null if connection failed
      */
-    connect(channel: ChannelType, resourceId?: string): EventSource | null {
+    connectToSSE(type: ChannelType, resourceId?: string): EventSource | null {
         const token = this.tokenProvider();
         
+        // Verify we have a valid token before connecting
         if (!token) {
-            console.error('No authentication token available');
+            console.error(`[SSE:${type}] Cannot connect: No auth token available`);
             return null;
         }
         
         // For non-global channels, resourceId is required
-        if (channel !== 'global' && !resourceId) {
-            console.error(`ResourceId is required for channel type: ${channel}`);
+        if (type !== 'global' && (!resourceId || resourceId === 'undefined' || resourceId === 'null')) {
+            console.error(`[SSE:${type}] Cannot connect: Invalid resource ID ${resourceId}`);
             return null;
         }
-        
-        const connectionKey = this.getConnectionKey(channel, resourceId);
-        
+
         // Close existing connection if any
-        this.disconnect(connectionKey);
-        
-        // Set initial connection status
-        this.connectionStatus[connectionKey] = ConnectionStatus.CONNECTING;
+        this.closeConnection(type);
         
         // Build the SSE URL based on channel type
-        const url = this.buildUrl(channel, resourceId, token);
+        const url = this.buildSseUrl(type, resourceId);
         
         try {
-            // Create new EventSource connection
-            const eventSource = new EventSourceImpl(url);
+            console.log(`[SSE:${type}] Connecting to ${url}`);
             
-            // Set up connection event handlers
-            eventSource.onopen = this.handleOpen(connectionKey);
-            eventSource.onerror = this.handleError(connectionKey, channel, resourceId);
+            // Create new EventSource connection - exactly as in web-client.html
+            const eventSource = new EventSource(url);
             
-            // Register existing event handlers for this connection
-            this.registerEventHandlers(connectionKey, eventSource);
+            // Set up common event handlers
+            this.setupCommonEventHandlers(eventSource, type, resourceId);
             
-            // Store the connection
-            this.eventSources[connectionKey] = eventSource;
+            // Store connection
+            this.eventSources[type] = eventSource;
             
             return eventSource;
         } catch (error) {
-            console.error(`Error creating SSE connection to ${channel}:`, error);
-            this.connectionStatus[connectionKey] = ConnectionStatus.ERROR;
-            this.handleReconnect(connectionKey, channel, resourceId);
+            console.error(`[SSE:${type}] Error creating connection:`, error);
+            this.reconnect(type, resourceId);
             return null;
         }
     }
 
     /**
-     * Disconnect from an SSE channel
-     * @param connectionKey The connection key
+     * Close an SSE connection
+     * @param type The channel type to disconnect
      */
-    disconnect(connectionKey: string): void {
-        // Clear any pending reconnect timeout
-        if (this.reconnectTimeouts[connectionKey]) {
-            clearTimeout(this.reconnectTimeouts[connectionKey]);
-            delete this.reconnectTimeouts[connectionKey];
+    closeConnection(type: ChannelType): void {
+        if (this.eventSources[type]) {
+            console.log(`[SSE:${type}] Closing connection`);
+            this.eventSources[type].close();
+            delete this.eventSources[type];
         }
-        
-        // Close the connection if it exists
-        if (this.eventSources[connectionKey]) {
-            this.eventSources[connectionKey].close();
-            delete this.eventSources[connectionKey];
-            this.connectionStatus[connectionKey] = ConnectionStatus.DISCONNECTED;
-        }
-        
-        // Reset reconnect attempts
-        delete this.reconnectAttempts[connectionKey];
     }
 
     /**
-     * Disconnect from all SSE channels
+     * Close all SSE connections
      */
-    disconnectAll(): void {
+    closeAllConnections(): void {
         Object.keys(this.eventSources).forEach(key => {
-            this.disconnect(key);
+            const eventSource = this.eventSources[key as ChannelType];
+            if (eventSource) {
+                console.log(`[SSE:${key}] Closing connection`);
+                eventSource.close();
+            }
+        });
+        this.eventSources = {};
+    }
+
+    /**
+     * Get the connection status for a channel
+     * @param type The channel type
+     * @returns ConnectionStatus
+     */
+    getConnectionStatus(type: ChannelType): ConnectionStatus {
+        if (!this.eventSources[type]) {
+            return ConnectionStatus.DISCONNECTED;
+        }
+        
+        // Check readyState
+        switch (this.eventSources[type].readyState) {
+            case EventSource.CONNECTING:
+                return ConnectionStatus.CONNECTING;
+            case EventSource.OPEN:
+                return ConnectionStatus.CONNECTED;
+            case EventSource.CLOSED:
+                return ConnectionStatus.DISCONNECTED;
+            default:
+                return ConnectionStatus.DISCONNECTED;
+        }
+    }
+
+    /**
+     * Add an event listener to a connection
+     * @param type The channel type
+     * @param eventName The event name to listen for
+     * @param callback The callback to call when the event is received
+     */
+    addEventListener(type: ChannelType, eventName: string, callback: EventCallback): void {
+        const eventSource = this.eventSources[type];
+        if (!eventSource) {
+            console.error(`[SSE:${type}] Cannot add event listener: No connection`);
+            return;
+        }
+        
+        console.log(`[SSE:${type}] Adding event listener for '${eventName}'`);
+        
+        eventSource.addEventListener(eventName, (event: MessageEvent) => {
+            try {
+                console.log(`[SSE:${type}] Received '${eventName}' event:`, event.data);
+                const data = JSON.parse(event.data);
+                callback(data);
+            } catch (error) {
+                console.error(`[SSE:${type}] Error handling '${eventName}' event:`, error);
+            }
         });
     }
 
     /**
-     * Register an event handler for a specific event type
-     * @param connectionKey The connection key
-     * @param eventType The event type to listen for
-     * @param callback The callback function to call when the event is received
+     * Setup for all SSE channels
+     * @param channelType The type of channel
+     * @param resourceId Optional resource ID for workspace or conversation
      */
-    on(connectionKey: string, eventType: string, callback: EventCallback): void {
-        // Initialize event handlers for this connection if needed
-        if (!this.eventHandlers[connectionKey]) {
-            this.eventHandlers[connectionKey] = {};
+    setupChannel(channelType: ChannelType, resourceId?: string): EventSource | null {
+        const eventSource = this.connectToSSE(channelType, resourceId);
+        
+        if (!eventSource) {
+            return null;
         }
         
-        // Initialize handlers for this event type if needed
-        if (!this.eventHandlers[connectionKey][eventType]) {
-            this.eventHandlers[connectionKey][eventType] = [];
+        // Add channel-specific event listeners based on channel type
+        switch (channelType) {
+            case 'global':
+                this.setupGlobalEvents(eventSource);
+                break;
+            case 'workspace':
+                this.setupWorkspaceEvents(eventSource);
+                break;
+            case 'conversation':
+                this.setupConversationEvents(eventSource);
+                break;
         }
         
-        // Add the callback to the handlers
-        this.eventHandlers[connectionKey][eventType].push(callback);
-        
-        // If connection exists, ensure the event listener is added
-        if (this.eventSources[connectionKey]) {
-            this.addEventListenerToConnection(
-                this.eventSources[connectionKey], 
-                eventType, 
-                this.createEventListener(connectionKey, eventType)
-            );
-        }
-    }
-
-    /**
-     * Remove an event handler for a specific event type
-     * @param connectionKey The connection key
-     * @param eventType The event type to remove handler for
-     * @param callback Optional specific callback to remove, or all if not provided
-     */
-    off(connectionKey: string, eventType: string, callback?: EventCallback): void {
-        if (!this.eventHandlers[connectionKey] || 
-            !this.eventHandlers[connectionKey][eventType]) {
-            return;
-        }
-        
-        if (callback) {
-            // Remove specific callback
-            this.eventHandlers[connectionKey][eventType] = 
-                this.eventHandlers[connectionKey][eventType].filter(cb => cb !== callback);
-        } else {
-            // Remove all callbacks for this event type
-            this.eventHandlers[connectionKey][eventType] = [];
-        }
-    }
-
-    /**
-     * Get the current connection status
-     * @param connectionKey The connection key
-     * @returns The connection status
-     */
-    getConnectionStatus(connectionKey: string): ConnectionStatus {
-        return this.connectionStatus[connectionKey] || ConnectionStatus.DISCONNECTED;
+        return eventSource;
     }
 
     // Private helper methods
@@ -188,166 +185,123 @@ export class SSEManager {
     /**
      * Build the SSE URL based on channel type and resource ID
      */
-    private buildUrl(channel: ChannelType, resourceId?: string, token?: string): string {
-        let url = `${this.baseUrl}/v1`;
+    private buildSseUrl(type: ChannelType, resourceId?: string): string {
+        const token = this.tokenProvider();
+        let url = new URL(`${this.baseUrl}/v1`);
         
-        switch (channel) {
-            case 'global':
-                url += `/global`;
-                break;
-            case 'workspace':
-                url += `/workspace/${resourceId}`;
-                break;
-            case 'conversation':
-                url += `/conversation/${resourceId}`;
-                break;
-            default:
-                throw new Error(`Invalid channel type: ${channel}`);
+        if (type === 'global') {
+            url = new URL(`${this.baseUrl}/v1/global/global`);
+        } else if (type === 'workspace' && resourceId) {
+            url = new URL(`${this.baseUrl}/v1/workspace/${resourceId}`);
+        } else if (type === 'conversation' && resourceId) {
+            url = new URL(`${this.baseUrl}/v1/conversation/${resourceId}`);
         }
         
-        // Add token if available
+        // Add token to URL exactly as web-client does
         if (token) {
-            url += `?token=${encodeURIComponent(token)}`;
+            url.searchParams.append('token', token);
         }
         
-        return url;
+        return url.toString();
     }
 
     /**
-     * Get a unique key for a connection based on channel and resource ID
+     * Set up common event handlers for all SSE connections
      */
-    private getConnectionKey(channel: ChannelType, resourceId?: string): string {
-        return resourceId ? `${channel}_${resourceId}` : channel;
-    }
-
-    /**
-     * Create an event handler for the 'open' event
-     */
-    private handleOpen(connectionKey: string) {
-        return () => {
-            console.log(`SSE connection opened: ${connectionKey}`);
-            this.connectionStatus[connectionKey] = ConnectionStatus.CONNECTED;
-            this.reconnectAttempts[connectionKey] = 0;
-            
-            // Trigger handlers for the 'open' event
-            this.triggerEvent(connectionKey, 'open', { connectionKey });
+    private setupCommonEventHandlers(
+        eventSource: EventSource, 
+        type: ChannelType, 
+        resourceId?: string
+    ): void {
+        // Connection opened
+        eventSource.onopen = () => {
+            console.log(`[SSE:${type}] Connection established`);
+            this.reconnectAttempts[type] = 0;
         };
-    }
-
-    /**
-     * Create an event handler for the 'error' event
-     */
-    private handleError(connectionKey: string, channel: ChannelType, resourceId?: string) {
-        return (error: Event) => {
-            console.error(`SSE connection error: ${connectionKey}`, error);
-            
-            // Trigger handlers for the 'error' event
-            this.triggerEvent(connectionKey, 'error', { connectionKey, error });
-            
-            // Attempt to reconnect
-            this.handleReconnect(connectionKey, channel, resourceId);
-        };
-    }
-
-    /**
-     * Handle reconnection attempts
-     */
-    private handleReconnect(connectionKey: string, channel: ChannelType, resourceId?: string): void {
-        // Check if we've exceeded max reconnect attempts
-        const attempts = this.reconnectAttempts[connectionKey] || 0;
         
-        if (attempts >= this.maxReconnectAttempts) {
-            console.error(`Max reconnect attempts reached for ${connectionKey}`);
-            this.connectionStatus[connectionKey] = ConnectionStatus.ERROR;
-            this.triggerEvent(connectionKey, 'reconnect_failed', { 
-                connectionKey, 
-                attempts 
-            });
+        // Connection error
+        eventSource.onerror = (error) => {
+            console.error(`[SSE:${type}] Connection error:`, error);
+            
+            // Handle reconnection
+            this.reconnect(type, resourceId);
+        };
+        
+        // Common events for all channels
+        eventSource.addEventListener('connect', (event) => {
+            console.log(`[SSE:${type}] Connect event received:`, event.data);
+        });
+        
+        eventSource.addEventListener('heartbeat', (event) => {
+            console.log(`[SSE:${type}] Heartbeat received`);
+        });
+    }
+
+    /**
+     * Set up global channel specific event listeners
+     */
+    private setupGlobalEvents(eventSource: EventSource): void {
+        eventSource.addEventListener('notification', (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                console.log('[SSE:global] Notification received:', data);
+                // Global notifications can be handled here
+            } catch (error) {
+                console.error('[SSE:global] Error parsing notification:', error);
+            }
+        });
+        
+        eventSource.addEventListener('system_update', (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                console.log('[SSE:global] System update received:', data);
+                // System updates can be handled here
+            } catch (error) {
+                console.error('[SSE:global] Error parsing system update:', error);
+            }
+        });
+    }
+
+    /**
+     * Set up workspace channel specific event listeners
+     */
+    private setupWorkspaceEvents(eventSource: EventSource): void {
+        // These will be handled by the components that need this data
+        // The components will add their own listeners via addEventListener
+    }
+
+    /**
+     * Set up conversation channel specific event listeners
+     */
+    private setupConversationEvents(eventSource: EventSource): void {
+        // These will be handled by the components that need this data
+        // The components will add their own listeners via addEventListener
+    }
+
+    /**
+     * Handle reconnection with exponential backoff
+     */
+    private reconnect(type: ChannelType, resourceId?: string): void {
+        // Get current attempt count
+        const attempts = this.reconnectAttempts[type] || 0;
+        
+        // Check if we've exceeded max reconnect attempts
+        if (attempts >= this.MAX_RECONNECT_ATTEMPTS) {
+            console.error(`[SSE:${type}] Max reconnect attempts reached (${this.MAX_RECONNECT_ATTEMPTS})`);
             return;
         }
         
-        // Increment reconnect attempts
-        this.reconnectAttempts[connectionKey] = attempts + 1;
+        // Increment attempt counter
+        this.reconnectAttempts[type] = attempts + 1;
         
-        // Set connection status to reconnecting
-        this.connectionStatus[connectionKey] = ConnectionStatus.RECONNECTING;
+        // Calculate backoff delay with exponential backoff (matching web-client.html exactly)
+        const delay = Math.min(1000 * this.reconnectAttempts[type], 5000);
         
-        // Trigger reconnecting event
-        this.triggerEvent(connectionKey, 'reconnecting', { 
-            connectionKey, 
-            attempt: this.reconnectAttempts[connectionKey] 
-        });
-        
-        // Calculate backoff delay (with exponential backoff)
-        const delay = Math.min(1000 * Math.pow(2, attempts), 30000);
+        console.log(`[SSE:${type}] Reconnecting in ${delay/1000} seconds... (attempt ${this.reconnectAttempts[type]}/${this.MAX_RECONNECT_ATTEMPTS})`);
         
         // Set timeout for reconnection
-        this.reconnectTimeouts[connectionKey] = setTimeout(() => {
-            console.log(`Attempting to reconnect to ${connectionKey} (attempt ${attempts + 1})`);
-            this.connect(channel, resourceId);
+        setTimeout(() => {
+            this.connectToSSE(type, resourceId);
         }, delay);
-    }
-
-    /**
-     * Register existing event handlers for a new connection
-     */
-    private registerEventHandlers(connectionKey: string, eventSource: EventSource): void {
-        if (this.eventHandlers[connectionKey]) {
-            Object.keys(this.eventHandlers[connectionKey]).forEach(eventType => {
-                this.addEventListenerToConnection(
-                    eventSource, 
-                    eventType, 
-                    this.createEventListener(connectionKey, eventType)
-                );
-            });
-        }
-    }
-
-    /**
-     * Add an event listener to a connection
-     */
-    private addEventListenerToConnection(
-        eventSource: EventSource, 
-        eventType: string, 
-        listener: (event: MessageEvent) => void
-    ): void {
-        eventSource.addEventListener(eventType, listener);
-    }
-
-    /**
-     * Create an event listener function for a specific event type
-     */
-    private createEventListener(connectionKey: string, eventType: string): (event: MessageEvent) => void {
-        return (event: MessageEvent) => {
-            try {
-                // Parse event data
-                const data = JSON.parse(event.data);
-                
-                // Trigger handlers for this event type
-                this.triggerEvent(connectionKey, eventType, data);
-            } catch (error) {
-                console.error(`Error parsing SSE data for ${eventType}:`, error);
-            }
-        };
-    }
-
-    /**
-     * Trigger all handlers for a specific event type
-     */
-    private triggerEvent(connectionKey: string, eventType: string, data: any): void {
-        // Check if we have handlers for this connection and event type
-        if (!this.eventHandlers[connectionKey] || 
-            !this.eventHandlers[connectionKey][eventType]) {
-            return;
-        }
-        
-        // Call each handler with the event data
-        this.eventHandlers[connectionKey][eventType].forEach(callback => {
-            try {
-                callback(data);
-            } catch (error) {
-                console.error(`Error in SSE event handler for ${eventType}:`, error);
-            }
-        });
     }
 }

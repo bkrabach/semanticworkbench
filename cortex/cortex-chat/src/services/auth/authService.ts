@@ -33,17 +33,22 @@ export class AuthService {
      */
     async login(email: string, password: string): Promise<User> {
         try {
+            console.log(`Attempting to login with email: ${email}`);
+            
             const response = await this.apiClient.post<LoginResponse>('/auth/login', {
                 email,
                 password,
             });
 
+            console.log('Login response received:', response);
+            
             const { access_token, user } = response.data;
             
             // Store token and user data
             this.setToken(access_token);
             this.setUser(user);
             
+            console.log('Login successful, user:', user);
             return user;
         } catch (error) {
             console.error('Login failed:', error);

@@ -14,7 +14,8 @@ import {
     MenuList,
     MenuPopover,
     MenuTrigger,
-    Tooltip
+    Tooltip,
+    Spinner
 } from '@fluentui/react-components';
 import { 
     Add20Regular, 
@@ -159,7 +160,7 @@ export const ConversationList: React.FC<ConversationListProps> = ({
             
             {isLoading ? (
                 <div className={styles.emptyState}>
-                    <Text>Loading conversations...</Text>
+                    <Spinner size="small" label="Loading conversations..." />
                 </div>
             ) : conversations.length === 0 ? (
                 <div className={styles.emptyState}>

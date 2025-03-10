@@ -22,56 +22,102 @@ const useStyles = makeStyles({
         flexDirection: 'column',
         height: '100%',
         width: '100%',
+        position: 'relative',
     },
     header: {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        ...shorthands.padding('12px', '16px'),
+        ...shorthands.padding('0.75rem', '1rem'),
         ...shorthands.borderBottom('1px', 'solid', tokens.colorNeutralStroke2),
         backgroundColor: tokens.colorNeutralBackground1,
+        minHeight: '3.5rem',
+        // Make header sticky on mobile
+        position: 'sticky',
+        top: 0,
+        zIndex: 10,
     },
     titleContainer: {
         display: 'flex',
         alignItems: 'center',
-        ...shorthands.gap('8px'),
+        ...shorthands.gap('0.5rem'),
         overflow: 'hidden',
+        flex: 1,
     },
     title: {
         overflow: 'hidden',
         textOverflow: 'ellipsis',
         whiteSpace: 'nowrap',
+        fontSize: tokens.fontSizeBase500,
+        // Smaller font on mobile
+        '@media (max-width: 640px)': {
+            fontSize: tokens.fontSizeBase400,
+        },
     },
     actionsContainer: {
         display: 'flex',
-        ...shorthands.gap('4px'),
+        ...shorthands.gap('0.25rem'),
+        flexShrink: 0,
+        // Compact actions on small screens
+        '@media (max-width: 640px)': {
+            ...shorthands.gap('0.125rem'),
+        },
     },
     conversationContent: {
         display: 'flex',
         flexDirection: 'column',
         flex: 1,
         ...shorthands.overflow('hidden'),
+        position: 'relative',
     },
     messagesContainer: {
         flex: 1,
         minHeight: 0,
         ...shorthands.overflow('hidden'),
+        // Add padding at the bottom to ensure messages don't get hidden behind the input area
+        paddingBottom: '1rem',
     },
     inputContainer: {
-        ...shorthands.padding('16px'),
+        ...shorthands.padding('0.75rem', '1rem', '1rem'),
         backgroundColor: tokens.colorNeutralBackground1,
+        ...shorthands.borderTop('1px', 'solid', tokens.colorNeutralStroke2),
+        // Make input sticky on mobile so it's always visible
+        position: 'sticky',
+        bottom: 0,
+        zIndex: 10,
+        width: '100%',
+        // Smaller padding on mobile
+        '@media (max-width: 640px)': {
+            ...shorthands.padding('0.5rem', '0.75rem', '0.75rem'),
+        },
     },
     infoItem: {
         display: 'flex',
         justifyContent: 'space-between',
-        ...shorthands.padding('4px', '0'),
+        ...shorthands.padding('0.25rem', '0'),
     },
     infoLabel: {
         fontWeight: 'bold',
-        marginRight: '8px',
+        marginRight: '0.5rem',
     },
     infoValue: {
         color: tokens.colorNeutralForeground2,
+    },
+    // Add a compact button style for small screens
+    actionButton: {
+        '@media (max-width: 640px)': {
+            minWidth: 'unset',
+            ...shorthands.padding('0.25rem'),
+        },
+    },
+    popoverContent: {
+        ...shorthands.padding('0.75rem'),
+        width: '280px',
+        maxWidth: '100vw',
+        // Smaller width on mobile
+        '@media (max-width: 640px)': {
+            width: '240px',
+        },
     },
 });
 
@@ -128,25 +174,29 @@ export const ConversationView: React.FC<ConversationViewProps> = ({
                 <div className={styles.actionsContainer}>
                     {onEditTitle && (
                         <Button
+                            className={styles.actionButton}
                             appearance="subtle"
                             icon={<EditRegular />}
                             onClick={handleEditTitle}
                             aria-label="Edit conversation title"
+                            size="small"
                         />
                     )}
                     
                     <Popover>
                         <PopoverTrigger disableButtonEnhancement>
                             <Button
+                                className={styles.actionButton}
                                 appearance="subtle"
                                 icon={<InfoRegular />}
                                 aria-label="Conversation information"
+                                size="small"
                             />
                         </PopoverTrigger>
                         <PopoverSurface>
-                            <div style={{ padding: '12px', width: '280px' }}>
+                            <div className={styles.popoverContent}>
                                 <Text weight="semibold" block>Conversation Details</Text>
-                                <Divider style={{ margin: '8px 0' }} />
+                                <Divider style={{ margin: '0.5rem 0' }} />
                                 
                                 <div className={styles.infoItem}>
                                     <Text className={styles.infoLabel}>Created:</Text>
@@ -171,12 +221,13 @@ export const ConversationView: React.FC<ConversationViewProps> = ({
                                 
                                 {onDeleteConversation && (
                                     <>
-                                        <Divider style={{ margin: '8px 0' }} />
+                                        <Divider style={{ margin: '0.5rem 0' }} />
                                         <Button
                                             appearance="subtle"
                                             icon={<DeleteRegular />}
                                             onClick={onDeleteConversation}
-                                            style={{ marginTop: '8px' }}
+                                            style={{ marginTop: '0.5rem' }}
+                                            size="small"
                                         >
                                             Delete conversation
                                         </Button>

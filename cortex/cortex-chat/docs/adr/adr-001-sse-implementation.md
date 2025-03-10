@@ -26,31 +26,31 @@ We will implement a dedicated SSE Manager component with the following features:
 
 1. **Centralized Connection Management**:
 
-   - A single manager class that handles all SSE connections
-   - Support for multiple concurrent connections (global, workspace, conversation)
-   - Proper connection lifecycle management
+    - A single manager class that handles all SSE connections
+    - Support for multiple concurrent connections (global, workspace, conversation)
+    - Proper connection lifecycle management
 
 2. **Robust Reconnection Strategy**:
 
-   - Exponential backoff for failed connections
-   - Connection health monitoring
-   - Automatic reconnection for transient failures
+    - Exponential backoff for failed connections
+    - Connection health monitoring
+    - Automatic reconnection for transient failures
 
 3. **Event Routing System**:
 
-   - Type-safe event subscription mechanism
-   - Channel-based event filtering
-   - Support for multiple event handlers per event type
+    - Type-safe event subscription mechanism
+    - Channel-based event filtering
+    - Support for multiple event handlers per event type
 
 4. **Clean Resource Management**:
 
-   - Explicit connection cleanup on component unmount
-   - Prevention of memory leaks from abandoned connections
-   - Proper event listener cleanup
+    - Explicit connection cleanup on component unmount
+    - Prevention of memory leaks from abandoned connections
+    - Proper event listener cleanup
 
 5. **Browser Compatibility**:
-   - Core support for all modern browsers
-   - Optional polyfill for older browsers that don't support EventSource
+    - Core support for all modern browsers
+    - Optional polyfill for older browsers that don't support EventSource
 
 ## Implementation Details
 
@@ -58,18 +58,18 @@ The SSE Manager has been implemented as a TypeScript class with the following ke
 
 ```typescript
 class SSEManager {
-  // Core connection management
-  connect(channel: ChannelType, resourceId?: string): EventSource | null;
-  disconnect(connectionKey: string): void;
-  disconnectAll(): void;
-  
-  // Event handling
-  on(connectionKey: string, eventType: string, callback: EventCallback): void;
-  off(connectionKey: string, eventType: string, callback?: EventCallback): void;
-  
-  // Connection monitoring
-  getConnectionStatus(connectionKey: string): ConnectionStatus;
-  setTokenProvider(provider: () => string | null): void;
+    // Core connection management
+    connect(channel: ChannelType, resourceId?: string): EventSource | null;
+    disconnect(connectionKey: string): void;
+    disconnectAll(): void;
+
+    // Event handling
+    on(connectionKey: string, eventType: string, callback: EventCallback): void;
+    off(connectionKey: string, eventType: string, callback?: EventCallback): void;
+
+    // Connection monitoring
+    getConnectionStatus(connectionKey: string): ConnectionStatus;
+    setTokenProvider(provider: () => string | null): void;
 }
 ```
 
@@ -78,49 +78,55 @@ class SSEManager {
 Our implementation (`/src/services/sse/sseManager.ts`) includes:
 
 1. **Connection Management**:
-   - Uses the EventSourcePolyfill with fallback to native EventSource
-   - Handles different channel types (global, workspace, conversation)
-   - Manages connections with a unique connection key system
-   - Properly cleans up resources when connections are closed
+
+    - Uses the EventSourcePolyfill with fallback to native EventSource
+    - Handles different channel types (global, workspace, conversation)
+    - Manages connections with a unique connection key system
+    - Properly cleans up resources when connections are closed
 
 2. **Robust Error Handling**:
-   - Implements exponential backoff for reconnection attempts
-   - Limits maximum reconnection attempts
-   - Handles various error scenarios gracefully
-   - Provides detailed logging for debugging
+
+    - Implements exponential backoff for reconnection attempts
+    - Limits maximum reconnection attempts
+    - Handles various error scenarios gracefully
+    - Provides detailed logging for debugging
 
 3. **Event Processing**:
-   - Safely parses event data from JSON
-   - Routes events to the appropriate handlers
-   - Prevents errors in one handler from affecting others
-   - Supports multiple handlers per event type
+
+    - Safely parses event data from JSON
+    - Routes events to the appropriate handlers
+    - Prevents errors in one handler from affecting others
+    - Supports multiple handlers per event type
 
 4. **Resource Management**:
-   - Properly cleans up connections when no longer needed
-   - Avoids memory leaks by removing event listeners
-   - Cancels pending reconnection attempts
+
+    - Properly cleans up connections when no longer needed
+    - Avoids memory leaks by removing event listeners
+    - Cancels pending reconnection attempts
 
 5. **React Integration**:
-   - Created a custom hook (`useSSE`) for easy integration with React components
-   - Handles connection lifecycle based on component lifecycle
-   - Provides connection status information to components
+    - Created a custom hook (`useSSE`) for easy integration with React components
+    - Handles connection lifecycle based on component lifecycle
+    - Provides connection status information to components
 
 The implementation includes the following safeguards:
 
 1. **Token Management**:
-   - Secure handling of authentication tokens
-   - Proper token refreshing when needed
-   - Reconnection with new tokens after expiry
+
+    - Secure handling of authentication tokens
+    - Proper token refreshing when needed
+    - Reconnection with new tokens after expiry
 
 2. **Error Handling**:
-   - Graceful handling of network failures
-   - Clear error reporting
-   - Recovery paths for different error scenarios
+
+    - Graceful handling of network failures
+    - Clear error reporting
+    - Recovery paths for different error scenarios
 
 3. **Event Processing**:
-   - Safe parsing of event data
-   - Error boundaries for event handlers
-   - Consistent event format normalization
+    - Safe parsing of event data
+    - Error boundaries for event handlers
+    - Consistent event format normalization
 
 ## Alternatives Considered
 
@@ -177,6 +183,6 @@ The implementation includes the following safeguards:
 
 ## References
 
-1. [Cortex Core SSE Documentation](../cortex-core/docs/SSE.md)
+1. [Cortex Core SSE Documentation](../../../cortex-core/docs/SSE.md)
 2. [MDN EventSource Reference](https://developer.mozilla.org/en-US/docs/Web/API/EventSource)
 3. [SSE vs WebSockets](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events#EventSource_versus_WebSockets)

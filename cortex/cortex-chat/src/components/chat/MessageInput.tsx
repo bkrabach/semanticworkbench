@@ -15,9 +15,10 @@ const useStyles = makeStyles({
         flexDirection: 'column',
         width: '100%',
         backgroundColor: tokens.colorNeutralBackground1,
-        ...shorthands.borderRadius('8px'),
-        ...shorthands.padding('8px'),
+        ...shorthands.borderRadius('0.5rem'),
+        ...shorthands.padding('0.5rem'),
         ...shorthands.border('1px', 'solid', tokens.colorNeutralStroke1),
+        maxWidth: '100%',
     },
     textareaContainer: {
         position: 'relative',
@@ -25,7 +26,7 @@ const useStyles = makeStyles({
     },
     textarea: {
         width: '100%',
-        maxHeight: '200px',
+        maxHeight: '12.5rem', // 200px
         resize: 'none',
         ...shorthands.border('none'),
         ':focus': {
@@ -34,16 +35,40 @@ const useStyles = makeStyles({
         '::placeholder': {
             color: tokens.colorNeutralForeground3,
         },
+        // Adjust height and font size for mobile
+        '@media (max-width: 640px)': {
+            maxHeight: '9.375rem', // 150px
+            fontSize: tokens.fontSizeBase300,
+        },
     },
     actionsContainer: {
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
-        marginTop: '8px',
+        marginTop: '0.5rem',
+        flexWrap: 'wrap',
+        // More compact layout on mobile
+        '@media (max-width: 640px)': {
+            marginTop: '0.25rem',
+        },
     },
     leftActions: {
         display: 'flex',
-        ...shorthands.gap('4px'),
+        ...shorthands.gap('0.25rem'),
+        // Hide attachment button on small screens to save space
+        '@media (max-width: 480px)': {
+            '& > button:first-child': {
+                display: 'none',
+            },
+        },
+    },
+    rightActions: {
+        display: 'flex',
+        alignItems: 'center',
+        // Reduce spacing on mobile
+        '@media (max-width: 640px)': {
+            ...shorthands.gap('0.25rem'),
+        },
     },
     disabled: {
         backgroundColor: tokens.colorNeutralBackground3,
@@ -52,10 +77,27 @@ const useStyles = makeStyles({
     charCount: {
         fontSize: tokens.fontSizeBase200,
         color: tokens.colorNeutralForeground3,
-        marginRight: '8px',
+        marginRight: '0.5rem',
+        // Smaller text and reduced margins on mobile
+        '@media (max-width: 640px)': {
+            fontSize: tokens.fontSizeBase100,
+            marginRight: '0.25rem',
+        },
     },
     charCountWarning: {
         color: tokens.colorPaletteRedForeground1,
+    },
+    sendButton: {
+        minWidth: '5rem',
+        // Smaller button on mobile - icon only
+        '@media (max-width: 480px)': {
+            minWidth: 'unset',
+            width: '2.5rem',
+            ...shorthands.padding('0.5rem'),
+            '& span': {
+                display: 'none',
+            },
+        },
     },
 });
 
@@ -142,6 +184,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({
                             icon={<AttachRegular />}
                             aria-label="Attach files"
                             disabled={isDisabled}
+                            size="small"
                         />
                     </Tooltip>
                     <Tooltip content="Add emoji" relationship="label">
@@ -150,11 +193,12 @@ export const MessageInput: React.FC<MessageInputProps> = ({
                             icon={<EmojiRegular />}
                             aria-label="Add emoji"
                             disabled={isDisabled}
+                            size="small"
                         />
                     </Tooltip>
                 </div>
                 
-                <div style={{ display: 'flex', alignItems: 'center' }}>
+                <div className={styles.rightActions}>
                     {maxLength && (
                         <span className={`${styles.charCount} ${isNearLimit ? styles.charCountWarning : ''}`}>
                             {message.length}/{maxLength}
@@ -162,6 +206,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({
                     )}
                     
                     <Button
+                        className={styles.sendButton}
                         appearance="primary"
                         icon={<SendRegular />}
                         onClick={handleSubmit}

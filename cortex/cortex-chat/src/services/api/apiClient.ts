@@ -101,8 +101,15 @@ export class ApiClient {
         data?: any,
         config?: AxiosRequestConfig
     ): Promise<ApiResponse<T>> {
-        const response = await this.client.post<T>(url, data, config);
-        return this.formatResponse(response);
+        console.log(`Making POST request to ${url} with data:`, data);
+        try {
+            const response = await this.client.post<T>(url, data, config);
+            console.log(`POST response from ${url}:`, response);
+            return this.formatResponse(response);
+        } catch (error) {
+            console.error(`POST request to ${url} failed:`, error);
+            throw error;
+        }
     }
 
     /**
