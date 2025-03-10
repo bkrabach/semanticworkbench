@@ -196,18 +196,123 @@ const Dashboard = () => {
         }
     }, [selectedConversationId]);
 
+    // Define handleNewMessage function first
+    const handleNewMessage = React.useCallback((message: Message) => {
+        console.log('New message received via SSE:', message);
+        
+        // Only process if this is for the current conversation
+        if (!currentConversation || currentConversation.id !== message.conversation_id) {
+            console.log('Message is not for current conversation, ignoring');
+            return;
+        }
+
+        setCurrentConversation((prev: Conversation | null) => {
+            if (!prev) return null;
+
+            // Check if we already have this exact message by ID
+            const existingIndex =
+                prev.messages?.findIndex((m: Message) => m.id === message.id) ?? -1;
+            if (existingIndex !== -1) {
+                console.log('Message already exists, ignoring duplicate');
+                return prev; // Already have this message
+            }
+
+            // For user messages, check if we have a temporary message to replace
+            if (message.role === 'user') {
+                // Find optimistically added message with temp ID and matching content
+                const tempIndex =
+                    prev.messages?.findIndex(
+                        (m: Message) =>
+                            m.role === 'user' &&
+                            m.content === message.content &&
+                            m.id &&
+                            m.id.toString().startsWith('temp-')
+                    ) ?? -1;
+
+                if (tempIndex !== -1 && prev.messages) {
+                    console.log('Replacing temporary message with server version');
+                    // Replace our temp message with the server version
+                    const updatedMessages = [...prev.messages];
+                    updatedMessages[tempIndex] = message;
+                    return { ...prev, messages: updatedMessages };
+                }
+            }
+
+            // Add the new message
+            console.log('Adding new message to conversation');
+            const messages = [...(prev.messages || []), message];
+            
+            // Hide typing indicator if this is an assistant message
+            if (message.role === 'assistant') {
+                setIsTyping(false);
+            }
+            
+            return { ...prev, messages };
+        });
+    }, [currentConversation]);
+
+    // Memoize event handlers to prevent unnecessary reconnections
+    const globalEventHandlers = React.useMemo(() => ({
+        notification: (data: any) => {
+            console.log('Global notification received:', data);
+        },
+        system_update: (data: any) => {
+            console.log('System update received:', data);
+        },
+    }), []); // No dependencies, so these handlers never change
+
+    const workspaceEventHandlers = React.useMemo(() => ({
+        conversation_created: (data: any) => {
+            console.log('New conversation created:', data);
+            // Add to conversations if not already present
+            setConversations((prev: Conversation[]) => {
+                if (prev.some((c) => c.id === data.id)) return prev;
+                return [...prev, data as Conversation];
+            });
+        },
+        conversation_deleted: (data: any) => {
+            console.log('Conversation deleted:', data);
+            // Remove from conversations
+            setConversations((prev: Conversation[]) => prev.filter((c) => c.id !== data.id));
+            // If current conversation was deleted, clear it
+            if (selectedConversationId === data.id) {
+                setSelectedConversationId(null);
+                setCurrentConversation(null);
+            }
+        },
+        workspace_update: (data: any) => {
+            console.log('Workspace updated:', data);
+            // Update workspaces
+            setWorkspaces((prev: Workspace[]) =>
+                prev.map((w) => (w.id === data.id ? { ...w, ...(data as Workspace) } : w))
+            );
+        },
+    }), [selectedConversationId]); // Only depend on the ID, not the state updater functions
+
+    const conversationEventHandlers = React.useMemo(() => ({
+        message_received: (data: any) => {
+            console.log('New message received:', data);
+            handleNewMessage(data);
+        },
+        typing_indicator: (data: any) => {
+            console.log('Typing indicator:', data);
+            setIsTyping(!!data.isTyping);
+        },
+        status_update: (data: any) => {
+            console.log('Conversation status update:', data);
+            // Update conversation if needed
+            setCurrentConversation((prev: Conversation | null) => {
+                if (!prev || prev.id !== data.id) return prev;
+                return { ...prev, ...(data as Partial<Conversation>) };
+            });
+        },
+    }), [handleNewMessage]); // Depend on the memoized handleNewMessage function
+
     // Use the SSE hook for global events
     useSSE(
         'global',
         undefined,
-        {
-            notification: (data) => {
-                console.log('Global notification received:', data);
-            },
-            system_update: (data) => {
-                console.log('System update received:', data);
-            },
-        },
+        globalEventHandlers,
         true // enabled
     );
 
@@ -215,33 +320,7 @@ const Dashboard = () => {
     useSSE(
         'workspace',
         selectedWorkspaceId ?? undefined,
-        {
-            conversation_created: (data) => {
-                console.log('New conversation created:', data);
-                // Add to conversations if not already present
-                setConversations((prev: Conversation[]) => {
-                    if (prev.some((c) => c.id === data.id)) return prev;
-                    return [...prev, data as Conversation];
-                });
-            },
-            conversation_deleted: (data) => {
-                console.log('Conversation deleted:', data);
-                // Remove from conversations
-                setConversations((prev: Conversation[]) => prev.filter((c) => c.id !== data.id));
-                // If current conversation was deleted, clear it
-                if (selectedConversationId === data.id) {
-                    setSelectedConversationId(null);
-                    setCurrentConversation(null);
-                }
-            },
-            workspace_update: (data) => {
-                console.log('Workspace updated:', data);
-                // Update workspaces
-                setWorkspaces((prev: Workspace[]) =>
-                    prev.map((w) => (w.id === data.id ? { ...w, ...(data as Workspace) } : w))
-                );
-            },
-        },
+        workspaceEventHandlers,
         !!selectedWorkspaceId // only enable if we have a workspace ID
     );
 
@@ -249,24 +328,7 @@ const Dashboard = () => {
     useSSE(
         'conversation',
         selectedConversationId ?? undefined,
-        {
-            message_received: (data) => {
-                console.log('New message received:', data);
-                handleNewMessage(data);
-            },
-            typing_indicator: (data) => {
-                console.log('Typing indicator:', data);
-                setIsTyping(!!data.isTyping);
-            },
-            status_update: (data) => {
-                console.log('Conversation status update:', data);
-                // Update conversation if needed
-                setCurrentConversation((prev: Conversation | null) => {
-                    if (!prev || prev.id !== data.id) return prev;
-                    return { ...prev, ...(data as Partial<Conversation>) };
-                });
-            },
-        },
+        conversationEventHandlers,
         !!selectedConversationId // only enable if we have a conversation ID
     );
 
@@ -518,61 +580,6 @@ const Dashboard = () => {
         } finally {
             setIsLoading(false);
         }
-    };
-
-    // Handle new messages from SSE - exactly matching web-client.html
-    const handleNewMessage = (message: Message) => {
-        console.log('New message received via SSE:', message);
-        
-        // Only process if this is for the current conversation
-        if (!currentConversation || currentConversation.id !== message.conversation_id) {
-            console.log('Message is not for current conversation, ignoring');
-            return;
-        }
-
-        setCurrentConversation((prev: Conversation | null) => {
-            if (!prev) return null;
-
-            // Check if we already have this exact message by ID
-            const existingIndex =
-                prev.messages?.findIndex((m: Message) => m.id === message.id) ?? -1;
-            if (existingIndex !== -1) {
-                console.log('Message already exists, ignoring duplicate');
-                return prev; // Already have this message
-            }
-
-            // For user messages, check if we have a temporary message to replace
-            if (message.role === 'user') {
-                // Find optimistically added message with temp ID and matching content
-                const tempIndex =
-                    prev.messages?.findIndex(
-                        (m: Message) =>
-                            m.role === 'user' &&
-                            m.content === message.content &&
-                            m.id &&
-                            m.id.toString().startsWith('temp-')
-                    ) ?? -1;
-
-                if (tempIndex !== -1 && prev.messages) {
-                    console.log('Replacing temporary message with server version');
-                    // Replace our temp message with the server version
-                    const updatedMessages = [...prev.messages];
-                    updatedMessages[tempIndex] = message;
-                    return { ...prev, messages: updatedMessages };
-                }
-            }
-
-            // Add the new message
-            console.log('Adding new message to conversation');
-            const messages = [...(prev.messages || []), message];
-            
-            // Hide typing indicator if this is an assistant message
-            if (message.role === 'assistant') {
-                setIsTyping(false);
-            }
-            
-            return { ...prev, messages };
-        });
     };
 
     // Create the sidebar content

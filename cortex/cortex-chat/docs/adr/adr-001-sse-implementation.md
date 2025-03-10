@@ -41,12 +41,14 @@ We will implement a dedicated SSE Manager component with the following features:
     - Type-safe event subscription mechanism
     - Channel-based event filtering
     - Support for multiple event handlers per event type
+    - Prevention of duplicate event listeners
 
 4. **Clean Resource Management**:
 
     - Explicit connection cleanup on component unmount
     - Prevention of memory leaks from abandoned connections
     - Proper event listener cleanup
+    - Stable connection lifecycle management to prevent unnecessary reconnections
 
 5. **Browser Compatibility**:
     - Core support for all modern browsers
@@ -81,8 +83,9 @@ Our implementation (`/src/services/sse/sseManager.ts`) includes:
 
     - Uses the EventSourcePolyfill with fallback to native EventSource
     - Handles different channel types (global, workspace, conversation)
-    - Manages connections with a unique connection key system
+    - Manages connections with a unique type-based system
     - Properly cleans up resources when connections are closed
+    - Reuses existing connections when possible to prevent reconnection loops
 
 2. **Robust Error Handling**:
 
@@ -90,6 +93,7 @@ Our implementation (`/src/services/sse/sseManager.ts`) includes:
     - Limits maximum reconnection attempts
     - Handles various error scenarios gracefully
     - Provides detailed logging for debugging
+    - Detects network status changes and reconnects automatically
 
 3. **Event Processing**:
 
@@ -97,17 +101,23 @@ Our implementation (`/src/services/sse/sseManager.ts`) includes:
     - Routes events to the appropriate handlers
     - Prevents errors in one handler from affecting others
     - Supports multiple handlers per event type
+    - Prevents duplicate event listeners to avoid memory leaks
 
 4. **Resource Management**:
 
     - Properly cleans up connections when no longer needed
     - Avoids memory leaks by removing event listeners
     - Cancels pending reconnection attempts
+    - Tracks active listeners to prevent duplicates
+    - Properly cleans up event listeners when connections close
 
 5. **React Integration**:
     - Created a custom hook (`useSSE`) for easy integration with React components
     - Handles connection lifecycle based on component lifecycle
     - Provides connection status information to components
+    - Uses React refs to maintain stable references and prevent unnecessary reconnections
+    - Memoizes event handlers to avoid render loops
+    - Efficiently manages dependency changes to prevent repeated reconnections
 
 The implementation includes the following safeguards:
 

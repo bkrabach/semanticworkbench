@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { sseManager } from '@services/index';
 import { ChannelType, ConnectionStatus } from '@/types';
 
@@ -6,7 +6,7 @@ type EventHandler = (data: any) => void;
 
 /**
  * Hook for connecting to SSE channels and handling events
- * Matches web-client.html patterns exactly
+ * Optimized for stability and performance
  */
 export function useSSE(
     type: ChannelType,
@@ -16,6 +16,20 @@ export function useSSE(
 ) {
     const [status, setStatus] = useState<ConnectionStatus>(ConnectionStatus.DISCONNECTED);
     const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
+    
+    // Use refs to track current values without triggering effect reruns
+    const handlerRef = useRef(eventHandlers);
+    const resourceIdRef = useRef(resourceId);
+    const enabledRef = useRef(enabled);
+    const typeRef = useRef(type);
+    
+    // Keep refs updated without triggering effects
+    useEffect(() => {
+        handlerRef.current = eventHandlers;
+        resourceIdRef.current = resourceId;
+        enabledRef.current = enabled;
+        typeRef.current = type;
+    }, [eventHandlers, resourceId, enabled, type]);
     
     // Network status monitoring
     useEffect(() => {
@@ -40,35 +54,41 @@ export function useSSE(
     
     // Reconnect when network comes back online
     useEffect(() => {
-        if (isOnline && enabled && status === ConnectionStatus.ERROR && (type === 'global' || resourceId)) {
-            console.log(`[useSSE:${type}] Network reconnected, reestablishing connection`);
-            sseManager.connectToSSE(type, resourceId);
+        if (isOnline && enabledRef.current && status === ConnectionStatus.ERROR && 
+            (typeRef.current === 'global' || resourceIdRef.current)) {
+            console.log(`[useSSE:${typeRef.current}] Network reconnected, reestablishing connection`);
+            sseManager.connectToSSE(typeRef.current, resourceIdRef.current);
         }
-    }, [isOnline, enabled, status, type, resourceId]);
+    }, [isOnline, status]);
     
-    // Create a memoized connect function
+    // Create a stable connect function
     const connect = useCallback(() => {
+        const currentType = typeRef.current;
+        const currentResourceId = resourceIdRef.current;
+        const currentEnabled = enabledRef.current;
+        const currentHandlers = handlerRef.current;
+        
         // Only connect if enabled and we have necessary params
-        if (!enabled || (type !== 'global' && !resourceId)) {
-            console.log(`[useSSE:${type}] Not connecting - enabled: ${enabled}, resourceId: ${resourceId}`);
+        if (!currentEnabled || (currentType !== 'global' && !currentResourceId)) {
+            console.log(`[useSSE:${currentType}] Not connecting - enabled: ${currentEnabled}, resourceId: ${currentResourceId}`);
             return null;
         }
 
-        console.log(`[useSSE:${type}] Setting up SSE connection${resourceId ? ` for ${resourceId}` : ''}`);
+        console.log(`[useSSE:${currentType}] Setting up SSE connection${currentResourceId ? ` for ${currentResourceId}` : ''}`);
         
         // Create the connection
-        const eventSource = sseManager.connectToSSE(type, resourceId);
+        const eventSource = sseManager.connectToSSE(currentType, currentResourceId);
         
         // If connection failed, early return
         if (!eventSource) {
-            console.error(`[useSSE:${type}] Failed to create connection`);
+            console.error(`[useSSE:${currentType}] Failed to create connection`);
             setStatus(ConnectionStatus.ERROR);
             return null;
         }
         
         // Track connection status
         const updateStatus = () => {
-            const currentStatus = sseManager.getConnectionStatus(type);
+            const currentStatus = sseManager.getConnectionStatus(currentType);
             setStatus(currentStatus);
         };
         
@@ -78,33 +98,47 @@ export function useSSE(
         // Update status on connection events
         const originalOnOpen = eventSource.onopen;
         eventSource.onopen = (event) => {
-            console.log(`[useSSE:${type}] Connection opened`);
+            console.log(`[useSSE:${currentType}] Connection opened`);
             updateStatus();
             if (originalOnOpen) originalOnOpen.call(eventSource, event);
         };
         
         const originalOnError = eventSource.onerror;
         eventSource.onerror = (event) => {
-            console.log(`[useSSE:${type}] Connection error`);
+            console.log(`[useSSE:${currentType}] Connection error`);
             updateStatus();
             if (originalOnError) originalOnError.call(eventSource, event);
         };
         
-        // Register event handlers - direct approach just like web-client.html
-        Object.entries(eventHandlers).forEach(([eventName, handler]) => {
-            console.log(`[useSSE:${type}] Registering handler for event: ${eventName}`);
+        // Register event handlers - always use the current handlers from ref
+        Object.entries(currentHandlers).forEach(([eventName, handler]) => {
+            console.log(`[useSSE:${currentType}] Registering handler for event: ${eventName}`);
             
-            sseManager.addEventListener(type, eventName, (data) => {
-                console.log(`[useSSE:${type}] Handling ${eventName} event:`, data);
-                handler(data);
+            sseManager.addEventListener(currentType, eventName, (data) => {
+                // Always use the most up-to-date handler from the ref
+                console.log(`[useSSE:${currentType}] Handling ${eventName} event:`, data);
+                // This will get the latest handler at the time of the event
+                handlerRef.current[eventName](data);
             });
         });
         
         return eventSource;
-    }, [type, resourceId, eventHandlers, enabled]);
+    }, []); // No dependencies means this function is stable and won't change
     
-    // Main connection effect
+    // Determine whether we need to connect or disconnect
+    const shouldConnect = enabled && (type === 'global' || !!resourceId);
+    
+    // Main connection effect - only triggered on enabled/disabled or type/resource changes
     useEffect(() => {
+        // Skip reconnection if nothing important has changed
+        if (!shouldConnect) {
+            console.log(`[useSSE:${type}] Connection disabled or missing resource ID`);
+            sseManager.closeConnection(type);
+            setStatus(ConnectionStatus.DISCONNECTED);
+            return;
+        }
+        
+        console.log(`[useSSE:${type}] Initial connection setup for ${resourceId || 'global'}`);
         const eventSource = connect();
         
         // Cleanup on unmount or when dependencies change
@@ -112,21 +146,21 @@ export function useSSE(
             console.log(`[useSSE:${type}] Cleaning up SSE connection`);
             sseManager.closeConnection(type);
         };
-    }, [type, resourceId, eventHandlers, enabled, connect]);
+    }, [type, shouldConnect, connect]); // Only reconnect when type or connection state changes
     
     // Create a reconnect function that will properly reconnect when called
     const reconnect = useCallback(() => {
-        console.log(`[useSSE:${type}] Manual reconnection requested`);
-        sseManager.closeConnection(type);
+        console.log(`[useSSE:${typeRef.current}] Manual reconnection requested`);
+        sseManager.closeConnection(typeRef.current);
         return connect();
-    }, [type, connect]);
+    }, [connect]);
     
     // Create a disconnect function
     const disconnect = useCallback(() => {
-        console.log(`[useSSE:${type}] Manual disconnection requested`);
-        sseManager.closeConnection(type);
+        console.log(`[useSSE:${typeRef.current}] Manual disconnection requested`);
+        sseManager.closeConnection(typeRef.current);
         setStatus(ConnectionStatus.DISCONNECTED);
-    }, [type]);
+    }, []);
     
     // Return information about the connection and convenience methods
     return {

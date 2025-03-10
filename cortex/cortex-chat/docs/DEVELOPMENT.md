@@ -278,52 +278,222 @@ export default apiClient;
 
 ### SSE Integration
 
-Handle Server-Sent Events connections with proper lifecycle management:
+Server-Sent Events (SSE) provide real-time updates from the server. For optimal implementation, follow these patterns:
+
+#### SSE Manager
+
+The `SSEManager` class handles connection lifecycle, event routing, and error recovery:
 
 ```tsx
-// sseManager.ts
+// src/services/sse/sseManager.ts
 export class SSEManager {
-  private eventSources: Record<string, EventSource> = {};
-  private eventHandlers: Record<string, Function[]> = {};
-  private reconnectTimeouts: Record<string, NodeJS.Timeout> = {};
-  
-  connect(channel: string, resourceId?: string) {
-    const key = resourceId ? `${channel}_${resourceId}` : channel;
-    const url = this.buildUrl(channel, resourceId);
+  private baseUrl: string;
+  private eventSources: Record<ChannelType, EventSource> = {};
+  private reconnectAttempts: Record<ChannelType, number> = {};
+  private eventListeners: Record<string, Record<string, EventCallback[]>> = {};
+  private hasConnected: Record<ChannelType, boolean> = {};
+  private tokenProvider: () => string | null = () => null;
+  private MAX_RECONNECT_ATTEMPTS = 5;
+
+  constructor(baseUrl: string) {
+    this.baseUrl = baseUrl;
+  }
+
+  setTokenProvider(provider: () => string | null): void {
+    this.tokenProvider = provider;
+  }
+
+  connectToSSE(type: ChannelType, resourceId?: string): EventSource | null {
+    const token = this.tokenProvider();
     
-    // Close existing connection if any
-    this.close(key);
+    // Verify we have a valid token before connecting
+    if (!token) {
+      console.error(`[SSE:${type}] Cannot connect: No auth token available`);
+      return null;
+    }
+    
+    // Check if we already have a connection to this channel
+    if (this.eventSources[type]) {
+      const existingConnection = this.eventSources[type];
+      
+      // If the connection is open or connecting, don't create a new one
+      if (existingConnection.readyState === EventSource.OPEN || 
+          existingConnection.readyState === EventSource.CONNECTING) {
+        return existingConnection;
+      }
+      
+      // Close the existing connection if it's in a bad state
+      this.closeConnection(type);
+    }
+    
+    // Build the SSE URL based on channel type
+    const url = this.buildSseUrl(type, resourceId);
     
     try {
+      // Create new EventSource
       const eventSource = new EventSource(url);
       
-      eventSource.onopen = () => {
-        console.log(`Connected to ${channel} events`);
-        // Clear any reconnect timeouts
-        if (this.reconnectTimeouts[key]) {
-          clearTimeout(this.reconnectTimeouts[key]);
-          delete this.reconnectTimeouts[key];
-        }
-      };
+      // Reset connection state
+      this.hasConnected[type] = false;
+      this.reconnectAttempts[type] = 0;
       
-      eventSource.onerror = (error) => {
-        console.error(`Error in ${channel} events:`, error);
-        this.handleConnectionError(key, channel, resourceId);
-      };
+      // Set up event handlers
+      this.setupEventHandlers(eventSource, type, resourceId);
       
-      // Store the connection
-      this.eventSources[key] = eventSource;
+      // Store connection
+      this.eventSources[type] = eventSource;
       
       return eventSource;
     } catch (error) {
-      console.error(`Error creating SSE connection:`, error);
-      this.handleConnectionError(key, channel, resourceId);
+      console.error(`[SSE:${type}] Error creating connection:`, error);
+      // Only attempt reconnect if we don't already have one in progress
+      if (!(type in this.reconnectAttempts) || this.reconnectAttempts[type] === 0) {
+        this.reconnect(type, resourceId);
+      }
       return null;
     }
   }
-  
+
   // Additional methods for connection management, event handling, etc.
 }
+```
+
+#### React Hook for SSE
+
+A custom React hook simplifies SSE integration in components:
+
+```tsx
+// src/hooks/useSSE.ts
+export function useSSE(
+  type: ChannelType,
+  resourceId: string | undefined,
+  eventHandlers: Record<string, EventHandler>,
+  enabled: boolean = true
+) {
+  const [status, setStatus] = useState<ConnectionStatus>(ConnectionStatus.DISCONNECTED);
+  const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
+  
+  // Use refs to track current values without triggering effect reruns
+  const handlerRef = useRef(eventHandlers);
+  const resourceIdRef = useRef(resourceId);
+  const enabledRef = useRef(enabled);
+  const typeRef = useRef(type);
+  
+  // Keep refs updated without triggering effects
+  useEffect(() => {
+    handlerRef.current = eventHandlers;
+    resourceIdRef.current = resourceId;
+    enabledRef.current = enabled;
+    typeRef.current = type;
+  }, [eventHandlers, resourceId, enabled, type]);
+
+  // Determine whether we need to connect or disconnect
+  const shouldConnect = enabled && (type === 'global' || !!resourceId);
+  
+  // Main connection effect - only triggered on enabled/disabled or type/resource changes
+  useEffect(() => {
+    if (!shouldConnect) {
+      sseManager.closeConnection(type);
+      setStatus(ConnectionStatus.DISCONNECTED);
+      return;
+    }
+    
+    const eventSource = connect();
+    
+    return () => {
+      // Cleanup on unmount or when dependencies change
+      sseManager.closeConnection(type);
+    };
+  }, [type, shouldConnect]);
+  
+  return { status, isConnected: status === ConnectionStatus.CONNECTED, isOnline };
+}
+```
+
+#### Best Practices for SSE
+
+1. **Memoize Event Handlers**: When using SSE in components, always memoize event handlers to prevent unnecessary reconnections:
+
+```tsx
+const messageReceivedHandler = useCallback((data) => {
+  console.log('Message received:', data);
+  handleMessage(data);
+}, [handleMessage]);
+
+const eventHandlers = useMemo(() => ({
+  message_received: messageReceivedHandler,
+  typing_indicator: handleTypingIndicator
+}), [messageReceivedHandler, handleTypingIndicator]);
+
+useSSE('conversation', conversationId, eventHandlers);
+```
+
+2. **Connect to Multiple Channels**: Connect to all relevant channels and manage them effectively:
+
+```tsx
+// Global events (always active)
+useSSE('global', undefined, globalEventHandlers, true);
+
+// Workspace events (only when workspace is selected)
+useSSE('workspace', selectedWorkspaceId, workspaceEventHandlers, !!selectedWorkspaceId);
+
+// Conversation events (only when conversation is selected)
+useSSE('conversation', selectedConversationId, conversationEventHandlers, !!selectedConversationId);
+```
+
+3. **Handle Network Status**: Monitor network status and reconnect when it changes:
+
+```tsx
+useEffect(() => {
+  const handleOnline = () => setIsOnline(true);
+  const handleOffline = () => setIsOnline(false);
+  
+  window.addEventListener('online', handleOnline);
+  window.addEventListener('offline', handleOffline);
+  
+  return () => {
+    window.removeEventListener('online', handleOnline);
+    window.removeEventListener('offline', handleOffline);
+  };
+}, []);
+```
+
+4. **Implement Proper Cleanup**: Always clean up connections when components unmount:
+
+```tsx
+useEffect(() => {
+  // Setup connection
+  const connection = sseManager.connect(channel, resourceId);
+  
+  return () => {
+    // Clean up connection on unmount
+    sseManager.disconnect(channel);
+  };
+}, [channel, resourceId]);
+```
+
+5. **Use Consistent Error Handling**: Implement consistent error handling for connection issues:
+
+```tsx
+// In SSE Manager
+private handleConnectionError(type: ChannelType, resourceId?: string) {
+  // Track number of attempts
+  this.reconnectAttempts[type] = (this.reconnectAttempts[type] || 0) + 1;
+  
+  // Limit reconnection attempts
+  if (this.reconnectAttempts[type] > this.MAX_RECONNECT_ATTEMPTS) {
+    console.error(`[SSE:${type}] Max reconnection attempts reached`);
+    return;
+  }
+  
+  // Exponential backoff
+  const delay = Math.min(1000 * (2 ** (this.reconnectAttempts[type] - 1)), 30000);
+  
+  setTimeout(() => {
+    this.connectToSSE(type, resourceId);
+  }, delay);
+}
+```
 ```
 
 ## Error Handling

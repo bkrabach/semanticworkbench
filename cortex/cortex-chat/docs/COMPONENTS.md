@@ -68,11 +68,18 @@ Provides the main layout structure for the application, including a responsive h
 - `className`: Optional CSS class name
 
 Features:
-- Responsive design that adapts to desktop and mobile screens
+- Full viewport coverage with proper sizing on all devices
+- Properly handles mobile and desktop screens with responsive breakpoints
+- Automatically adjusts to available screen space
 - Collapsible sidebar with toggle button
 - User menu in the header with logout option
 - Persistent footer
-- Proper styling using Fluent UI tokens
+- Properly handles overflow in content areas
+- Uses CSS variables for consistent styling
+- Implements Fluent UI design system tokens for consistency
+- Mobile-optimized interactions and touch targets
+- Maintains proper accessibility for keyboard navigation
+- Prevents content from being obscured on small screens
 
 ### Chat Components
 

@@ -62,5 +62,5 @@
         ".vscode",
         ".vscode-insiders"
     ],
-    "cSpell.words": ["esbenp", "fluentui"]
+    "cSpell.words": ["esbenp", "fluentui", "reconnections"]
 }
