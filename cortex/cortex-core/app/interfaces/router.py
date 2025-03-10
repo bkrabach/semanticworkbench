@@ -67,7 +67,7 @@ class InputMessage(CortexMessage):
     # Context
     user_id: Optional[str] = None
     workspace_id: Optional[str] = None
-    conversation_id: Optional[str] = None
+    conversation_id: str  # Required for conversation messages
     
 
 class OutputMessage(CortexMessage):
@@ -221,6 +221,18 @@ class EventSystemInterface(Protocol):
             Dictionary with event statistics
         """
         ...
+        
+    async def get_subscribers(self, event_type: str) -> List[str]:
+        """
+        Get all subscription IDs that would match a specific event type
+        
+        Args:
+            event_type: The event type to check against all patterns
+            
+        Returns:
+            List of subscription IDs that would receive this event
+        """
+        ...
 
 
 class RouterInterface(Protocol):
@@ -244,6 +256,14 @@ class RouterInterface(Protocol):
             
         Returns:
             Boolean indicating message was successfully received
+        """
+        ...
+        
+    async def cleanup(self) -> None:
+        """
+        Clean up resources when shutting down
+        
+        This method should cancel any background tasks and release resources.
         """
         ...
 

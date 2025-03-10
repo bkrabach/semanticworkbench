@@ -148,6 +148,44 @@ Key principles for effective API testing:
 4. **Clean up after tests**: Use `try/finally` or fixture yield patterns to clean up overrides.
 5. **Mock at the right level**: Mock database sessions, not individual queries when possible.
 
+## Simplification Principles
+
+When working on the codebase, actively look for ways to simplify complex components. Follow these guidelines:
+
+### Messaging and Real-time Components
+
+1. **Prefer Asyncio over Threading**: 
+   - Use `asyncio.Queue` instead of `queue.Queue`
+   - Use `asyncio.create_task()` over thread creation
+   - Implement a proper `cleanup()` method for any component with background tasks
+
+2. **Direct Communication Paths**:
+   - Prefer direct service calls over complex event chains for core flows
+   - Only use the event system when true decoupling is needed
+   - Keep the path from request to response as short as possible
+
+3. **Smart Use of Required vs Optional Fields**:
+   - Make fields required that are logically always needed
+   - Eliminate unnecessary null checks for required fields  
+   - Use appropriate type annotations to catch errors early
+
+4. **Testing with Traceability**:
+   - Test the complete flow from request to response
+   - Focus on validating the end result, not implementation details
+   - Use clear, direct tests that match the simplified architecture
+
+### Complexity Evaluation
+
+When evaluating whether to simplify a component, ask these questions:
+
+1. **Core Purpose**: What is this component's essential purpose? Does its complexity serve that purpose?
+2. **Cognitive Load**: How long does it take to understand the component and its interactions?
+3. **Flow Visualization**: Can you easily diagram the component's interactions? If not, it's too complex.
+4. **Error Scenarios**: How many potential failure points exist? Could they be reduced?
+5. **Direct Path**: Is there a more direct way to achieve the same result?
+
+The goal is to create components that are easy to understand, reason about, and maintain, while still fulfilling their core purposes.
+
 #### Testing Async Components
 
 For async components, always use the `asyncio` pytest plugin:

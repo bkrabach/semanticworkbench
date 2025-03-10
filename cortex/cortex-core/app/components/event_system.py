@@ -216,6 +216,25 @@ class EventSystem(EventSystemInterface):
             stats["events_per_second"] = 0
 
         return stats
+        
+    async def get_subscribers(self, event_type: str) -> List[str]:
+        """
+        Get all subscription IDs that would match a specific event type
+        
+        Args:
+            event_type: The event type to check against all patterns
+            
+        Returns:
+            List of subscription IDs that would receive this event
+        """
+        matching_subscriptions = []
+        
+        for pattern, subscribers in self.subscriptions.items():
+            if self._match_pattern(pattern, event_type):
+                matching_subscriptions.extend(subscribers.keys())
+                
+        self.logger.debug(f"Found {len(matching_subscriptions)} matching subscribers for {event_type}")
+        return matching_subscriptions
 
     def _match_pattern(self, pattern: str, event_type: str) -> bool:
         """

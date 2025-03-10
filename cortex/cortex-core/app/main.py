@@ -103,6 +103,16 @@ async def lifespan(app: FastAPI):
             logger.info("SSE Service cleaned up")
     except Exception as e:
         logger.error(f"Error cleaning up SSE service: {e}")
+        
+    # Clean up router
+    try:
+        from app.components.cortex_router import get_router
+        router = get_router()
+        if hasattr(router, 'cleanup'):
+            await router.cleanup()
+            logger.info("CortexRouter cleaned up")
+    except Exception as e:
+        logger.error(f"Error cleaning up CortexRouter: {e}")
 
     # Disconnect from Redis
     await disconnect_redis()

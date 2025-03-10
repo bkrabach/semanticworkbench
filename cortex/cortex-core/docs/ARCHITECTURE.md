@@ -213,8 +213,15 @@ For API tests, we mock repositories rather than database interactions, allowing 
 1. Client sends a POST request to `/conversations/{conversation_id}/messages`
 2. API layer validates the request
 3. Repository layer adds the message to the conversation
-4. Event is published to notify clients
-5. API layer returns the created message
+4. Message is passed to the CortexRouter for asynchronous processing
+5. API layer returns acknowledgment
+6. CortexRouter processes the message in the background:
+   - Shows typing indicator via direct SSE
+   - Performs required processing 
+   - Saves response to database
+   - Removes typing indicator
+   - Sends response via direct SSE
+7. Client receives real-time updates via SSE
 
 ## Key Architectural Patterns
 
@@ -236,6 +243,17 @@ The system uses the Python SDK with FastMCP for all MCP implementations:
 3. **Improved Testing**: The MCP SDK's testing utilities make tests more reliable and easier to write
 4. **Consistent Protocol Implementation**: Using the SDK ensures consistent protocol compliance
 5. **Better Documentation**: Clear examples and patterns improve developer onboarding
+
+### Message Processing Architecture
+
+The system uses a message-based architecture for processing client requests:
+
+1. **Asyncio-Based Processing**: Background tasks use asyncio for better performance and resource utilization
+2. **Direct Communication Paths**: Services communicate directly when appropriate for simplicity
+3. **Server-Sent Events (SSE)**: Real-time updates use SSE for efficient, one-way client communication
+4. **Fire-and-Forget API**: Message processing happens asynchronously after API acknowledgment
+5. **Required vs Optional Fields**: Message fields that are always needed are marked as required for type safety
+6. **Clean Resource Management**: All components with background tasks provide proper cleanup methods
 
 These approaches should be followed for all new features and development work.
 
