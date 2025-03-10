@@ -125,6 +125,22 @@ class SseConfig(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="SSE_")
 
 
+class LlmConfig(BaseSettings):
+    """LLM provider configuration"""
+    
+    # Default model to use
+    default_model: str = "openai/gpt-3.5-turbo"
+    
+    # Whether to actually call LLMs or use echo mode for testing
+    use_mock: bool = False
+    
+    # Timeout for LLM API calls in seconds
+    timeout: int = 60
+    
+    # Model config - used to store API keys for various providers
+    model_config = SettingsConfigDict(env_prefix="LLM_")
+
+
 class Settings(BaseSettings):
     """Main application settings"""
 
@@ -135,6 +151,7 @@ class Settings(BaseSettings):
     memory: MemoryConfig = MemoryConfig()
     mcp: McpConfig = McpConfig()
     sse: SseConfig = SseConfig()
+    llm: LlmConfig = LlmConfig()
 
     model_config = SettingsConfigDict(
         env_file=".env",

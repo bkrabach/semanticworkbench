@@ -17,6 +17,7 @@ from app.interfaces.router import (
 )
 from app.components.event_system import get_event_system
 from app.services.sse_service import get_sse_service
+from app.services.llm_service import get_llm_service
 
 
 class CortexRouter(RouterInterface):
@@ -143,31 +144,69 @@ class CortexRouter(RouterInterface):
         # Show typing indicator
         await self._send_typing_indicator(message.conversation_id, True)
 
-        # Wait 5 seconds
-        await asyncio.sleep(5)
-
-        # Generate response
-        response_content = f"ECHO: {message.content}"
-
-        # Save to database and get message_id
-        message_id = await self._save_message_to_database(
-            message.conversation_id,
-            response_content,
-            "assistant",
-            {"source": "cortex_router"}
-        )
-
-        # Turn off typing indicator
-        await self._send_typing_indicator(message.conversation_id, False)
-
-        # Send message to client
-        await self._send_message_to_client(
-            message.conversation_id,
-            message_id,
-            response_content,
-            "assistant",
-            {"source": "cortex_router"}
-        )
+        try:
+            # Get LLM service
+            llm_service = get_llm_service()
+            
+            # Get response from LLM
+            response_content = await llm_service.get_completion(
+                prompt=message.content,
+                system_prompt="You are a helpful AI assistant. Respond accurately and clearly to the user's request."
+            )
+            
+            # If response is empty, provide a fallback
+            if not response_content:
+                response_content = "I'm sorry, I couldn't process your request. Please try again."
+                
+            # Save metadata about this interaction
+            metadata = {
+                "source": "cortex_router",
+                "llm_enabled": True,
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+            
+            # Save to database and get message_id
+            message_id = await self._save_message_to_database(
+                message.conversation_id,
+                response_content,
+                "assistant",
+                metadata
+            )
+            
+            # Send message to client
+            await self._send_message_to_client(
+                message.conversation_id,
+                message_id,
+                response_content,
+                "assistant",
+                metadata
+            )
+            
+        except Exception as e:
+            # Handle errors gracefully
+            self.logger.error(f"Error generating LLM response: {e}")
+            error_content = "I apologize, but I encountered an error processing your request."
+            
+            # Save error message to database
+            message_id = await self._save_message_to_database(
+                message.conversation_id,
+                error_content,
+                "assistant",
+                {"source": "cortex_router", "error": str(e)}
+            )
+            
+            # Send error message to client
+            await self._send_message_to_client(
+                message.conversation_id,
+                message_id,
+                error_content,
+                "assistant",
+                {"source": "cortex_router", "error": str(e)}
+            )
+            
+        finally:
+            # Always turn off typing indicator
+            await self._send_typing_indicator(message.conversation_id, False)
 
     async def _handle_process_action(self, message: InputMessage, decision: RoutingDecision):
         """

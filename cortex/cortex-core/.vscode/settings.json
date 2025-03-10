@@ -59,10 +59,12 @@
     "package-lock.json",
     "settings.json",
     "uv.lock",
-    "logs"
+    "logs",
+    ".env"
   ],
   "cSpell.words": [
     "abstractmethod",
+    "acompletion",
     "aiosqlite",
     "anyio",
     "asyncapi",
