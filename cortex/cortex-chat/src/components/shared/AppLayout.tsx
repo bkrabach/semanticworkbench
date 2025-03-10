@@ -27,121 +27,175 @@ const useStyles = makeStyles({
         display: 'flex',
         flexDirection: 'column',
         minHeight: '100vh',
+        height: '100vh', // Full viewport height
+        maxHeight: '100vh', // Prevent overflow
         backgroundColor: tokens.colorNeutralBackground2,
+        position: 'relative',
+        overflow: 'hidden',
     },
     header: {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        ...shorthands.padding('12px', '16px'),
+        ...shorthands.padding('0.75rem', '1rem'),
         backgroundColor: tokens.colorBrandBackground,
         color: tokens.colorNeutralForegroundOnBrand,
-        height: '56px',
+        height: '3.5rem',
+        width: '100%',
+        position: 'relative',
+        zIndex: 30,
     },
     logo: {
         fontWeight: 'bold',
         fontSize: '1.25rem',
+        display: 'flex',
+        alignItems: 'center',
+        ...shorthands.gap('0.5rem'),
     },
     userInfo: {
         display: 'flex',
         alignItems: 'center',
-        ...shorthands.gap('8px'),
+        ...shorthands.gap('0.5rem'),
     },
     username: {
         fontWeight: 'semibold',
+        // Hide username text on smaller screens, show only avatar
+        '@media (max-width: 640px)': {
+            display: 'none',
+        },
     },
     userMenuButton: {
         color: tokens.colorNeutralForegroundOnBrand,
         display: 'flex',
         alignItems: 'center',
-        ...shorthands.gap('8px'),
-        ...shorthands.padding('4px', '8px'),
-        ...shorthands.borderRadius('16px'),
+        ...shorthands.gap('0.5rem'),
+        ...shorthands.padding('0.25rem', '0.5rem'),
+        ...shorthands.borderRadius('1rem'),
         ':hover': {
             backgroundColor: tokens.colorBrandBackgroundHover,
+        },
+        // Increase touch target size on mobile
+        '@media (max-width: 640px)': {
+            ...shorthands.padding('0.5rem'),
         },
     },
     main: {
         display: 'flex',
         flex: 1,
         position: 'relative',
+        height: 'calc(100vh - 3.5rem - 2.5rem)', // Full height minus header and footer
         ...shorthands.overflow('hidden'),
     },
     sidebarContainer: {
-        width: '280px',
+        width: '100%', // Full width on mobile
+        maxWidth: '280px',
         backgroundColor: tokens.colorNeutralBackground1,
         display: 'flex',
         flexDirection: 'column',
+        height: '100%',
+        position: 'absolute', // Absolutely positioned on mobile
+        top: 0,
+        left: 0,
+        zIndex: 20,
+        transform: 'translateX(-100%)', // Hidden by default on mobile
+        transition: 'transform 0.3s ease, box-shadow 0.3s ease',
         ...shorthands.borderRight('1px', 'solid', tokens.colorNeutralStroke2),
-        height: 'calc(100vh - 56px)',
-        position: 'relative',
-        transition: 'transform 0.3s ease',
+        boxShadow: 'none',
+        
+        // On larger screens, make it a normal part of the layout
+        '@media (min-width: 768px)': {
+            position: 'relative',
+            transform: 'translateX(0)',
+            boxShadow: 'none',
+        },
     },
-    sidebarHidden: {
-        transform: 'translateX(-100%)',
-        position: 'absolute',
-        zIndex: 10,
-        height: 'calc(100vh - 56px)',
+    sidebarVisible: {
+        transform: 'translateX(0)',
+        boxShadow: tokens.shadow16,
     },
     sidebarToggleButton: {
         position: 'absolute',
-        top: '16px',
-        right: '-18px',
-        width: '36px',
-        height: '36px',
+        top: '1rem',
+        right: '-1.125rem',
+        width: '2.25rem',
+        height: '2.25rem',
         ...shorthands.borderRadius('50%'),
         backgroundColor: tokens.colorNeutralBackground1,
-        zIndex: 20,
+        zIndex: 25,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         ...shorthands.border('1px', 'solid', tokens.colorNeutralStroke2),
         boxShadow: tokens.shadow4,
+        // Larger touch target on mobile
+        '@media (max-width: 640px)': {
+            width: '2.5rem',
+            height: '2.5rem',
+            top: '0.75rem',
+        },
     },
-    contentContainer: {
-        flex: 1,
-        ...shorthands.overflow('hidden'),
-        transition: 'width 0.3s ease, margin-left 0.3s ease',
-    },
-    contentWithSidebar: {
-        width: 'calc(100% - 280px)',
-    },
-    contentFullWidth: {
-        width: '100%',
-    },
-    sidebarContent: {
-        display: 'flex',
-        flexDirection: 'column',
-        flex: 1,
-        ...shorthands.padding('16px'),
-        ...shorthands.overflow('hidden'),
-    },
-    footer: {
-        ...shorthands.padding('8px', '16px'),
-        ...shorthands.borderTop('1px', 'solid', tokens.colorNeutralStroke2),
-        backgroundColor: tokens.colorNeutralBackground1,
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-    },
-    footerText: {
-        fontSize: tokens.fontSizeBase200,
-        color: tokens.colorNeutralForeground3,
-    },
-    mobileMenuButton: {
+    mobileOverlay: {
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(0, 0, 0, 0.4)',
+        zIndex: 15,
         display: 'none',
         '@media (max-width: 768px)': {
             display: 'block',
         },
     },
-    '@media (max-width: 768px)': {
-        sidebarContainer: {
-            position: 'absolute',
-            zIndex: 100,
-            width: '280px',
+    contentContainer: {
+        flex: 1,
+        width: '100%', // Mobile first: full width
+        height: '100%',
+        ...shorthands.overflow('hidden'),
+        transition: 'margin-left 0.3s ease, width 0.3s ease',
+        position: 'relative',
+        
+        // On large screens, adjust width based on sidebar visibility
+        '@media (min-width: 768px)': {
+            width: 'calc(100% - 280px)',
+            marginLeft: '280px',
         },
-        contentContainer: {
-            width: '100% !important',
+    },
+    contentFullWidth: {
+        // For desktop when sidebar is hidden
+        '@media (min-width: 768px)': {
+            width: '100%',
+            marginLeft: 0,
+        },
+    },
+    sidebarContent: {
+        display: 'flex',
+        flexDirection: 'column',
+        flex: 1,
+        ...shorthands.padding('1rem'),
+        ...shorthands.overflow('hidden'),
+    },
+    footer: {
+        ...shorthands.padding('0.5rem', '1rem'),
+        ...shorthands.borderTop('1px', 'solid', tokens.colorNeutralStroke2),
+        backgroundColor: tokens.colorNeutralBackground1,
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        height: '2.5rem',
+        width: '100%',
+        position: 'relative',
+        zIndex: 10,
+    },
+    footerText: {
+        fontSize: tokens.fontSizeBase200,
+        color: tokens.colorNeutralForeground3,
+    },
+    hamburgerButton: {
+        marginRight: '0.5rem',
+        display: 'none',
+        '@media (max-width: 768px)': {
+            display: 'flex',
         },
     },
 });
@@ -162,7 +216,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
     className,
 }) => {
     const styles = useStyles();
-    const [isSidebarVisible, setIsSidebarVisible] = useState(true);
+    const [isSidebarVisible, setIsSidebarVisible] = useState(false); // Default hidden on mobile, visible on desktop handled by CSS media query
 
     const toggleSidebar = () => {
         setIsSidebarVisible(!isSidebarVisible);
@@ -173,10 +227,28 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
         return user.name || user.email.split('@')[0];
     };
 
+    // Function to handle clicks on the mobile overlay (to close the sidebar)
+    const handleOverlayClick = () => {
+        if (isSidebarVisible) {
+            setIsSidebarVisible(false);
+        }
+    };
+
     return (
         <div className={mergeClasses(styles.container, className)}>
             <header className={styles.header}>
-                <div className={styles.logo}>Cortex Chat</div>
+                <div className={styles.logo}>
+                    {/* Mobile hamburger menu button */}
+                    <Button
+                        className={styles.hamburgerButton}
+                        appearance="subtle"
+                        icon={<Navigation24Regular />}
+                        onClick={toggleSidebar}
+                        aria-label="Menu"
+                        size="small"
+                    />
+                    Cortex Chat
+                </div>
                 
                 {user && (
                     <div className={styles.userInfo}>
@@ -205,14 +277,19 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
             </header>
             
             <main className={styles.main}>
+                {/* Mobile overlay - only visible when sidebar is open on mobile */}
+                {isSidebarVisible && (
+                    <div className={styles.mobileOverlay} onClick={handleOverlayClick} />
+                )}
+                
                 {sidebar && (
-                    <aside className={`${styles.sidebarContainer} ${!isSidebarVisible ? styles.sidebarHidden : ''}`}>
+                    <aside className={`${styles.sidebarContainer} ${isSidebarVisible ? styles.sidebarVisible : ''}`}>
                         <Button 
                             className={styles.sidebarToggleButton} 
                             appearance="subtle"
-                            icon={isSidebarVisible ? <DismissRegular /> : <ChevronRight20Regular />}
+                            icon={<DismissRegular />}
                             onClick={toggleSidebar}
-                            aria-label={isSidebarVisible ? 'Hide sidebar' : 'Show sidebar'}
+                            aria-label="Toggle sidebar"
                         />
                         <div className={styles.sidebarContent}>
                             {sidebar}
@@ -220,7 +297,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
                     </aside>
                 )}
                 
-                <div className={`${styles.contentContainer} ${isSidebarVisible && sidebar ? styles.contentWithSidebar : styles.contentFullWidth}`}>
+                <div className={`${styles.contentContainer} ${!isSidebarVisible ? styles.contentFullWidth : ''}`}>
                     {children}
                 </div>
             </main>

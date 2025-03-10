@@ -13,7 +13,8 @@ import {
     MenuItem,
     MenuList,
     MenuPopover,
-    MenuTrigger
+    MenuTrigger,
+    Spinner
 } from '@fluentui/react-components';
 import { Add20Regular, MoreHorizontal20Regular } from '@fluentui/react-icons';
 import { Workspace } from '@/types';
@@ -79,6 +80,7 @@ export interface WorkspaceListProps {
     onSelectWorkspace: (workspaceId: string) => void;
     onCreateWorkspace: () => void;
     onDeleteWorkspace?: (workspaceId: string) => void;
+    isLoading?: boolean;
 }
 
 export const WorkspaceList: React.FC<WorkspaceListProps> = ({
@@ -87,6 +89,7 @@ export const WorkspaceList: React.FC<WorkspaceListProps> = ({
     onSelectWorkspace,
     onCreateWorkspace,
     onDeleteWorkspace,
+    isLoading = false,
 }) => {
     const styles = useStyles();
 
@@ -104,7 +107,11 @@ export const WorkspaceList: React.FC<WorkspaceListProps> = ({
             </div>
             <Divider />
             
-            {workspaces.length === 0 ? (
+            {isLoading ? (
+                <div className={styles.emptyState}>
+                    <Spinner size="small" label="Loading workspaces..." />
+                </div>
+            ) : workspaces.length === 0 ? (
                 <div className={styles.emptyState}>
                     <Text>No workspaces found</Text>
                     <Button 
