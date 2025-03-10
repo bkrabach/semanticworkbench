@@ -4,15 +4,18 @@ This document details the core components and interfaces of the Cortex Core syst
 
 ## Table of Contents
 
-- [Session Manager](#session-manager)
-- [Dispatcher](#dispatcher)
+- [Session Management](#session-management)
+- [Routing System](#routing-system)
+- [Event System](#event-system)
 - [Cortex Router](#cortex-router)
-- [Context Manager](#context-manager)
-- [Integration Hub](#integration-hub)
-- [Workspace Manager](#workspace-manager)
+- [Input Receivers](#input-receivers)
+- [Output Publishers](#output-publishers)
+- [Messaging Architecture](#messaging-architecture)
+- [Future Components](#future-components)
+- [Workspace and Conversation Management](#workspace-and-conversation-management)
 - [Security Manager](#security-manager)
 - [Memory System Interface](#memory-system-interface)
-- [Domain Expert Interface](#domain-expert-interface)
+- [Domain Expert Interface (Planned)](#domain-expert-interface-planned)
 - [Circuit Breaker](#circuit-breaker)
 - [SSE System](#sse-system)
 
@@ -118,6 +121,7 @@ The Event System follows a hierarchical naming convention to enable intuitive pa
 `{domain}.{entity}.{action}`
 
 Examples:
+
 - `conversation.message.created`
 - `user.session.started`
 - `workspace.document.updated`
@@ -131,7 +135,7 @@ Examples:
 class EventPayload(BaseModel):
     """
     Standardized structure for all events in the system
-    
+
     Attributes:
         event_type: Type of the event (e.g., 'conversation.message.created')
         data: Event-specific data payload
@@ -153,13 +157,13 @@ class EventPayload(BaseModel):
 ```python
 class EventSystemInterface(Protocol):
     """Interface for the event system that connects components"""
-    
+
     async def publish(self, event_type: str, data: Dict[str, Any], source: str,
                      trace_id: Optional[str] = None,
                      correlation_id: Optional[str] = None) -> None:
         """
         Publish an event to all subscribers
-        
+
         Args:
             event_type: Type of the event (e.g., 'conversation.message.created')
             data: Event data
@@ -168,36 +172,36 @@ class EventSystemInterface(Protocol):
             correlation_id: Optional ID to correlate related events
         """
         ...
-    
+
     async def subscribe(self, event_pattern: str, callback: EventCallback) -> str:
         """
         Subscribe to events matching a pattern
-        
+
         Args:
             event_pattern: Pattern to match event types (can use wildcards)
             callback: Async function to call when matching events occur
-            
+
         Returns:
             Subscription ID that can be used to unsubscribe
         """
         ...
-    
+
     async def unsubscribe(self, subscription_id: str) -> bool:
         """
         Unsubscribe from events
-        
+
         Args:
             subscription_id: ID returned from subscribe
-            
+
         Returns:
             Boolean indicating success
         """
         ...
-    
+
     async def get_stats(self) -> Dict[str, Any]:
         """
         Get statistics about event processing
-        
+
         Returns:
             Dictionary with event statistics
         """
@@ -209,11 +213,11 @@ class EventSystemInterface(Protocol):
 ```python
 class EventCallback(Protocol):
     """Callback protocol for event system subscribers"""
-    
+
     async def __call__(self, event_type: str, payload: EventPayload) -> None:
         """
         Handle an event
-        
+
         Args:
             event_type: Type of the event
             payload: Event payload with full event data
@@ -237,7 +241,7 @@ This data is valuable for observability, performance monitoring, and diagnosing 
 
 ## Cortex Router
 
-The Cortex Router is the central intelligence component that processes inputs and determines responses.
+The Cortex Router is the central intelligence component that processes inputs and determines responses. It serves as the cognitive heart of the Cortex system, making autonomous decisions about how to handle inputs from various channels and coordinate responses across multiple output modalities.
 
 ### Responsibilities
 
@@ -247,48 +251,292 @@ The Cortex Router is the central intelligence component that processes inputs an
 - Choose appropriate output channels for responses
 - Coordinate with memory systems and domain experts
 - Support asynchronous processing and delayed responses
+- Manage typing indicators and status updates
+- Properly clean up resources on shutdown
 
 ### Implementation Details
+
+The CortexRouter uses asyncio for efficient background processing:
+
+```python
+class CortexRouter(RouterInterface):
+    def __init__(self):
+        self.event_system = get_event_system()
+        self.message_queue = asyncio.Queue()  # Asyncio queue instead of threading.Queue
+        self.logger = logging.getLogger(__name__)
+        self.running = True
+
+        # Start async task to process messages
+        self.processing_task = asyncio.create_task(self._process_messages())
+
+    async def process_input(self, message: InputMessage) -> bool:
+        """Queue a message for processing (fire and forget)"""
+        await self.message_queue.put(message)
+        return True
+
+    async def cleanup(self):
+        """Clean up resources when shutting down"""
+        self.running = False
+        if self.processing_task and not self.processing_task.done():
+            self.processing_task.cancel()
+```
+
+The Router handles messages in a predictable sequence:
+
+1. Show typing indicator
+2. Process message and generate response
+3. Save response to database
+4. Hide typing indicator
+5. Send message to client via SSE
+
+### Client-Router-Output Communication Flow
+
+The Cortex system implements a sophisticated communication architecture that enables multi-modal, bi-directional interactions while maintaining complete decoupling between input and output channels.
+
+#### Core Architecture Principles
+
+```mermaid
+graph TD
+    subgraph "Client Applications"
+        ChatClient[Chat Client]
+        VoiceClient[Voice Client]
+        CanvasClient[Canvas Client]
+        AppIntegration[Application Integration]
+    end
+
+    subgraph "Cortex Core"
+        subgraph "API Layer"
+            ChatAPI[Chat API]
+            VoiceAPI[Voice API]
+            CanvasAPI[Canvas API]
+        end
+
+        CortexRouter[Cortex Router]
+
+        SSEManager[SSE Manager]
+
+        subgraph "Database"
+            DB[(Database)]
+        end
+    end
+
+    %% Input flow
+    ChatClient -->|HTTP POST| ChatAPI
+    VoiceClient -->|WebSocket| VoiceAPI
+    CanvasClient -->|HTTP POST| CanvasAPI
+    AppIntegration -->|API| ChatAPI
+
+    %% API to Database
+    ChatAPI -->|Save Message| DB
+
+    %% API to Router
+    ChatAPI -->|InputMessage| CortexRouter
+    VoiceAPI -->|InputMessage| CortexRouter
+    CanvasAPI -->|InputMessage| CortexRouter
+
+    %% Router flow
+    CortexRouter -->|1. Show Typing| SSEManager
+    CortexRouter -->|2. Save Response| DB
+    CortexRouter -->|3. Hide Typing| SSEManager
+    CortexRouter -->|4. Send Message| SSEManager
+
+    %% Output flow
+    SSEManager -->|SSE Events| ChatClient
+    SSEManager -->|SSE Events| CanvasClient
+    SSEManager -->|WebSocket| VoiceClient
+```
+
+#### Key Architectural Characteristics
+
+1. **Simplified Message Flow**
+
+   - Direct, predictable flow from API through Router to SSE
+   - Clear sequence of operations for consistent processing
+   - Router centralizes all message processing logic
+
+2. **Asyncio-Based Processing**
+
+   - Background processing uses asyncio for better efficiency
+   - Queue-based message handling for proper backpressure
+   - Clean resource management with proper cleanup methods
+
+3. **Direct SSE Communication**
+
+   - Router communicates directly with SSE Manager for real-time updates
+   - Typing indicators and messages follow the same direct path
+   - Clear connection management in the SSE system
+
+4. **Multi-Modal Capabilities**
+
+   - The system can receive input on one channel (e.g., voice) and respond on another (e.g., chat)
+   - A single input can generate multiple outputs across different channels
+   - Outputs can be synchronized across modalities (voice narration with visual data)
+
+5. **Autonomous Routing Decisions**
+   - The Router decides independently when and how to respond to inputs
+   - Responses can be immediate, delayed, or completely absent
+   - The system can choose optimal output channels based on context and content type
+
+#### Detailed Flow Sequence
+
+```mermaid
+sequenceDiagram
+    participant Client as Client Application
+    participant API as API Layer
+    participant DB as Database
+    participant Router as Cortex Router
+    participant SSE as SSE Manager
+
+    Client->>API: Send message (HTTP POST)
+    API->>DB: Save user message
+    API->>Router: Queue InputMessage
+    API->>Client: Return acknowledgment
+    Note right of API: API processing complete
+
+    Router->>SSE: Show typing indicator
+
+    Router->>Router: Process message
+
+    Router->>DB: Save response message
+    Router->>SSE: Hide typing indicator
+    Router->>SSE: Send response message
+
+    SSE->>Client: Send typing indicator (SSE)
+    SSE->>Client: Send response message (SSE)
+```
+
+#### Multi-Modal Interaction Example
+
+```mermaid
+graph LR
+    subgraph "User Interaction"
+        VoiceInput[Voice Input]
+        ChatOutput[Chat Response]
+        CanvasOutput[Data Visualization]
+        AppOutput[App Integration Update]
+    end
+
+    subgraph "Cortex Core"
+        Router[Cortex Router]
+    end
+
+    VoiceInput -->|"Hey Cortex, show me sales data"| Router
+    Router -->|"I've prepared the sales data for you"| ChatOutput
+    Router -->|"Sales chart visualization"| CanvasOutput
+    Router -->|"Update connected CRM view"| AppOutput
+```
+
+### Implementation Details
+
+The core messaging models that enable this architecture:
 
 ```python
 class InputMessage(CortexMessage):
     """Message received from an input channel"""
-    
+
     # Source identification
     channel_id: str
     channel_type: ChannelType
-    
+
     # Content
     content: str
-    
+
     # Context
     user_id: Optional[str] = None
     workspace_id: Optional[str] = None
     conversation_id: Optional[str] = None
-    
+
 
 class OutputMessage(CortexMessage):
     """Message to be sent to an output channel"""
-    
+
     # Destination
     channel_id: str
     channel_type: ChannelType
-    
+
     # Content
     content: str
-    
+
+    # Context - same fields as InputMessage for consistency
+    user_id: Optional[str] = None
+    workspace_id: Optional[str] = None
+    conversation_id: Optional[str] = None
+
     # Relationship
-    reference_message_id: Optional[str] = None
-    context_ids: List[str] = Field(default_factory=list)
+    reference_message_id: Optional[str] = None  # ID of a message this is responding to
+    context_ids: List[str] = Field(default_factory=list)  # Related context IDs (conversation, workspace, etc.)
 
 
 class RouterInterface(Protocol):
     """Interface for the Cortex Router"""
-    
+
     async def process_input(self, message: InputMessage) -> bool:
         """Process an input message"""
         pass
 ```
+
+### Routing Decisions
+
+The Router makes autonomous decisions about how to handle each input through the `RoutingDecision` model:
+
+```python
+class RoutingDecision(BaseModel):
+    """
+    Represents a decision made by the Router about how to handle an input
+    """
+
+    # Core decision info
+    action_type: ActionType  # RESPOND, PROCESS, DELEGATE, IGNORE, etc.
+    priority: int = 3        # 1 (lowest) to 5 (highest)
+
+    # Destinations - can specify multiple output channels
+    target_channels: List[str] = Field(default_factory=list)
+
+    # Processing info
+    status_message: Optional[str] = None  # Message to show while processing
+    reference_id: Optional[str] = None    # ID for tracking
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+```
+
+### Future Evolution with Domain Experts
+
+The current architecture will evolve to incorporate Domain Expert entities through the Model Context Protocol (MCP):
+
+```mermaid
+graph TD
+    subgraph "Client Channels"
+        Clients[Client Applications]
+    end
+
+    subgraph "Cortex Core"
+        Router[Cortex Router]
+        EventSystem[Event System]
+        IntegrationHub[Integration Hub]
+    end
+
+    subgraph "Domain Experts"
+        CodeExpert[Code Assistant]
+        DataExpert[Data Analyst]
+        DocExpert[Document Assistant]
+        AgentExpert[Autonomous Agent]
+    end
+
+    Clients <-->|Input/Output| Router
+    Router <-->|Events| EventSystem
+    Router <-->|Task Delegation| IntegrationHub
+    IntegrationHub <-->|MCP| CodeExpert
+    IntegrationHub <-->|MCP| DataExpert
+    IntegrationHub <-->|MCP| DocExpert
+    IntegrationHub <-->|MCP| AgentExpert
+```
+
+In this evolved architecture:
+
+1. The Router will delegate complex tasks to specialized Domain Experts via the Integration Hub
+2. Domain Experts will communicate using the Model Context Protocol (MCP)
+3. Each expert will maintain independent state and context for its domain
+4. The Router will coordinate multi-expert collaborations for complex tasks
+5. Event-driven communication remains the backbone of the system
 
 ## Input Receivers
 
@@ -306,15 +554,15 @@ Input Receivers handle inputs from specific channels and forward them to the Rou
 ```python
 class InputReceiverInterface(Protocol):
     """Interface for components that receive inputs from external sources"""
-    
+
     async def receive_input(self, **kwargs) -> bool:
         """Process incoming input and forward it to the Router"""
         pass
-    
+
     def get_channel_id(self) -> str:
         """Get the unique ID for this input channel"""
         pass
-    
+
     def get_channel_type(self) -> ChannelType:
         """Get the type of this input channel"""
         pass
@@ -337,15 +585,15 @@ Output Publishers handle delivering messages to specific channels.
 ```python
 class OutputPublisherInterface(Protocol):
     """Interface for components that send outputs to external destinations"""
-    
+
     async def publish(self, message: OutputMessage) -> bool:
         """Publish a message to this output channel"""
         pass
-    
+
     def get_channel_id(self) -> str:
         """Get the unique ID for this output channel"""
         pass
-    
+
     def get_channel_type(self) -> ChannelType:
         """Get the type of this output channel"""
         pass
@@ -353,20 +601,86 @@ class OutputPublisherInterface(Protocol):
 
 ## Messaging Architecture
 
-The key architectural principle of the Cortex System is complete decoupling of inputs and outputs:
+The key architectural principle of the Cortex System is the complete decoupling of inputs and outputs, enabling a flexible, multi-modal communication system.
 
-1. Input Receivers accept inputs and forward them to the Router with no expectation of responses
-2. The Router processes inputs asynchronously and makes autonomous decisions
-3. If/when the Router decides to respond, it publishes messages via the Event System
-4. Output Publishers subscribe to events and deliver messages to their channels
-5. There is no direct connection between input and output paths
+### Core Messaging Flow
 
-This architecture enables:
-- Completely autonomous routing decisions
-- Delayed responses
-- Responses to different channels than the input came from
-- Multiple responses to a single input
-- No response at all for certain inputs
+```mermaid
+flowchart TD
+    subgraph "Input Path"
+        Input[Client Input] --> Receiver[Input Receiver]
+        Receiver --> InputQ[Input Queue]
+        InputQ --> Router[Cortex Router]
+    end
+
+    subgraph "Decision Process"
+        Router --> Decision{Routing Decision}
+        Decision -->|Respond| Status[Status Message]
+        Decision -->|Respond| Processing[Process Response]
+        Decision -->|Process| ComplexProc[Complex Processing]
+        Decision -->|Delegate| Forward[Forward to Expert]
+        Decision -->|Ignore| NoAction[No Action]
+    end
+
+    subgraph "Output Path"
+        Processing --> Event[Event System]
+        ComplexProc --> Event
+        Forward --> Event
+        Event --> Publishers[Output Publishers]
+        Publishers --> Clients[Client Outputs]
+    end
+
+    %% Add status message path
+    Status --> Event
+```
+
+### Key Architectural Characteristics
+
+1. **Complete Decoupling of Input and Output**
+
+   - Input Receivers accept inputs and forward them to the Router with no expectation of responses
+   - The Router processes inputs asynchronously and makes autonomous decisions
+   - If/when the Router decides to respond, it publishes messages via the Event System
+   - Output Publishers subscribe to events and deliver messages to their channels
+   - There is no direct connection between input and output paths
+
+2. **Multi-Modal Context Awareness**
+
+   - The system maintains context across different modalities (text, voice, visual)
+   - Context from one modality can influence responses in another
+   - User preferences can determine optimal output channels
+
+3. **Asynchronous Processing Model**
+   - All message processing is handled asynchronously
+   - Messages are queued and processed in order of priority
+   - Long-running operations don't block the main processing flow
+
+### Messaging Benefits
+
+This architecture enables powerful capabilities not possible with traditional request-response models:
+
+1. **Intelligent Interaction Flow**
+
+   - Completely autonomous routing decisions
+   - Responses might be immediate, delayed, or completely absent
+   - Multiple responses can be generated from a single input
+   - Responses can be delivered on different channels than the input came from
+
+2. **Adaptive Response Strategies**
+
+   - Deliver preliminary responses while complex processing continues
+   - Coordinate responses across multiple channels simultaneously
+   - Choose optimal channels based on content type and user context
+   - Preserve context across interaction sessions
+
+3. **Scalable Processing**
+   - Background processing isolates resource-intensive operations
+   - Components can be scaled independently based on load
+   - Event-driven architecture enables horizontal scaling
+
+This architecture forms the foundation for Cortex's evolution toward a sophisticated ecosystem of specialized domain experts working together through the Model Context Protocol (MCP).
+
+For details on the messaging architecture, see [ADR-006: Messaging Architecture](adr/adr-006-messaging-architecture.md).
 
 ## Future Components
 
@@ -428,11 +742,11 @@ logger = get_logger(__name__)
 
 class IntegrationHub:
     """Manages connections to Domain Expert services via MCP"""
-    
+
     def __init__(self):
         self.settings = get_settings()
         self.clients: Dict[str, McpClient] = {}
-        
+
     async def startup(self):
         """Initialize connections to all configured MCP endpoints"""
         for endpoint in self.settings.mcp.endpoints:
@@ -446,7 +760,7 @@ class IntegrationHub:
                 logger.info(f"Connected to MCP endpoint: {endpoint['name']}")
             except Exception as e:
                 logger.error(f"Failed to connect to MCP endpoint {endpoint['name']}: {str(e)}")
-                
+
     async def shutdown(self):
         """Close all MCP connections"""
         for name, client in self.clients.items():
@@ -455,32 +769,32 @@ class IntegrationHub:
                 logger.info(f"Closed connection to MCP endpoint: {name}")
             except Exception as e:
                 logger.error(f"Error closing MCP connection to {name}: {str(e)}")
-    
+
     async def list_experts(self) -> List[str]:
         """List all available domain experts"""
         return list(self.clients.keys())
-    
+
     async def list_expert_tools(self, expert_name: str) -> Dict[str, Any]:
         """List all tools available from a specific domain expert"""
         if expert_name not in self.clients:
             raise ValueError(f"Unknown domain expert: {expert_name}")
-            
+
         client = self.clients[expert_name]
         return await client.tools_list()
-    
+
     async def invoke_expert_tool(self, expert_name: str, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """Invoke a tool on a specific domain expert"""
         if expert_name not in self.clients:
             raise ValueError(f"Unknown domain expert: {expert_name}")
-            
+
         client = self.clients[expert_name]
         return await client.tools_call(name=tool_name, arguments=arguments)
-    
+
     async def read_expert_resource(self, expert_name: str, uri: str) -> Dict[str, Any]:
         """Read a resource from a specific domain expert"""
         if expert_name not in self.clients:
             raise ValueError(f"Unknown domain expert: {expert_name}")
-            
+
         client = self.clients[expert_name]
         return await client.resources_read(uri=uri)
 ```
@@ -512,11 +826,11 @@ mcp = FastMCP("Code Assistant Expert")
 async def generate_code(description: str, language: str) -> Dict[str, Any]:
     """Generate code based on a description"""
     # Implementation calls an LLM to generate code
-    
+
     code = f"// Generated {language} code for: {description}\n"
     if language.lower() == "python":
         code = f"# Generated Python code for: {description}\n\ndef main():\n    print('Hello, world!')\n\nif __name__ == '__main__':\n    main()"
-    
+
     return {
         "content": [
             {
@@ -613,15 +927,15 @@ Conversations are managed through a repository implementation:
 class ConversationRepository:
     def __init__(self, db_session: Session):
         self.db = db_session
-        
+
     def get_conversation_by_id(self, conversation_id: str) -> Optional[Conversation]:
         return self.db.query(Conversation).filter(Conversation.id == conversation_id).first()
-        
+
     def get_conversations_by_workspace(self, workspace_id: str, limit: int = 100, offset: int = 0) -> List[Conversation]:
         return self.db.query(Conversation).filter(
             Conversation.workspace_id == workspace_id
         ).order_by(Conversation.last_active_at.desc()).offset(offset).limit(limit).all()
-        
+
     def add_message(self, conversation_id: str, content: str, role: str, metadata: Optional[Dict] = None) -> Dict:
         # Implementation...
 ```
@@ -732,23 +1046,24 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
-    
+
     token_data = verify_jwt_token(token)
     if token_data is None:
         raise credentials_exception
-        
+
     user = db.query(User).filter(User.id == token_data.user_id).first()
     if user is None:
         raise credentials_exception
-        
+
     return user
 ```
 
 ### Future Enhancements
 
 Plans for enhancing security include:
+
 - Comprehensive access control policies
-- Advanced API key management 
+- Advanced API key management
 - Role-based authorization system
 - Resource-level permission checks
 - Integration with external identity providers
@@ -944,11 +1259,11 @@ class CircuitBreaker:
     """
     Implementation of the Circuit Breaker pattern for service resilience
     """
-    
+
     def __init__(
-        self, 
-        name: str, 
-        failure_threshold: int = 5, 
+        self,
+        name: str,
+        failure_threshold: int = 5,
         recovery_timeout: float = 30.0
     ):
         self.name = name
@@ -957,7 +1272,7 @@ class CircuitBreaker:
         self.failure_count = 0
         self.last_failure_time = 0.0
         self.state = CircuitState.CLOSED
-        
+
     async def execute(self, func: Callable[..., Awaitable[T]], *args: Any, **kwargs: Any) -> T:
         """
         Execute a function with circuit breaker protection
@@ -973,29 +1288,29 @@ class CircuitBreaker:
                     code="SERVICE_UNAVAILABLE",
                     status_code=503
                 )
-        
+
         try:
             # Execute the function
             result = await func(*args, **kwargs)
-            
+
             # Success, reset if in half-open state
             if self.state == CircuitState.HALF_OPEN:
                 self.failure_count = 0
                 self.state = CircuitState.CLOSED
                 logger.info(f"Circuit {self.name} recovered")
-            
+
             return result
-        
+
         except Exception as e:
             # Track failure
             self.failure_count += 1
             self.last_failure_time = time.time()
-            
+
             # Trip the circuit if threshold reached
             if self.state == CircuitState.CLOSED and self.failure_count >= self.failure_threshold:
                 self.state = CircuitState.OPEN
                 logger.warning(f"Circuit {self.name} tripped open after {self.failure_count} failures")
-            
+
             # Re-raise the exception
             raise
 ```
@@ -1007,7 +1322,7 @@ The Circuit Breaker is particularly useful for protecting external service calls
 ```python
 # Initialize circuit breaker
 conversation_publisher_cb = CircuitBreaker(
-    "conversation_publisher", 
+    "conversation_publisher",
     failure_threshold=3,
     recovery_timeout=60.0
 )
@@ -1015,7 +1330,7 @@ conversation_publisher_cb = CircuitBreaker(
 # Use it to protect an operation
 try:
     result = await conversation_publisher_cb.execute(
-        get_conversation_publisher, 
+        get_conversation_publisher,
         conversation_id
     )
     # Handle successful result
@@ -1047,6 +1362,7 @@ The SSE system follows a clean, modular design:
 ```
 
 This modular architecture allows for:
+
 - Clean separation of concerns
 - Improved testability
 - Easier maintenance and evolution
@@ -1095,7 +1411,7 @@ class SSEService:
     Service coordinating SSE components and operations
     """
     def __init__(
-        self, 
+        self,
         connection_manager: ConnectionManager,
         auth_service: AuthService,
         event_subscriber: EventSubscriber
@@ -1103,11 +1419,11 @@ class SSEService:
         self.connection_manager = connection_manager
         self.auth_service = auth_service
         self.event_subscriber = event_subscriber
-        
+
     async def authenticate_token(self, token: str) -> Dict[str, Any]:
         """Authenticate a token and return user info"""
         # Implementation...
-        
+
     async def verify_resource_access(self, user_info, channel_type, resource_id, db):
         """Verify user has access to the resource"""
         # Implementation...
@@ -1135,19 +1451,19 @@ class ConnectionManager:
             "workspace": {},
             "conversation": {},
         }
-        
+
     async def register_connection(self, channel_type, resource_id, user_id):
         """Register a new connection and return its queue and ID"""
         # Implementation...
-        
+
     async def remove_connection(self, channel_type, resource_id, connection_id):
         """Remove a connection when client disconnects"""
         # Implementation...
-        
+
     async def generate_sse_events(self, queue):
         """Generate SSE events from a queue for a client"""
         # Implementation...
-        
+
     def get_stats(self):
         """Get connection statistics"""
         # Implementation...
@@ -1168,11 +1484,11 @@ class AuthService:
     """
     def __init__(self, security_manager=None):
         self.security_manager = security_manager
-        
+
     async def validate_token(self, token: str) -> Dict[str, Any]:
         """Validate a token and return user information"""
         # Implementation...
-        
+
     async def check_resource_access(self, user_info, channel_type, resource_id, db):
         """Check if user has access to the requested resource"""
         # Implementation...
@@ -1196,11 +1512,11 @@ class EventSubscriber:
         self.event_system = event_system
         self.connection_manager = connection_manager
         self.subscription_ids = []
-        
+
     async def initialize(self):
         """Subscribe to relevant events"""
         # Implementation...
-        
+
     async def handle_event(self, event_type, payload):
         """Handle events from the event system and route to SSE clients"""
         # Implementation...

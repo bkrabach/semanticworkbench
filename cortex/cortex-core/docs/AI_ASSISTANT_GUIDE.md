@@ -71,6 +71,7 @@ This codebase is designed for a **fast-moving team that needs to explore new ide
 - **Simplicity is paramount**: Code should be easy to understand and navigate
 - **Modularity over monoliths**: Components should be well-isolated with clean interfaces
 - **Reduced complexity**: Prefer straightforward implementations over clever or complex ones
+- **Direct over indirect**: Favor direct communication paths over complex event chains
 - **Lower cognitive load**: New team members should be able to contribute quickly
 - **Safe experimentation**: Changes in one area should have minimal risk to others
 
@@ -118,6 +119,13 @@ When you identify potential dead code, verify it's unused by:
 - Use dependency overrides, not patching, for FastAPI tests
 - Test each layer (API, service, repository) separately
 - For SSE testing, follow the guidelines in `docs/TESTING.md`
+
+### Message Processing Flow
+- **Async over threading**: Use asyncio-based tasks for background processing instead of threads
+- **Make appropriate fields required**: Don't make fields optional when they're always needed (e.g., conversation_id)
+- **Direct communication**: Prefer direct calls to services over complex event chains when appropriate
+- **Clean resource management**: Always provide proper cleanup methods for background tasks 
+- **Minimize conditional checks**: Remove redundant null checks when fields are required
 
 ## Context and Background Information
 
@@ -198,6 +206,10 @@ The codebase is already quite large and complex in some areas. Actively work to 
 - Remove compatibility layers and migration paths (codebase is pre-production)
 - Eliminate dead/abandoned code as described in the Codebase Philosophy section
 - Improve type safety and error handling
+- Convert optional fields to required when they're always needed
+- Replace threading with asyncio for background tasks
+- Simplify complex event chains with direct service calls where appropriate
+- Ensure all background tasks have proper cleanup methods
 - Refactor to align with architectural principles
 - Create automated tools to enforce good practices
 - Look for opportunities to simplify by removing unused or overly-complex code
@@ -246,7 +258,33 @@ cortex-core/
     └── architecture/       # Architecture validation tests
 ```
 
-## Best Practices for Assisting with This Project
+## Engineering Excellence Guidelines
+
+### Core Engineering Mindset
+
+The most successful contributions to this codebase share these engineering attributes:
+
+1. **First Principles Thinking**: Start with the core purpose of the component rather than incrementally modifying existing patterns. Ask "what is this actually trying to achieve?" before diving into implementation.
+
+2. **Simplicity Over Flexibility**: Choose simpler designs over more flexible ones unless the flexibility is immediately needed. Complexity should be justified by current, not hypothetical, requirements.
+
+3. **Follow Direct Paths**: Prefer direct communication between components over complex event chains or multiple layers of indirection. Each additional hop is a potential failure point.
+
+4. **Visualize End-to-End Flow**: Think in terms of complete paths from request to response. Diagram these flows to identify unnecessary complexity, circular references, or potential failure points.
+
+5. **Resource Lifecycle Awareness**: Consider the full lifecycle of components including cleanup and shutdown. Any component that manages background tasks or resources must implement proper cleanup methods.
+
+6. **Design Through Documentation**: Use documentation creation as a design activity, not just recording what exists. Writing clear explanations often reveals flaws in the design itself.
+
+7. **Type Safety as Default**: Make fields required unless they truly are optional. Eliminate unnecessary null checks by designing with proper type constraints from the start.
+
+8. **Code as Communication**: Write code primarily for human understanding, not just machine execution. Choose clarity over cleverness, even if it means a few more lines of code.
+
+9. **Iterative Simplification**: After implementing a solution, look for further opportunities to simplify. Ask "can I remove this layer?" or "is this abstraction necessary?"
+
+10. **Mental Models Matter**: Use diagrams and visual thinking to reason about architecture. If a design is hard to diagram clearly, it's likely too complex.
+
+### Best Practices for Assisting with This Project
 
 1. **Start with Current Status**: Always check git status to understand the current state of the project
 2. **Understand Architecture First**: Review architecture documentation before making changes

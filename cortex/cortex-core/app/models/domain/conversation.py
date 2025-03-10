@@ -21,6 +21,7 @@ class Message(MetadataModel):
     content: str
     role: str
     created_at: datetime
+    workspace_id: str | None = None  # Using proper Optional typing
 
 
 class Conversation(TimestampedModel, MetadataModel):
