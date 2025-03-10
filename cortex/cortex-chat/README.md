@@ -41,7 +41,7 @@ See the [Implementation Plan](docs/IMPLEMENTATION_PLAN.md) for details on curren
    ```bash
    pnpm dev
    ```
-4. Open http://localhost:3000 in your browser
+4. Open http://localhost:5000 in your browser
 
 ## Development Commands
 

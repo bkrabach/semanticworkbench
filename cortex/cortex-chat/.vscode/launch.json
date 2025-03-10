@@ -1,24 +1,24 @@
 {
-  "configurations": [
-    {
-      "name": "cortex-chat",
-      "console": "integratedTerminal",
-      "request": "launch",
-      "runtimeArgs": ["run", "dev"],
-      "runtimeExecutable": "pnpm",
-      "cwd": "${workspaceFolder}",
-      "skipFiles": ["<node_internals>/**"],
-      "type": "node",
-    },
-    {
-      "name": "web-client",
-      "console": "integratedTerminal",
-      "request": "launch",
-      "runtimeArgs": ["http-server", "-p", "4000", "."],
-      "runtimeExecutable": "npx",
-      "cwd": "${workspaceFolder}",
-      "skipFiles": ["<node_internals>/**"],
-      "type": "node"
-    }
-  ]
+    "configurations": [
+        {
+            "name": "cortex-chat",
+            "console": "integratedTerminal",
+            "request": "launch",
+            "runtimeArgs": ["run", "dev"],
+            "runtimeExecutable": "pnpm",
+            "cwd": "${workspaceFolder}",
+            "skipFiles": ["<node_internals>/**"],
+            "type": "node"
+        },
+        {
+            "name": "web-client",
+            "console": "integratedTerminal",
+            "request": "launch",
+            "runtimeArgs": ["http-server", "-p", "5050", "."],
+            "runtimeExecutable": "npx",
+            "cwd": "${workspaceFolder}",
+            "skipFiles": ["<node_internals>/**"],
+            "type": "node"
+        }
+    ]
 }
