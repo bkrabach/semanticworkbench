@@ -47,8 +47,10 @@ const useStyles = makeStyles({
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
+        width: '100%',
         height: '100vh',
         backgroundColor: tokens.colorNeutralBackground1,
+        overflow: 'hidden',
     },
     loginCard: {
         width: '400px',
@@ -66,7 +68,9 @@ const useStyles = makeStyles({
     dashboardContainer: {
         display: 'flex',
         flexDirection: 'column',
-        ...shorthands.padding('20px'),
+        width: '100%',
+        height: '100%',
+        overflow: 'hidden',
         gap: '16px',
     },
     welcomeMessage: {
@@ -684,7 +688,7 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
 function App() {
     return (
         <QueryClientProvider client={queryClient}>
-            <FluentProvider theme={teamsLightTheme}>
+            <FluentProvider theme={teamsLightTheme} style={{ width: '100%', height: '100vh' }}>
                 <AuthProvider>
                     <Router>
                         <Routes>
