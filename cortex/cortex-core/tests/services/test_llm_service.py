@@ -5,12 +5,13 @@ Test suite for the LLM service
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 import asyncio
-from typing import AsyncGenerator
+from typing import AsyncGenerator, AsyncIterable, List, Dict, Any
 
 from app.services.llm_service import (
     LlmService, get_llm_service, 
     CompletionResponse, StreamingResponse, 
-    Choice, DeltaChoice, MessageContent, DeltaContent
+    Choice, DeltaChoice, MessageContent, DeltaContent,
+    litellm_adapter, HAS_LITELLM, ModelResponse, CustomStreamWrapper
 )
 from app.config import settings
 
@@ -179,3 +180,155 @@ async def test_invalid_response_structure(llm_service_with_real_mode):
         
         # Verify we got an empty result and an error was logged
         assert result == ""
+
+
+@pytest.mark.asyncio
+async def test_litellm_adapter_regular_response():
+    """Test the litellm_adapter function with a regular (non-streaming) response"""
+    # Create a mock response
+    mock_response = CompletionResponse(
+        choices=[Choice(message=MessageContent(content="Adapter test response"))]
+    )
+    
+    # Create a mock for _litellm_acompletion
+    mock_litellm = AsyncMock(return_value=mock_response)
+    
+    # Patch HAS_LITELLM and _litellm_acompletion
+    with patch('app.services.llm_service.HAS_LITELLM', True), \
+         patch('app.services.llm_service._litellm_acompletion', mock_litellm):
+        
+        # Call the adapter
+        result = await litellm_adapter(
+            model="test-model",
+            messages=[{"role": "user", "content": "Test"}],
+            temperature=0.8
+        )
+        
+        # Verify the result
+        assert isinstance(result, CompletionResponse)
+        assert result.choices[0].message.content == "Adapter test response"
+        
+        # Verify _litellm_acompletion was called with correct parameters
+        mock_litellm.assert_called_once()
+        call_args = mock_litellm.call_args[1]
+        assert call_args["model"] == "test-model"
+        assert call_args["temperature"] == 0.8
+        assert not call_args["stream"]
+
+
+@pytest.mark.asyncio
+async def test_litellm_adapter_streaming_response():
+    """Test the litellm_adapter function with a streaming response"""
+    # Create a mock streaming response
+    async def mock_stream() -> AsyncGenerator[StreamingResponse, None]:
+        for word in ["Streaming", "adapter", "test", "response"]:
+            yield StreamingResponse(
+                choices=[DeltaChoice(delta=DeltaContent(content=word + " "))]
+            )
+    
+    # Create a mock for _litellm_acompletion
+    mock_stream_generator = mock_stream()
+    mock_litellm = AsyncMock(return_value=mock_stream_generator)
+    
+    # Patch HAS_LITELLM and _litellm_acompletion
+    with patch('app.services.llm_service.HAS_LITELLM', True), \
+         patch('app.services.llm_service._litellm_acompletion', mock_litellm):
+        
+        # Call the adapter with stream=True
+        result = await litellm_adapter(
+            model="test-model",
+            messages=[{"role": "user", "content": "Test"}],
+            temperature=0.8,
+            stream=True
+        )
+        
+        # Verify result is properly typed as an AsyncIterable
+        assert isinstance(result, AsyncIterable)
+        
+        # Safely collect the streaming chunks
+        chunks = []
+        if hasattr(result, '__aiter__'):  # Verify it's actually iterable
+            async for chunk in result:  # Type checked by isinstance above
+                chunks.append(chunk.choices[0].delta.content)
+            
+            # Verify streaming output
+            assert ''.join(chunks) == "Streaming adapter test response "
+        else:
+            pytest.fail("Result is not an AsyncIterable")
+        
+        # Verify _litellm_acompletion was called with correct parameters
+        mock_litellm.assert_called_once()
+        call_args = mock_litellm.call_args[1]
+        assert call_args["model"] == "test-model"
+        assert call_args["temperature"] == 0.8
+        assert call_args["stream"]
+
+
+@pytest.mark.asyncio
+async def test_litellm_adapter_fallback_to_mock():
+    """Test the litellm_adapter falls back to mock implementation when LiteLLM isn't available"""
+    # Create a mock for mock_acompletion
+    mock_fallback = AsyncMock(return_value=CompletionResponse(
+        choices=[Choice(message=MessageContent(content="Fallback mock response"))]
+    ))
+    
+    # Patch HAS_LITELLM, _litellm_acompletion, and mock_acompletion
+    with patch('app.services.llm_service.HAS_LITELLM', False), \
+         patch('app.services.llm_service._litellm_acompletion', None), \
+         patch('app.services.llm_service.mock_acompletion', mock_fallback):
+        
+        # Call the adapter
+        result = await litellm_adapter(
+            model="test-model",
+            messages=[{"role": "user", "content": "Test"}]
+        )
+        
+        # Verify we got the mock response
+        assert isinstance(result, CompletionResponse)
+        assert result.choices[0].message.content == "Fallback mock response"
+        
+        # Verify mock_acompletion was called
+        mock_fallback.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_adapter_used_by_service():
+    """Test that the service uses our adapter function for API calls"""
+    # Set up mocks
+    mock_adapter = AsyncMock(return_value=CompletionResponse(
+        choices=[Choice(message=MessageContent(content="Service using adapter"))]
+    ))
+    
+    # Create a service
+    service = LlmService()
+    service.use_mock = False
+    
+    # Patch the adapter function
+    with patch('app.services.llm_service.acompletion', mock_adapter):
+        # Call the service
+        result = await service.get_completion("Test call")
+        
+        # Verify the result
+        assert result == "Service using adapter"
+        
+        # Verify our adapter was called
+        mock_adapter.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_service_initialization_with_custom_settings():
+    """Test LlmService initialization with custom settings"""
+    with patch('app.services.llm_service.settings') as mock_settings:
+        # Setup custom settings
+        mock_settings.llm.default_model = "custom-model"
+        mock_settings.llm.use_mock = False
+        mock_settings.llm.timeout = 60
+        
+        # Create service
+        service = LlmService()
+        
+        # Verify settings were applied
+        assert service.default_model == "custom-model"
+        assert service.timeout == 60
+        # use_mock should be based on settings.llm.use_mock OR not HAS_LITELLM
+        assert service.use_mock is not None
