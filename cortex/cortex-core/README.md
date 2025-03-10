@@ -11,6 +11,7 @@ The Cortex Core is responsible for:
 - **Session Management**: Handling user sessions and workspaces
 - **Unified Context**: Maintaining and enriching contextual understanding across all interactions
 - **Task Orchestration**: Routing incoming requests and delegating specialized tasks
+- **LLM Integration**: Processing messages with language models from various providers
 - **Multi-Modal Interactions**: Supporting various input/output modalities including chat, voice, and more
 - **External Integrations**: Connecting with other tools and services using the MCP protocol
 
@@ -65,6 +66,7 @@ Cortex Core uses:
 
 - **REST API** for standard request/response interactions with clients
 - **Server-Sent Events (SSE)** for real-time, server-to-client communication
+- **LiteLLM** for unified access to multiple LLM providers
 - **Model Context Protocol (MCP)** for internal communication between Cortex Core and specialized services or domain experts
 
 ## Real-time Communication
@@ -121,6 +123,13 @@ See the [CLIENT_INTEGRATION_GUIDE.md](./CLIENT_INTEGRATION_GUIDE.md) for details
    SERVER_PORT=4000
    SERVER_HOST="localhost"
    SERVER_LOG_LEVEL="info"
+   
+   # LLM Configuration
+   LLM_DEFAULT_MODEL="openai/gpt-3.5-turbo"
+   # LLM_USE_MOCK=true  # Uncomment for mock mode
+   # Provider API keys
+   OPENAI_API_KEY="your-openai-api-key"
+   # ANTHROPIC_API_KEY="your-anthropic-api-key"
    ```
 
 4. Run database migrations:
@@ -169,4 +178,5 @@ For more detailed information, refer to:
 - [Configuration](./docs/CONFIGURATION.md) - Detailed configuration options
 - [Client Integration Guide](./docs/CLIENT_INTEGRATION_GUIDE.md) - Guide for client application developers
 - [Testing Guide](./docs/TESTING.md) - Best practices for testing
+- [LLM Integration](./docs/LLM_INTEGRATION.md) - Guide to LLM integration with LiteLLM
 - [AI Assistant Guide](./docs/AI_ASSISTANT_GUIDE.md) - Guide for AI code assistants working with this codebase
