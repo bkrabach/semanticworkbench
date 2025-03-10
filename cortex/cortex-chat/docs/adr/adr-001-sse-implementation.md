@@ -25,21 +25,25 @@ The Cortex Core platform has implemented a standardized SSE architecture for rea
 We will implement a dedicated SSE Manager component with the following features:
 
 1. **Centralized Connection Management**:
+
    - A single manager class that handles all SSE connections
    - Support for multiple concurrent connections (global, workspace, conversation)
    - Proper connection lifecycle management
 
 2. **Robust Reconnection Strategy**:
+
    - Exponential backoff for failed connections
    - Connection health monitoring
    - Automatic reconnection for transient failures
 
 3. **Event Routing System**:
+
    - Type-safe event subscription mechanism
    - Channel-based event filtering
    - Support for multiple event handlers per event type
 
 4. **Clean Resource Management**:
+
    - Explicit connection cleanup on component unmount
    - Prevention of memory leaks from abandoned connections
    - Proper event listener cleanup
@@ -58,11 +62,11 @@ class SSEManager {
   connect(channel: ChannelType, resourceId?: string): EventSource;
   disconnect(connectionKey: string): void;
   disconnectAll(): void;
-  
+
   // Event handling
   on(connectionKey: string, eventType: string, callback: EventCallback): void;
   off(connectionKey: string, eventType: string, callback?: EventCallback): void;
-  
+
   // Connection monitoring
   getConnectionStatus(connectionKey: string): ConnectionStatus;
   setTokenProvider(provider: () => string | null): void;
@@ -72,11 +76,13 @@ class SSEManager {
 The implementation will include the following safeguards:
 
 1. **Token Management**:
+
    - Secure handling of authentication tokens
    - Proper token refreshing when needed
    - Reconnection with new tokens after expiry
 
 2. **Error Handling**:
+
    - Graceful handling of network failures
    - Clear error reporting
    - Recovery paths for different error scenarios
@@ -91,11 +97,13 @@ The implementation will include the following safeguards:
 ### Polling
 
 **Pros**:
+
 - Simpler implementation
 - Works in all browsers
 - No long-lived connections
 
 **Cons**:
+
 - Higher server load
 - Higher network usage
 - Slower updates
@@ -104,11 +112,13 @@ The implementation will include the following safeguards:
 ### WebSockets
 
 **Pros**:
+
 - Bi-directional communication
 - Potentially better for high-frequency updates
 - Support for binary data
 
 **Cons**:
+
 - More complex server implementation
 - More difficult to scale
 - May require additional libraries
@@ -117,23 +127,26 @@ The implementation will include the following safeguards:
 ## Consequences
 
 **Positive**:
+
 - Real-time updates will improve the user experience
 - Standardized approach aligns with Cortex Core's architecture
 - Reduced server load compared to polling
 - Clean separation of concerns in the client architecture
 
 **Negative**:
+
 - Additional complexity in client implementation
 - Need to manage connection lifecycle carefully
 - Potential for memory leaks if not implemented properly
 - Need to handle network interruptions gracefully
 
 **Neutral**:
+
 - Will require thorough testing, especially for reconnection scenarios
 - May need adjustments based on real-world performance
 
 ## References
 
-1. [Cortex Core SSE Documentation](../cortex-core/docs/SSE.md)
+1. [Cortex Core SSE Documentation](../../../cortex-core/docs/SSE.md)
 2. [MDN EventSource Reference](https://developer.mozilla.org/en-US/docs/Web/API/EventSource)
 3. [SSE vs WebSockets](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events#EventSource_versus_WebSockets)
