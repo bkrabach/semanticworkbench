@@ -1,10 +1,47 @@
 # Cortex Core Architecture
 
-This document describes the high-level architecture of Cortex Core, its components, and design principles.
+This document describes the high-level architecture of Cortex Core, its components, and design principles. It connects the current implementation to the architectural vision outlined in the Cortex Platform documents.
 
-## Overview
+## Vision Alignment
 
-Cortex Core is designed as a modular system with clear separation of concerns, following clean architecture principles. The application is built around a layered design where each layer has specific responsibilities and dependencies flow inward.
+Cortex Core implements the central architecture described in the [Cortex Platform Vision](../cortex-platform/ai-context/cortex/Cortex_Platform-Vision_and_Values.md) and [Technical Architecture](../cortex-platform/ai-context/cortex/Cortex_Platform-Technical_Architecture.md) documents. The implementation follows the modular design principles of the "Central AI Core with Adaptive Ecosystem" approach:
+
+```mermaid
+graph TD
+    CortexCore[Cortex Core - IMPLEMENTED]
+    Jake[JAKE Memory - PLANNED]
+    Cognition[Cognition System - PARTIAL]
+    
+    CodeAssistant[Code Assistant - PLANNED]
+    DeepResearch[Deep Research - PLANNED]
+    
+    ChatIO[Chat I/O - IMPLEMENTED]
+    VoiceIO[Voice I/O - PLANNED]
+    CanvasIO[Canvas I/O - PLANNED]
+    
+    MCP[MCP Integration - IMPLEMENTED]
+    
+    CortexCore --> Jake
+    CortexCore --> Cognition
+    
+    CortexCore --> CodeAssistant
+    CortexCore --> DeepResearch
+    
+    CortexCore --> ChatIO
+    CortexCore --> VoiceIO
+    CortexCore --> CanvasIO
+    
+    CortexCore --> MCP
+    
+    style Jake stroke-dasharray: 5 5
+    style Cognition stroke-dasharray: 5 5
+    style CodeAssistant stroke-dasharray: 5 5
+    style DeepResearch stroke-dasharray: 5 5
+    style VoiceIO stroke-dasharray: 5 5
+    style CanvasIO stroke-dasharray: 5 5
+```
+
+The current implementation provides the foundation for this vision with several key components already in place, while others are planned for future development. See the [Implementation Status](./IMPLEMENTATION_STATUS.md) document for a detailed breakdown.
 
 ## Architectural Principles
 
@@ -13,8 +50,12 @@ Cortex Core is designed as a modular system with clear separation of concerns, f
 3. **Interface Segregation**: Clients depend only on interfaces they use
 4. **Clean Architecture**: Dependencies point inward toward domain entities
 5. **Repository Pattern**: Data access is abstracted behind repository interfaces
+6. **Modularity**: Components can be developed, tested, and replaced independently
+7. **Domain-Driven Design**: Strong focus on domain models and business logic
 
 ## Layered Architecture
+
+The current implementation follows a layered architecture that aligns with the vision's modular approach:
 
 ```
 ┌─────────────────┐
@@ -60,7 +101,18 @@ The data layer contains the database models and connections. It:
 - Provides ORM models
 - Handles database connections and sessions
 
-## Components and Interfaces
+## Core System Components
+
+### CortexRouter
+
+The CortexRouter is the central dispatching component that aligns with the "Task Orchestration" aspect of the Cortex Core in the vision. It:
+- Receives input messages from various channels
+- Makes routing decisions based on message content
+- Delegates specialized tasks to appropriate handlers
+- Manages asynchronous processing of messages
+- Sends responses through appropriate channels
+
+See [ROUTER.md](./ROUTER.md) for detailed information.
 
 ### Event System
 
@@ -92,18 +144,11 @@ This modular architecture provides:
 - Consistent interface for all event types
 - Unified authentication and authorization
 
-The key advantages of this architecture include:
-
-1. **Unified Endpoint Pattern**: All SSE endpoints follow the consistent `/v1/{channel_type}/{resource_id}` pattern
-2. **Modularity**: Each component has a single responsibility and clear interfaces
-3. **Extensibility**: New channel types can be added without changing the API structure
-4. **Security**: Centralized authentication and authorization for all SSE connections
-5. **Performance**: Efficient connection management with proper resource cleanup
-6. **Observability**: Built-in statistics and monitoring capabilities
+See [SSE.md](./SSE.md) for detailed information.
 
 ### Integration Hub and MCP Architecture
 
-The Integration Hub manages communication between Cortex Core and Domain Expert services using the Model Context Protocol (MCP). This is a central component of the platform's architecture for service-to-service communication:
+The Integration Hub manages communication between Cortex Core and Domain Expert services using the Model Context Protocol (MCP). This is a central component of the platform's architecture for service-to-service communication, corresponding to the "Inter-Service Communication" layer in the vision:
 
 ```
 ┌────────────────────┐           ┌────────────────────┐
@@ -124,24 +169,64 @@ The Integration Hub provides:
 4. **Resource Access**: Facilitates access to resources exposed by domain expert services
 5. **Error Handling**: Implements robust error handling and retries for domain expert communication
 
-Domain Expert services implement MCP servers using the FastMCP API from the Python SDK, which provides:
-
-1. **Decorator-based Tools**: Simple definition of tools using Python decorators
-2. **Type-safe Interfaces**: Automatic validation of parameters using Python type annotations
-3. **Resource Templating**: URI-template based resource definitions
-4. **Lifecycle Management**: Proper setup and teardown of resources
-
-MCP's role is critical for implementing specialized domain expert services, providing a clean separation between Cortex Core and the various expert services that enhance its capabilities.
-
-### Router
-
-The router dispatches incoming requests to the appropriate handlers based on the message type and context.
+See [INTEGRATION_HUB.md](./INTEGRATION_HUB.md) and [DOMAIN_EXPERTS.md](./DOMAIN_EXPERTS.md) for detailed information.
 
 ### Memory System
 
-The memory system provides short and long-term storage capabilities for conversation context and user preferences.
+The Memory System provides short and long-term storage capabilities for conversation context and user preferences. It implements the "unified memory" concept from the vision:
 
-### Repository Pattern Implementation
+- **Current Implementation**: Whiteboard Memory (simple database-backed storage)
+- **Planned Implementation**: JAKE Memory or equivalent (vector-based storage with advanced capabilities)
+
+The Memory System follows an interface-based design pattern, allowing for different implementations with a consistent API:
+
+```
+┌─────────────────┐     ┌─────────────────────┐
+│                 │     │                     │
+│  API Endpoints  │     │  Context Manager    │
+│                 │     │                     │
+└────────┬────────┘     └──────────┬──────────┘
+         │                         │
+         │                         │
+         │     ┌───────────────────▼────────────────────┐
+         │     │                                        │
+         └────►│   Memory System Interface (Abstract)   │
+               │                                        │
+               └───────────┬───────────────────────────┘
+                           │
+                           │
+             ┌─────────────┴──────────────┐
+             │                            │
+ ┌───────────▼───────────┐    ┌───────────▼───────────┐
+ │                       │    │                       │
+ │  Whiteboard Memory    │    │   JAKE Memory         │
+ │  (Database-backed)    │    │   (Vector database)   │
+ │    [IMPLEMENTED]      │    │      [PLANNED]        │
+ └───────────────────────┘    └───────────────────────┘
+```
+
+See [MEMORY_SYSTEM.md](./MEMORY_SYSTEM.md) for detailed information.
+
+### LLM Service
+
+The LLM Service provides a unified interface to language models from various providers. This component is part of the Cortex Core's "adaptive reasoning" capabilities described in the vision:
+
+- Supports multiple LLM providers through LiteLLM
+- Provides standardized completion and streaming APIs
+- Handles model-specific parameters and authentication
+- Includes mock mode for development without API keys
+
+```
+┌───────────────────┐           ┌───────────────┐           ┌────────────────┐
+│   CortexRouter    │           │  LLM Service  │           │     LiteLLM    │
+│                   │──────────▶│               │──────────▶│                │
+│ (Message Routing) │           │ (LLM Access)  │           │ (Provider API) │
+└───────────────────┘           └───────────────┘           └────────────────┘
+```
+
+See [LLM_INTEGRATION.md](./LLM_INTEGRATION.md) and [services/LLM_SERVICE.md](./services/LLM_SERVICE.md) for detailed information.
+
+## Repository Pattern Implementation
 
 We use the Repository Pattern to abstract database access concerns. For example:
 
@@ -171,6 +256,8 @@ class SQLAlchemyConversationRepository(ConversationRepository):
     # ... other methods
 ```
 
+This pattern ensures clean separation between domain logic and data access, and is a key part of the domain-driven architecture.
+
 ## Dependency Injection
 
 We use FastAPI's dependency injection system to provide services and repositories to endpoints:
@@ -188,15 +275,18 @@ async def get_conversation(
     return conversation
 ```
 
-## Testing Approach
+## Message Processing Architecture
 
-We use a layered testing approach:
+The system uses a message-based architecture for processing client requests:
 
-1. **Unit tests** for individual components
-2. **Integration tests** for interactions between components
-3. **API tests** for endpoint functionality
+1. **Asyncio-Based Processing**: Background tasks use asyncio for better performance and resource utilization
+2. **Direct Communication Paths**: Services communicate directly when appropriate for simplicity
+3. **Server-Sent Events (SSE)**: Real-time updates use SSE for efficient, one-way client communication
+4. **Fire-and-Forget API**: Message processing happens asynchronously after API acknowledgment
+5. **Required vs Optional Fields**: Message fields that are always needed are marked as required for type safety
+6. **Clean Resource Management**: All components with background tasks provide proper cleanup methods
 
-For API tests, we mock repositories rather than database interactions, allowing us to test API behavior without complex database setups.
+See [ROUTER.md](./ROUTER.md) for more details on message processing.
 
 ## Data Flow Examples
 
@@ -223,40 +313,6 @@ For API tests, we mock repositories rather than database interactions, allowing 
    - Sends response via direct SSE
 7. Client receives real-time updates via SSE
 
-## Key Architectural Patterns
-
-### Repository Pattern Implementation
-
-The conversations API uses the Repository Pattern, which:
-
-1. Separates data access concerns from API logic
-2. Makes tests robust by eliminating brittle JSON serialization mocks
-3. Improves error handling with repository-specific error returns
-4. Creates a cleaner, more maintainable codebase
-
-### MCP Integration with FastMCP
-
-The system uses the Python SDK with FastMCP for all MCP implementations:
-
-1. **Simplified Domain Expert Integration**: The FastMCP decorator-based API reduces boilerplate and improves clarity
-2. **Type-Safe Interfaces**: Parameter validation using Python type annotations provides early error detection
-3. **Improved Testing**: The MCP SDK's testing utilities make tests more reliable and easier to write
-4. **Consistent Protocol Implementation**: Using the SDK ensures consistent protocol compliance
-5. **Better Documentation**: Clear examples and patterns improve developer onboarding
-
-### Message Processing Architecture
-
-The system uses a message-based architecture for processing client requests:
-
-1. **Asyncio-Based Processing**: Background tasks use asyncio for better performance and resource utilization
-2. **Direct Communication Paths**: Services communicate directly when appropriate for simplicity
-3. **Server-Sent Events (SSE)**: Real-time updates use SSE for efficient, one-way client communication
-4. **Fire-and-Forget API**: Message processing happens asynchronously after API acknowledgment
-5. **Required vs Optional Fields**: Message fields that are always needed are marked as required for type safety
-6. **Clean Resource Management**: All components with background tasks provide proper cleanup methods
-
-These approaches should be followed for all new features and development work.
-
 ## Architecture Decision Records
 
 For major architectural decisions, we maintain ADRs (Architecture Decision Records) in the `/docs/adr` directory.
@@ -268,4 +324,21 @@ We currently have the following ADRs:
 3. [ADR-003: SSE Implementation with sse-starlette](adr/adr-003-sse-starlette-implementation.md) - Adoption of the sse-starlette library for improved SSE handling
 4. [ADR-004: Type Safety with SQLAlchemy and Pydantic](adr/adr-004-type-safety-sqlalchemy-pydantic.md) - Patterns for ensuring type safety between SQLAlchemy and Pydantic models
 5. [ADR-005: Service Layer Pattern](adr/adr-005-service-layer-pattern.md) - Implementation of a dedicated service layer for business logic
+6. [ADR-006: Simplified Messaging Architecture](adr/adr-006-messaging-architecture.md) - Design decisions for the messaging architecture
 
+## Future Architecture Evolution
+
+As Cortex Core evolves, it will continue to align more closely with the architectural vision:
+
+1. **Advanced Memory System**: Implementing the JAKE Memory system or equivalent
+2. **Domain Expert Integration**: Building actual Domain Expert services
+3. **Multi-Modal Support**: Adding voice and canvas modalities
+4. **Enhanced Context Management**: Implementing more sophisticated context handling
+
+These enhancements will build on the existing architectural foundation while maintaining the clean separation of concerns and modular design.
+
+## Related Documentation
+
+- [Implementation Status](./IMPLEMENTATION_STATUS.md): Current implementation status and roadmap
+- [Cortex Platform Vision](../cortex-platform/ai-context/cortex/Cortex_Platform-Vision_and_Values.md): Overall vision for the Cortex Platform
+- [Cortex Platform Technical Architecture](../cortex-platform/ai-context/cortex/Cortex_Platform-Technical_Architecture.md): Detailed technical architecture for the Cortex Platform

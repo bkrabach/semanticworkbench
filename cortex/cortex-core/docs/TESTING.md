@@ -1,6 +1,6 @@
 # Testing Guide for Cortex Core
 
-This document provides guidelines and best practices for testing the Cortex Core platform.
+This document provides comprehensive guidelines and best practices for testing the Cortex Core platform, with specific guidance for each major component.
 
 ## Running Tests
 
@@ -88,6 +88,572 @@ def client_with_db_override(mock_db):
 def test_login_success(client_with_db_override, mock_db):
     # Test implementation
     pass
+```
+
+## Testing Specific Components
+
+### 1. Testing SSE Components
+
+The Server-Sent Events (SSE) system requires special testing approaches:
+
+#### SSE Manager Testing
+
+```python
+@pytest.mark.asyncio
+async def test_sse_manager():
+    """Test the SSE manager component"""
+    # Create test manager
+    manager = SSEStarletteManager()
+    
+    # Test connection registration
+    queue, connection_id = await manager.register_connection(
+        "conversation", "conversation-123", "user-123"
+    )
+    
+    # Verify connection was registered
+    connections = manager.get_connections("conversation", "conversation-123")
+    assert len(connections) == 1
+    assert connections[0].id == connection_id
+    
+    # Test sending events
+    await manager.send_event(
+        "conversation", "conversation-123", 
+        "test_event", {"message": "Hello"}
+    )
+    
+    # Receive the event with timeout
+    event = await asyncio.wait_for(queue.get(), timeout=0.5)
+    assert event["event"] == "test_event"
+    assert event["data"]["message"] == "Hello"
+    
+    # Test connection removal
+    await manager.remove_connection("conversation", "conversation-123", connection_id)
+    connections = manager.get_connections("conversation", "conversation-123")
+    assert len(connections) == 0
+```
+
+#### SSE Endpoint Testing
+
+```python
+def test_sse_endpoint(sse_test_client, valid_token):
+    """Test SSE endpoint without hanging"""
+    # Configure client to use mock response for SSE endpoints
+    response = sse_test_client.get(f"/v1/conversation/conversation-123?token={valid_token}")
+    
+    # Verify response contract
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "text/event-stream"
+    
+    # Always close response to prevent resource leaks
+    response.close()
+```
+
+#### Testing Shared Connection State
+
+```python
+@pytest.mark.asyncio
+async def test_shared_connection_state():
+    """Test that connection state is properly shared"""
+    # Create two manager instances
+    manager1 = SSEStarletteManager()
+    manager2 = SSEStarletteManager()
+    
+    # Register a connection with the first manager
+    queue1, conn_id = await manager1.register_connection(
+        "conversation", "conversation-123", "user-123"
+    )
+    
+    # Verify the second manager can see the connection
+    connections = manager2.get_connections("conversation", "conversation-123")
+    assert len(connections) == 1
+    assert connections[0].id == conn_id
+    
+    # Send an event with the second manager
+    await manager2.send_event(
+        "conversation", "conversation-123", 
+        "test_event", {"message": "Hello"}
+    )
+    
+    # Verify the event was received in the queue from manager1
+    event = await asyncio.wait_for(queue1.get(), timeout=0.5)
+    assert event["event"] == "test_event"
+    assert event["data"]["message"] == "Hello"
+```
+
+### 2. Testing LLM Service
+
+The LLM Service requires careful mocking to avoid actual API calls:
+
+#### Mock LLM Service
+
+```python
+@pytest.fixture
+def mock_llm_service():
+    """Create a mock LLM service for testing"""
+    # Create mock config
+    config = LLMConfig(default_model="openai/gpt-3.5-turbo", use_mock=True)
+    
+    # Create the service
+    service = LiteLLMService(config)
+    
+    # Optionally override the mock implementation
+    async def custom_mock(prompt, system_prompt=None):
+        if "weather" in prompt.lower():
+            return "It's sunny today."
+        elif "name" in prompt.lower():
+            return "My name is Cortex."
+        else:
+            return f"This is a mock response to: {prompt}"
+    
+    service._mock_completion = custom_mock
+    return service
+```
+
+#### Testing Completions
+
+```python
+@pytest.mark.asyncio
+async def test_llm_completion(mock_llm_service):
+    """Test LLM completion functionality"""
+    # Test basic completion
+    response = await mock_llm_service.get_completion(
+        "What's the weather like?",
+        system_prompt="You are a helpful assistant."
+    )
+    assert "sunny" in response.lower()
+    
+    # Test with different prompt
+    response = await mock_llm_service.get_completion(
+        "What's your name?",
+        system_prompt="You are a helpful assistant."
+    )
+    assert "cortex" in response.lower()
+```
+
+#### Testing Streaming Completions
+
+```python
+@pytest.mark.asyncio
+async def test_llm_streaming(mock_llm_service):
+    """Test LLM streaming functionality"""
+    # Collect chunks
+    chunks = []
+    async def callback(chunk):
+        chunks.append(chunk)
+    
+    # Get streaming completion
+    full_response = await mock_llm_service.get_streaming_completion(
+        "Tell me a story",
+        callback=callback,
+        system_prompt="You are a storyteller."
+    )
+    
+    # Verify chunks were received
+    assert len(chunks) > 0
+    # Verify full response is the concatenation of chunks
+    assert full_response == "".join(chunks)
+```
+
+#### Testing LLM Integration with Router
+
+```python
+@pytest.mark.asyncio
+async def test_router_llm_integration(mock_llm_service, mock_conversation_service):
+    """Test CortexRouter integration with LLM service"""
+    # Create router with mock dependencies
+    router = CortexRouter(
+        conversation_service=mock_conversation_service,
+        llm_service=mock_llm_service,
+        sse_service=MagicMock()
+    )
+    
+    # Create test message
+    message = InputMessage(
+        id="msg-123",
+        conversation_id="conv-123",
+        workspace_id="workspace-123",
+        content="Hello, how are you?",
+        role="user"
+    )
+    
+    # Set up mock conversation service to return empty conversation
+    mock_conversation_service.get_conversation.return_value = Conversation(
+        id="conv-123",
+        workspace_id="workspace-123",
+        name="Test Conversation",
+        messages=[]
+    )
+    
+    # Process the message
+    await router.process_message(message)
+    
+    # Verify LLM service was called
+    mock_conversation_service.add_message.assert_called()
+    # Check the second call (first is for user message, second for assistant response)
+    call_args = mock_conversation_service.add_message.call_args_list[1]
+    # Extract the content from the args
+    response_content = call_args[0][1]
+    assert response_content is not None
+```
+
+### 3. Testing CortexRouter
+
+The CortexRouter requires testing of decision logic and action handling:
+
+#### Decision Logic Testing
+
+```python
+@pytest.mark.asyncio
+async def test_router_decision_logic():
+    """Test router decision logic"""
+    # Create router with mock dependencies
+    router = CortexRouter(
+        conversation_service=MagicMock(),
+        llm_service=MagicMock(),
+        sse_service=MagicMock()
+    )
+    
+    # Test message
+    message = InputMessage(
+        id="msg-123",
+        conversation_id="conv-123",
+        workspace_id="workspace-123",
+        content="Hello, how are you?",
+        role="user"
+    )
+    
+    # Override decision method for testing
+    original_method = router._make_routing_decision
+    decisions = []
+    
+    async def test_decision(msg):
+        decision = await original_method(msg)
+        decisions.append(decision)
+        return decision
+    
+    router._make_routing_decision = test_decision
+    
+    # Process the message
+    await router.process_message(message)
+    
+    # Verify decision was made
+    assert len(decisions) == 1
+    assert decisions[0].action == RoutingAction.RESPOND
+```
+
+#### Action Handling Testing
+
+```python
+@pytest.mark.asyncio
+async def test_router_respond_action(mock_llm_service):
+    """Test router respond action"""
+    # Create mocks
+    conversation_service = MagicMock()
+    sse_service = MagicMock()
+    
+    # Configure sse_service to use async mock for send_event
+    async def mock_send_event(*args, **kwargs):
+        pass
+    sse_service.send_event = mock_send_event
+    
+    # Create router
+    router = CortexRouter(
+        conversation_service=conversation_service,
+        llm_service=mock_llm_service,
+        sse_service=sse_service
+    )
+    
+    # Configure conversation_service to return conversation
+    conversation = Conversation(
+        id="conv-123",
+        workspace_id="workspace-123",
+        name="Test Conversation",
+        messages=[]
+    )
+    async def mock_get_conversation(*args, **kwargs):
+        return conversation
+    conversation_service.get_conversation = mock_get_conversation
+    
+    # Configure add_message to work with async
+    async def mock_add_message(*args, **kwargs):
+        return "msg-456"
+    conversation_service.add_message = mock_add_message
+    
+    # Create test message and decision
+    message = InputMessage(
+        id="msg-123",
+        conversation_id="conv-123",
+        workspace_id="workspace-123",
+        content="Hello",
+        role="user"
+    )
+    decision = RoutingDecision(
+        action=RoutingAction.RESPOND,
+        target="llm",
+        confidence=1.0
+    )
+    
+    # Handle the action
+    await router._handle_respond_action(message, decision)
+    
+    # Verify the method was called with right arguments
+    assert router._send_typing_indicator.call_count == 2  # On and off
+```
+
+### 4. Testing Domain Expert Integration
+
+Tests for Domain Expert integration with IntegrationHub:
+
+#### Mock Domain Expert Registration
+
+```python
+@pytest.fixture
+def mock_integration_hub():
+    """Create a mock integration hub with test experts"""
+    hub = IntegrationHub()
+    
+    # Register a test expert
+    @hub.register_tool("calculator")
+    async def calculator(a: int, b: int, operation: str = "add"):
+        """Calculate a result based on two numbers and an operation"""
+        if operation == "add":
+            return a + b
+        elif operation == "subtract":
+            return a - b
+        elif operation == "multiply":
+            return a * b
+        elif operation == "divide":
+            return a / b
+        else:
+            raise ValueError(f"Unknown operation: {operation}")
+    
+    return hub
+```
+
+#### Testing Tool Invocation
+
+```python
+@pytest.mark.asyncio
+async def test_tool_invocation(mock_integration_hub):
+    """Test invoking a tool through the integration hub"""
+    # Invoke the calculator tool
+    result = await mock_integration_hub.invoke_tool(
+        "calculator",
+        {
+            "a": 5,
+            "b": 3,
+            "operation": "add"
+        }
+    )
+    assert result == 8
+    
+    # Test with different operation
+    result = await mock_integration_hub.invoke_tool(
+        "calculator",
+        {
+            "a": 10,
+            "b": 2,
+            "operation": "multiply"
+        }
+    )
+    assert result == 20
+```
+
+#### Testing Error Handling
+
+```python
+@pytest.mark.asyncio
+async def test_integration_hub_error_handling(mock_integration_hub):
+    """Test error handling in the integration hub"""
+    # Test with invalid tool
+    with pytest.raises(ToolNotFoundError):
+        await mock_integration_hub.invoke_tool(
+            "nonexistent_tool",
+            {"param": "value"}
+        )
+    
+    # Test with invalid parameters
+    with pytest.raises(ValidationError):
+        await mock_integration_hub.invoke_tool(
+            "calculator",
+            {"invalid": "params"}
+        )
+    
+    # Test tool logic error
+    with pytest.raises(ValueError):
+        await mock_integration_hub.invoke_tool(
+            "calculator",
+            {"a": 5, "b": 0, "operation": "divide"}
+        )
+```
+
+### 5. Testing Memory System
+
+Test the Memory System implementation:
+
+#### Memory System Tests
+
+```python
+@pytest.mark.asyncio
+async def test_memory_store_retrieve():
+    """Test storing and retrieving memory items"""
+    # Create memory system with mock database
+    db_session = MagicMock()
+    memory_system = WhiteboardMemory(lambda: db_session)
+    
+    # Initialize with config
+    await memory_system.initialize(MemoryConfig(
+        storage_type="whiteboard",
+        retention_policy=RetentionPolicy(default_ttl_days=30)
+    ))
+    
+    # Create test memory item
+    memory_item = MemoryItem(
+        type="message",
+        content={"text": "Hello, world!"},
+        metadata={"conversation_id": "conv-123"},
+        timestamp=datetime.now(timezone.utc)
+    )
+    
+    # Configure mock db for the add operation
+    async def mock_context_manager():
+        class MockContextManager:
+            async def __aenter__(self):
+                return db_session
+            async def __aexit__(self, *args):
+                pass
+        return MockContextManager()
+    
+    # Set the return value for the db_session factory
+    memory_system.db_session_provider = mock_context_manager
+    
+    # Store the item
+    item_id = await memory_system.store("workspace-123", memory_item)
+    
+    # Verify the item was stored
+    assert item_id is not None
+    db_session.add.assert_called_once()
+    db_session.commit.assert_called_once()
+```
+
+#### Memory Query Testing
+
+```python
+@pytest.mark.asyncio
+async def test_memory_query():
+    """Test querying memory items"""
+    # Create memory system with mock database
+    db_session = MagicMock()
+    memory_system = WhiteboardMemory(lambda: db_session)
+    
+    # Set up mock query results
+    db_items = [
+        MagicMock(
+            id="mem-1",
+            type="message",
+            content=json.dumps({"text": "Hello"}),
+            metadata=json.dumps({"conversation_id": "conv-123"}),
+            timestamp_utc=datetime.now(timezone.utc)
+        ),
+        MagicMock(
+            id="mem-2",
+            type="message",
+            content=json.dumps({"text": "World"}),
+            metadata=json.dumps({"conversation_id": "conv-123"}),
+            timestamp_utc=datetime.now(timezone.utc)
+        )
+    ]
+    
+    # Configure mock db query execution
+    mock_result = MagicMock()
+    mock_result.scalars.return_value.all.return_value = db_items
+    db_session.execute.return_value = mock_result
+    
+    # Mock async context manager
+    async def mock_context_manager():
+        class MockContextManager:
+            async def __aenter__(self):
+                return db_session
+            async def __aexit__(self, *args):
+                pass
+        return MockContextManager()
+    
+    # Set the return value for the db_session factory
+    memory_system.db_session_provider = mock_context_manager
+    
+    # Create query
+    query = MemoryQuery(
+        types=["message"],
+        metadata_filters={"conversation_id": "conv-123"}
+    )
+    
+    # Retrieve items
+    items = await memory_system.retrieve("workspace-123", query)
+    
+    # Verify results
+    assert len(items) == 2
+    assert items[0].content["text"] == "Hello"
+    assert items[1].content["text"] == "World"
+```
+
+#### Context Synthesis Testing
+
+```python
+@pytest.mark.asyncio
+async def test_memory_synthesis():
+    """Test memory context synthesis"""
+    # Create memory system with mock implementation
+    memory_system = MagicMock(spec=MemorySystemInterface)
+    
+    # Configure the retrieve method to return test items
+    memory_items = [
+        MemoryItem(
+            id="mem-1",
+            type="message",
+            content={"role": "user", "text": "Hello"},
+            metadata={"conversation_id": "conv-123"},
+            timestamp=datetime.now(timezone.utc)
+        ),
+        MemoryItem(
+            id="mem-2",
+            type="message",
+            content={"role": "assistant", "text": "Hi there"},
+            metadata={"conversation_id": "conv-123"},
+            timestamp=datetime.now(timezone.utc)
+        )
+    ]
+    
+    async def mock_retrieve(workspace_id, query):
+        return memory_items
+    
+    memory_system.retrieve = mock_retrieve
+    
+    # Configure the synthesize_context method
+    synthesized = SynthesizedMemory(
+        raw_items=memory_items,
+        summary="A greeting exchange",
+        entities={},
+        relevance_score=1.0
+    )
+    
+    async def mock_synthesize(workspace_id, query):
+        return synthesized
+    
+    memory_system.synthesize_context = mock_synthesize
+    
+    # Create query
+    query = MemoryQuery(
+        types=["message"],
+        metadata_filters={"conversation_id": "conv-123"}
+    )
+    
+    # Get context
+    context = await memory_system.synthesize_context("workspace-123", query)
+    
+    # Verify result
+    assert context.summary == "A greeting exchange"
+    assert len(context.raw_items) == 2
+    assert context.relevance_score == 1.0
 ```
 
 ## FastAPI Dependency Testing Best Practices
@@ -317,295 +883,133 @@ query_mock.first.return_value = test_user    # For the terminal method
 query_mock.count.return_value = 5
 ```
 
-## Common Testing Patterns
+## Testing Architectural Integrity
 
-### API Endpoint Testing
+### Repository Pattern Tests
+
+Tests to ensure the repository pattern is properly implemented:
 
 ```python
-def test_login_endpoint(client_with_db_override, mock_db):
-    # Configure mock DB to return expected user
-    mock_db.query.return_value.filter.return_value.first.return_value = mock_user
+def test_repository_abstraction():
+    """Test that repositories properly abstract database details"""
+    # Initialize repositories
+    user_repo = UserRepository(MagicMock())
+    workspace_repo = WorkspaceRepository(MagicMock())
     
-    # Make the request
-    response = client_with_db_override.post(
-        "/auth/login", 
-        json={"email": "test@example.com", "password": "password"}
+    # Check interface method signatures
+    assert hasattr(user_repo, "get_user_by_id")
+    assert hasattr(user_repo, "get_user_by_email")
+    assert hasattr(user_repo, "create_user")
+    
+    assert hasattr(workspace_repo, "get_workspace_by_id")
+    assert hasattr(workspace_repo, "create_workspace")
+    assert hasattr(workspace_repo, "get_user_workspaces")
+```
+
+### Service Layer Tests
+
+Tests to ensure services maintain clean separation:
+
+```python
+def test_service_layer_separation():
+    """Test that services properly separate concerns"""
+    # Initialize services with mocked dependencies
+    user_service = UserService(
+        user_repository=MagicMock(),
+        token_service=MagicMock()
     )
     
-    # Assert response
-    assert response.status_code == 200
+    workspace_service = WorkspaceService(
+        workspace_repository=MagicMock(),
+        user_repository=MagicMock()
+    )
+    
+    # Check that services expose domain concepts and not SQL models
+    assert not hasattr(user_service, "query")
+    assert not hasattr(workspace_service, "session")
+```
+
+## Integration Testing
+
+### API Integration Tests
+
+End-to-end API tests with actual database interactions:
+
+```python
+@pytest.mark.integration
+def test_user_registration_integration():
+    """Integration test for user registration"""
+    # Use test_client with actual DB
+    client = TestClient(app)
+    
+    # Generate unique email to avoid conflicts
+    unique_email = f"test-{uuid.uuid4()}@example.com"
+    
+    # Register a new user
+    response = client.post(
+        "/auth/register",
+        json={
+            "email": unique_email,
+            "password": "StrongPassword123!",
+            "name": "Test User"
+        }
+    )
+    
+    # Verify successful registration
+    assert response.status_code == 201
     data = response.json()
-    assert data["success"] is True
-    assert data["token"] is not None
+    assert data["email"] == unique_email
+    
+    # Verify user can login
+    login_response = client.post(
+        "/auth/login",
+        json={
+            "email": unique_email,
+            "password": "StrongPassword123!"
+        }
+    )
+    
+    assert login_response.status_code == 200
+    login_data = login_response.json()
+    assert "token" in login_data
 ```
 
-### Testing Unified SSE Endpoints
+### Database Integration Tests
 
-When testing the unified SSE endpoints (`/v1/{channel_type}/{resource_id}`), follow these best practices:
-
-1. **Create Dedicated Test Fixtures**:
+Tests for database interactions:
 
 ```python
-@pytest.fixture
-def sse_client(client_with_db_override, monkeypatch):
-    """Test client with mocked SSE response handling"""
-    original_get = client_with_db_override.get
-    
-    def mock_get(url, **kwargs):
-        # For SSE endpoints, return a controlled response
-        if url.startswith("/v1/") and "token=" in url:
-            channel_parts = url.split("/")
-            channel_type = channel_parts[2] if len(channel_parts) > 2 else None
-            
-            if channel_type in ["global", "user", "workspace", "conversation"]:
-                response = MockSSEResponse()
-                # Add test-specific modifications to the response if needed
-                return response
-                
-        # For all other endpoints, use the original get method
-        return original_get(url, **kwargs)
-    
-    monkeypatch.setattr(client_with_db_override, "get", mock_get)
-    return client_with_db_override
-```
-
-2. **Test Different Channel Types**:
-
-```python
-@pytest.mark.parametrize("channel_type,resource_id", [
-    ("global", "global"),
-    ("user", "user-123"),
-    ("workspace", "workspace-123"),
-    ("conversation", "conversation-123")
-])
-def test_sse_endpoint_contracts(sse_client, valid_token, channel_type, resource_id):
-    """Test the SSE endpoints for different channel types"""
-    token = valid_token
-    
-    # Test valid endpoint access
-    response = sse_client.get(f"/v1/{channel_type}/{resource_id}?token={token}")
-    assert response.status_code == 200
-    assert response.headers["content-type"] == "text/event-stream"
-    
-    # Always close the response
-    response.close()
-```
-
-3. **Test Authentication and Authorization**:
-
-```python
-def test_sse_authentication(sse_client):
-    """Test SSE endpoint authentication"""
-    # Test without token
-    response = sse_client.get("/v1/global/global")
-    assert response.status_code == 422  # FastAPI validation error
-    
-    # Test with invalid token
-    response = sse_client.get("/v1/global/global?token=invalid-token")
-    assert response.status_code == 401
-    
-    # Test with expired token
-    response = sse_client.get("/v1/global/global?token=expired-token")
-    assert response.status_code == 401
-```
-
-4. **Test Resource Access Control**:
-
-```python
-def test_sse_resource_access(sse_client, valid_token):
-    """Test SSE resource access authorization"""
-    token = valid_token
-    
-    # Mock the SSE service to simulate authorization checks
-    # For a resource the user doesn't have access to
-    response = sse_client.get(f"/v1/workspace/unauthorized-workspace?token={token}")
-    assert response.status_code == 403
-    
-    # For a resource the user has access to
-    response = sse_client.get(f"/v1/workspace/authorized-workspace?token={token}")
-    assert response.status_code == 200
-    response.close()
-```
-
-5. **Test SSE Service Components Independently**:
-
-```python
+@pytest.mark.integration
 @pytest.mark.asyncio
-async def test_connection_manager():
-    """Test the SSE connection manager independently"""
-    manager = ConnectionManager()
-    
-    # Test connection registration
-    queue, conn_id = await manager.register_connection("conversation", "conv-123", "user-123")
-    assert conn_id is not None
-    assert queue is not None
-    
-    # Test sending events to the queue
-    event_data = {"message": "test"}
-    await manager.send_to_connections("conversation", "conv-123", "test_event", event_data)
-    
-    # Get a message from the queue (with timeout)
-    try:
-        message = await asyncio.wait_for(queue.get(), timeout=0.5)
-        assert message["event"] == "test_event"
-        assert message["data"] == event_data
-    except asyncio.TimeoutError:
-        pytest.fail("No message received from queue")
-    
-    # Test connection removal
-    await manager.remove_connection("conversation", "conv-123", conn_id)
-    
-    # Verify connection was removed
-    stats = manager.get_stats()
-    assert stats["channels"]["conversation"].get("conv-123", 0) == 0
-```
-
-### Testing Server-Sent Events (SSE) Endpoints
-
-Testing SSE endpoints requires special care to avoid test hangs and race conditions:
-
-```python
-def test_sse_endpoint_contract(client_with_auth_override):
-    """Test the SSE endpoint's contract, not its implementation"""
-    response = client_with_auth_override.get("/events")
-    
-    # Only verify the contract (status code and content type)
-    assert response.status_code == 200
-    assert response.headers["content-type"] == "text/event-stream"
-    
-    # Close immediately to prevent hanging
-    response.close()
-```
-
-#### SSE Testing Principles
-
-1. **Test the API contract, not implementation details**:
-   - Focus on validating HTTP status codes, headers, and response formats
-   - Avoid testing streaming behavior or content that could cause tests to hang
-
-2. **Avoid reading from SSE streams in tests**:
-   - Reading from an SSE stream may cause the test to hang indefinitely
-   - If you must test stream content, use timeouts and proper cleanup
-
-3. **Use a dedicated test client with mocked responses**:
-   ```python
-   def test_sse_conversation_events_endpoint(sse_test_client, valid_token):
-       """Test conversation events endpoint"""
-       token, user_id = valid_token
-       conversation_id = str(uuid.uuid4())
-       
-       # Test with valid token
-       response = sse_test_client.get(f"/conversations/{conversation_id}/events?token={token}")
-       assert response.status_code == 200
-       assert response.headers["content-type"] == "text/event-stream"
-       
-       # Always close SSE connections in tests
-       response.close()
-   ```
-
-4. **Test connection tracking separately from HTTP behaviors**:
-   ```python
-   @pytest.mark.asyncio
-   async def test_sse_connection_tracking(clean_connections):
-       """Test that connections are properly tracked and cleaned up"""
-       # Add a test connection
-       conversation_id = str(uuid.uuid4())
-       connection_id = str(uuid.uuid4())
-       user_id = str(uuid.uuid4())
-       queue = asyncio.Queue()
-       
-       if conversation_id not in clean_connections["conversations"]:
-           clean_connections["conversations"][conversation_id] = []
-       
-       clean_connections["conversations"][conversation_id].append({
-           "id": connection_id,
-           "user_id": user_id,
-           "queue": queue
-       })
-       
-       # Verify connection was added
-       assert len(clean_connections["conversations"][conversation_id]) == 1
-       
-       # Remove the connection
-       clean_connections["conversations"][conversation_id] = [
-           conn for conn in clean_connections["conversations"][conversation_id]
-           if conn["id"] != connection_id
-       ]
-       
-       # Verify connection was removed
-       assert len(clean_connections["conversations"][conversation_id]) == 0
-   ```
-
-5. **Handle background tasks and heartbeats carefully**:
-   - SSE endpoints often start background tasks for heartbeats
-   - Use the Circuit Breaker pattern to avoid cascading failures in tests
-   - Ensure all tasks are properly cancelled in cleanup blocks
-   - Add explicit timeouts to heartbeat intervals for tests
-
-6. **Use fixtures to create clean connection states**:
-   ```python
-   @pytest.fixture
-   def clean_connections():
-       """Create a clean set of connections for the test"""
-       # Save original connections
-       original = {
-           "global": active_connections["global"].copy(),
-           "users": {k: v.copy() for k, v in active_connections["users"].items()},
-           "workspaces": {k: v.copy() for k, v in active_connections["workspaces"].items()},
-           "conversations": {k: v.copy() for k, v in active_connections["conversations"].items()},
-       }
-       
-       # Clear connections for the test
-       active_connections["global"].clear()
-       active_connections["users"].clear()
-       active_connections["workspaces"].clear()
-       active_connections["conversations"].clear()
-       
-       yield active_connections
-       
-       # Restore original connections
-       active_connections["global"] = original["global"]
-       active_connections["users"] = original["users"]
-       active_connections["workspaces"] = original["workspaces"]
-       active_connections["conversations"] = original["conversations"]
-   ```
-
-### Event System Testing
-
-```python
-@pytest.mark.asyncio
-async def test_event_system(event_system):
-    # Define subscriber
-    received_events = []
-    async def subscriber(event_type, payload):
-        received_events.append(payload)
-    
-    # Subscribe and publish
-    await event_system.subscribe("test.*", subscriber)
-    await event_system.publish("test.event", {"data": "value"}, "source")
-    
-    # Assert
-    assert len(received_events) == 1
-    assert received_events[0].data == {"data": "value"}
-```
-
-### Component Testing with Mocks
-
-```python
-@pytest.mark.asyncio
-async def test_component_with_dependency(mock_dependency):
-    # Setup component with mock dependency
-    component = Component(dependency=mock_dependency)
-    
-    # Configure mock behavior
-    mock_dependency.method.return_value = "expected result"
-    
-    # Test the component
-    result = await component.process_data("input")
-    assert result == "expected result"
-    
-    # Verify mock was called correctly
-    mock_dependency.method.assert_called_once_with("input")
+async def test_database_integration():
+    """Test database operations directly"""
+    # Get actual DB session
+    async with AsyncSession(engine) as session:
+        # Create a test user
+        db_user = UserDB(
+            id=str(uuid.uuid4()),
+            email=f"test-{uuid.uuid4()}@example.com",
+            hashed_password="hashed_password",
+            name="Test User"
+        )
+        
+        # Add and commit
+        session.add(db_user)
+        await session.commit()
+        
+        # Query to verify
+        result = await session.execute(
+            select(UserDB).where(UserDB.id == db_user.id)
+        )
+        fetched_user = result.scalars().first()
+        
+        # Verify
+        assert fetched_user is not None
+        assert fetched_user.email == db_user.email
+        
+        # Clean up
+        await session.delete(fetched_user)
+        await session.commit()
 ```
 
 ## Further Resources

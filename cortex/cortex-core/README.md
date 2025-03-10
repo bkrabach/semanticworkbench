@@ -15,6 +15,20 @@ The Cortex Core is responsible for:
 - **Multi-Modal Interactions**: Supporting various input/output modalities including chat, voice, and more
 - **External Integrations**: Connecting with other tools and services using the MCP protocol
 
+## Current Scope
+
+The current implementation includes:
+
+- **REST API** for standard request/response interactions with clients
+- **SSE System** for real-time, server-to-client communication
+- **CortexRouter** for message processing and routing
+- **LLM Integration** using LiteLLM for multiple providers
+- **MCP Framework** for domain expert integration
+- **Whiteboard Memory** implementation
+- **Domain-Driven Repository Architecture** with clean separation of concerns
+
+See the [Implementation Status](./docs/IMPLEMENTATION_STATUS.md) document for a detailed breakdown of implemented and planned components.
+
 ## Architecture
 
 The Cortex Core follows a modular architecture with these key components:
@@ -60,6 +74,11 @@ graph TD
 
     IH --> MCP
     MCP --> Domain & Tools
+    
+    %% Style to show implemented vs planned components
+    style Domain stroke-dasharray: 5 5
+    style Tools stroke-dasharray: 5 5
+    style CM stroke-dasharray: 5 5
 ```
 
 Cortex Core uses:
@@ -77,7 +96,19 @@ Cortex Core uses Server-Sent Events (SSE) for real-time communication with clien
 - Live updates for conversation and workspace changes
 - Typing indicators and other real-time status updates
 
-See the [CLIENT_INTEGRATION_GUIDE.md](./CLIENT_INTEGRATION_GUIDE.md) for details on implementing SSE in client applications.
+See the [CLIENT_INTEGRATION_GUIDE.md](./docs/CLIENT_INTEGRATION_GUIDE.md) for details on implementing SSE in client applications.
+
+## Roadmap
+
+Our development roadmap currently focuses on:
+
+1. Implementing advanced memory systems (JAKE or equivalent)
+2. Building domain expert integrations
+3. Enhancing context management and synthesis
+4. Adding tool calling for LLM interactions
+5. Supporting additional modalities
+
+See the [Implementation Status](./docs/IMPLEMENTATION_STATUS.md) document for a detailed timeline and priorities.
 
 ## Getting Started
 
@@ -172,11 +203,17 @@ This script validates that SQLAlchemy models are properly confined to repositori
 
 For more detailed information, refer to:
 
+- [Implementation Status](./docs/IMPLEMENTATION_STATUS.md) - Current implementation status and roadmap
 - [Development Guide](./docs/DEVELOPMENT.md) - For contributors and developers
 - [Architecture](./docs/ARCHITECTURE.md) - System design and principles
+- [Domain Experts](./docs/DOMAIN_EXPERTS.md) - Domain expert entities documentation
+- [SSE System](./docs/SSE.md) - Server-Sent Events implementation
+- [Router](./docs/ROUTER.md) - CortexRouter documentation
+- [Memory System](./docs/MEMORY_SYSTEM.md) - Memory system architecture
 - [API Reference](./docs/API_REFERENCE.md) - API endpoint documentation
 - [Configuration](./docs/CONFIGURATION.md) - Detailed configuration options
 - [Client Integration Guide](./docs/CLIENT_INTEGRATION_GUIDE.md) - Guide for client application developers
 - [Testing Guide](./docs/TESTING.md) - Best practices for testing
 - [LLM Integration](./docs/LLM_INTEGRATION.md) - Guide to LLM integration with LiteLLM
+- [Terminology](./docs/TERMINOLOGY.md) - Consistent terminology reference
 - [AI Assistant Guide](./docs/AI_ASSISTANT_GUIDE.md) - Guide for AI code assistants working with this codebase

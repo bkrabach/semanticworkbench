@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Implemented
 
 ## Context
 
@@ -135,6 +135,48 @@ The core implementation pattern is:
        )
    ```
 
+## Implementation Files
+
+The SSE implementation is spread across several files:
+
+1. **SSE Package Structure**:
+   - `/app/components/sse/__init__.py` - Package initialization
+   - `/app/components/sse/auth.py` - Authentication for SSE connections
+   - `/app/components/sse/events.py` - Event definition and handling
+   - `/app/components/sse/manager.py` - Base SSE manager interface
+   - `/app/components/sse/models.py` - Domain models for SSE
+   - `/app/components/sse/starlette_manager.py` - Starlette-specific implementation
+
+2. **Core Implementation**:
+   - `/app/components/sse/starlette_manager.py` contains the `SSEStarletteManager` class that implements the sse-starlette integration.
+   - `/app/services/sse_service.py` contains the service layer that coordinates SSE functionality.
+
+3. **API Endpoints**:
+   - `/app/api/sse.py` defines all the SSE endpoints using FastAPI.
+
+4. **Domain Models**:
+   - `/app/models/domain/sse.py` contains the domain models for SSE connections and events.
+
+## Testing Implementation
+
+SSE testing is implemented in:
+
+- `/tests/components/test_sse_module.py` - Unit tests for the SSE components
+- `/tests/api/test_sse.py` - API tests for the SSE endpoints
+- `/tests/api/test_sse_integration.py` - Integration tests with client simulation
+
+The testing strategy uses mock responses to avoid hanging during tests:
+
+```python
+class MockSSEResponse:
+    def __init__(self):
+        self.status_code = 200
+        self.headers = {"content-type": "text/event-stream"}
+    
+    def close(self):
+        pass
+```
+
 ## Alternatives Considered
 
 ### Keep and Fix Custom Implementation
@@ -180,8 +222,8 @@ We rejected this approach because:
 
 - [sse-starlette documentation](https://github.com/sysid/sse-starlette)
 - [MDN Server-Sent Events](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events)
-- [Fastapi Streaming Response](https://fastapi.tiangolo.com/advanced/custom-response/#streamingresponse)
-- [SSE improvements document](../SSE_IMPROVEMENTS.md)
+- [FastAPI Streaming Response](https://fastapi.tiangolo.com/advanced/custom-response/#streamingresponse)
+- [SSE.md](../SSE.md) - Main SSE documentation
 
 ## Update: Shared Connection State
 
@@ -196,7 +238,7 @@ After implementing the initial solution, we encountered an issue where connectio
 
 ### Solution
 
-We implemented a shared-state pattern for connection tracking:
+We implemented a shared-state pattern for connection tracking in `/app/components/sse/starlette_manager.py`:
 
 1. **Global Connection Structures**:
    ```python
@@ -225,7 +267,7 @@ We implemented a shared-state pattern for connection tracking:
        self.connection_queues = _global_connection_queues
    ```
 
-3. **Multi-Path Message Delivery**:
+3. **Multi-Path Message Delivery** in `/app/components/cortex_router.py`:
    ```python
    async def send_message_to_client(self, conversation_id, message_id, content, role, metadata):
        # First publish through the event system
@@ -246,3 +288,15 @@ We implemented a shared-state pattern for connection tracking:
    ```
 
 This approach ensures that all SSE manager instances share the same connection state, allowing any service instance to see all active connections and deliver messages regardless of which instance created the connection.
+
+## Implementation Learnings
+
+Since implementing this solution, we've learned several important lessons:
+
+1. **Connection Cleanup**: Proper cleanup on client disconnect is critical for avoiding resource leaks
+2. **Heartbeat Events**: Regular heartbeat events help keep connections alive through proxies
+3. **Error Recovery**: Implementing client-side reconnection logic improves reliability
+4. **Connection Monitoring**: Adding connection monitoring dashboards helps track system health
+5. **Testing Strategy**: Specialized testing approaches for streaming endpoints are necessary
+
+These learnings have been incorporated into our [SSE.md](../SSE.md) documentation to guide future development.

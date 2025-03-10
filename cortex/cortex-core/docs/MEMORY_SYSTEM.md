@@ -6,6 +6,25 @@ This document provides a comprehensive guide to the Memory System in Cortex Core
 
 The Memory System is responsible for storing and retrieving contextual information in Cortex Core. It provides a unified interface for persisting various types of data that need to be accessible across conversations and sessions.
 
+## Current Implementation Status
+
+The Memory System is currently implemented as a "Whiteboard" pattern, which is a simple database-backed storage system. This initial implementation provides the foundation for more advanced memory capabilities in the future.
+
+**Currently Implemented:**
+- ✅ Memory System Interface
+- ✅ Whiteboard Memory Implementation (database-backed)
+- ✅ Basic CRUD operations for memory items
+- ✅ Simple querying with filters
+
+**Planned for Future Development:**
+- ❌ JAKE Memory Implementation (vector-based)
+- ❌ Advanced context synthesis
+- ❌ Semantic search capabilities
+- ❌ Entity extraction and relationship tracking
+- ❌ Advanced memory management with priority-based retention
+
+This document describes both the current implementation and the planned enhancements to provide a complete picture of the Memory System architecture.
+
 ## Architecture
 
 The Memory System follows an interface-based design pattern, allowing for different implementations with a consistent API:
@@ -31,9 +50,11 @@ The Memory System follows an interface-based design pattern, allowing for differ
  │                       │    │                       │
  │  Whiteboard Memory    │    │   JAKE Memory         │
  │  (Database-backed)    │    │   (Vector database)   │
- │                       │    │                       │
+ │    [IMPLEMENTED]      │    │      [PLANNED]        │
  └───────────────────────┘    └───────────────────────┘
 ```
+
+This architecture allows us to start with a simple implementation (Whiteboard Memory) while designing for more advanced capabilities in the future (JAKE Memory or other vector-based solutions).
 
 ## Memory System Interface
 
@@ -74,6 +95,8 @@ class MemorySystemInterface(ABC):
         """Generate a synthetic/enriched context from raw memory"""
         pass
 ```
+
+This interface ensures that all memory implementations provide the same capabilities, making them interchangeable from the perspective of other components.
 
 ## Data Model
 
@@ -128,9 +151,9 @@ The Memory System supports different types of memory items:
 
 ## Implementations
 
-### Whiteboard Memory
+### Whiteboard Memory (Current Implementation)
 
-The default implementation that uses the database for storage:
+The Whiteboard Memory is the current default implementation that uses the database for storage:
 
 - **Storage**: SQLAlchemy models in the database
 - **Querying**: SQL queries for retrieval
@@ -146,15 +169,42 @@ class WhiteboardMemory(MemorySystemInterface):
         self.retention_days = config.retention_policy.default_ttl_days
     
     async def store(self, workspace_id: str, item: MemoryItem) -> str:
-        # Implementation details for storing in database
-        pass
-    
-    # Other interface methods...
+        # Create a unique ID if not provided
+        if not item.id:
+            item.id = str(uuid.uuid4())
+            
+        # Calculate expiration date based on retention policy
+        if not item.expires_at and self.retention_days:
+            item.expires_at = datetime.now(timezone.utc) + timedelta(days=self.retention_days)
+            
+        # Create database model from domain model
+        db_item = MemoryItemDB(
+            id=item.id,
+            workspace_id=workspace_id,
+            type=item.type,
+            content=json.dumps(item.content),
+            metadata=json.dumps(item.metadata),
+            timestamp_utc=item.timestamp,
+            expires_at_utc=item.expires_at
+        )
+        
+        # Save to database
+        self.db.add(db_item)
+        self.db.commit()
+        
+        return item.id
 ```
 
-### JAKE Memory
+Current Limitations:
 
-A more advanced implementation using vector-based storage:
+- No semantic search capabilities
+- Basic text-based filtering only
+- Limited context synthesis
+- No vector embeddings or similarity search
+
+### JAKE Memory (Planned Implementation)
+
+The JAKE Memory is a planned advanced implementation using vector-based storage:
 
 - **Storage**: Vector database with embeddings
 - **Querying**: Semantic and keyword-based queries
@@ -163,78 +213,89 @@ A more advanced implementation using vector-based storage:
 
 ```python
 class JakeMemory(MemorySystemInterface):
-    """Vector database memory implementation"""
+    """Vector database memory implementation (PLANNED)"""
     
     async def initialize(self, config: MemoryConfig) -> None:
         # Connect to vector database
+        # This is a placeholder for the planned implementation
         pass
     
     async def store(self, workspace_id: str, item: MemoryItem) -> str:
         # Generate embeddings and store in vector database
+        # This is a placeholder for the planned implementation
         pass
+```
+
+Planned Features:
+
+- Semantic search using vector embeddings
+- Relevance ranking of search results
+- Advanced context synthesis
+- Entity extraction and relationship tracking
+- Cross-reference capabilities
+- Improved memory prioritization
+
+## Current Usage
+
+The current Whiteboard Memory implementation is used primarily for:
+
+### Storing Messages
+
+```python
+# In the repository layer
+async def add_message(self, conversation_id: str, content: str, role: str, metadata: Dict[str, Any] = None) -> Message:
+    # ... database operations ...
     
-    # Other interface methods...
+    # Optionally store in memory system
+    if self.memory_system:
+        memory_item = MemoryItem(
+            type="message",
+            content={
+                "role": role,
+                "content": content,
+                "message_id": message_id
+            },
+            metadata={
+                "conversation_id": conversation_id,
+                **metadata or {}
+            },
+            timestamp=datetime.now(timezone.utc)
+        )
+        await self.memory_system.store(workspace_id, memory_item)
 ```
 
-## Usage
-
-### Storing Memory Items
+### Retrieving Conversation History
 
 ```python
-# Create a memory item
-memory_item = MemoryItem(
-    type="message",
-    content={
-        "role": "user",
-        "content": "How can I configure the system?",
-        "message_id": "msg-123"
-    },
-    metadata={
-        "conversation_id": "conv-456",
-        "importance": "medium"
-    },
-    timestamp=datetime.utcnow()
-)
-
-# Store the item
-item_id = await memory_system.store(workspace_id="ws-789", item=memory_item)
-```
-
-### Retrieving Memory Items
-
-```python
-# Create a query
+# Create a query for recent messages in the conversation
 query = MemoryQuery(
     types=["message"],
-    from_timestamp=datetime.utcnow() - timedelta(days=7),
-    content_query="configuration",
-    limit=10
+    metadata_filters={"conversation_id": conversation_id},
+    limit=50
 )
 
-# Retrieve items
-items = await memory_system.retrieve(workspace_id="ws-789", query=query)
-
-# Process items
-for item in items:
-    print(f"Item {item.id}: {item.content}")
+# Retrieve messages
+messages = await memory_system.retrieve(workspace_id, query)
 ```
 
-### Synthesizing Context
+### Basic Synthesize_Context Implementation
+
+The current implementation of `synthesize_context` is basic and will be enhanced in future versions:
 
 ```python
-# Create a query for synthesis
-query = MemoryQuery(
-    content_query="system configuration",
-    limit=20
-)
-
-# Get synthesized context
-context = await memory_system.synthesize_context(workspace_id="ws-789", query=query)
-
-# Use the synthesized context
-summary = context.summary
-relevant_items = context.raw_items
-related_entities = context.entities
+async def synthesize_context(self, workspace_id: str, query: MemoryQuery) -> SynthesizedMemory:
+    """Generate a synthetic context from raw memory (basic implementation)"""
+    # Retrieve raw items matching the query
+    items = await self.retrieve(workspace_id, query)
+    
+    # For now, just return the raw items with a placeholder summary
+    # In future implementations, this will use LLMs for summarization
+    return SynthesizedMemory(
+        raw_items=items,
+        summary=f"Collection of {len(items)} memory items related to the query",
+        entities={},  # No entity extraction in current implementation
+        relevance_score=1.0 if items else 0.0
+    )
 ```
 
 ## Configuration
@@ -250,12 +311,12 @@ class RetentionPolicy(BaseModel):
 
 class MemoryConfig(BaseModel):
     """Memory system configuration"""
-    storage_type: str  # "in_memory" or "persistent"
+    storage_type: str  # "whiteboard" or "jake" (future)
     retention_policy: Optional[RetentionPolicy] = None
     encryption_enabled: bool = False
 ```
 
-Example configuration:
+Example configuration for the current implementation:
 
 ```python
 # Configure retention policy
@@ -271,14 +332,27 @@ retention_policy = RetentionPolicy(
 
 # Configure memory system
 memory_config = MemoryConfig(
-    storage_type="persistent",
+    storage_type="whiteboard",  # Current implementation
     retention_policy=retention_policy,
-    encryption_enabled=True
+    encryption_enabled=False  # Not yet implemented
 )
 
 # Initialize memory system
 await memory_system.initialize(memory_config)
 ```
+
+## Future Enhancements
+
+The Memory System will be enhanced with these planned features:
+
+1. **Vector Database Integration**: Implement JAKE Memory with vector embeddings
+2. **Advanced Context Synthesis**: Use LLMs to generate rich context summaries
+3. **Entity Extraction**: Automatically extract and track entities from conversations
+4. **Relationship Tracking**: Track relationships between entities
+5. **Improved Retention**: More sophisticated retention policies based on importance
+6. **Encrypted Storage**: Implement encrypted storage for sensitive memory items
+7. **Memory Compression**: Compress and summarize old memories to save space
+8. **Cross-Reference**: Link related memories across conversations and workspaces
 
 ## Creating Custom Implementations
 
@@ -287,7 +361,7 @@ To create a custom memory implementation:
 1. **Implement the Interface**: Create a class that implements all methods of `MemorySystemInterface`
 2. **Register the Implementation**: Add the implementation to the service provider
 
-Example implementation:
+Example custom implementation:
 
 ```python
 class CustomMemory(MemorySystemInterface):
@@ -297,25 +371,7 @@ class CustomMemory(MemorySystemInterface):
         # Custom initialization logic
         pass
     
-    async def store(self, workspace_id: str, item: MemoryItem) -> str:
-        # Custom storage logic
-        pass
-    
-    async def retrieve(self, workspace_id: str, query: MemoryQuery) -> List[MemoryItem]:
-        # Custom retrieval logic
-        pass
-    
-    async def update(self, workspace_id: str, item_id: str, updates: MemoryItem) -> None:
-        # Custom update logic
-        pass
-    
-    async def delete(self, workspace_id: str, item_id: str) -> None:
-        # Custom deletion logic
-        pass
-    
-    async def synthesize_context(self, workspace_id: str, query: MemoryQuery) -> SynthesizedMemory:
-        # Custom context synthesis logic
-        pass
+    # Implement all other required methods...
 ```
 
 ## Best Practices
@@ -328,97 +384,8 @@ class CustomMemory(MemorySystemInterface):
 6. **Batch Operations**: Use batch operations for bulk processing when available
 7. **Error Handling**: Implement robust error handling for storage and retrieval operations
 
-## Common Patterns
+## Related Documentation
 
-### Context Retrieval for Conversations
-
-```python
-async def get_conversation_context(conversation_id: str, workspace_id: str) -> SynthesizedMemory:
-    # Create a query for recent messages in the conversation
-    query = MemoryQuery(
-        types=["message"],
-        metadata_filters={"conversation_id": conversation_id},
-        limit=50
-    )
-    
-    # Get relevant entities for the conversation
-    entity_query = MemoryQuery(
-        types=["entity"],
-        metadata_filters={"conversation_id": conversation_id},
-        limit=20
-    )
-    
-    # Retrieve and combine results
-    messages = await memory_system.retrieve(workspace_id, query)
-    entities = await memory_system.retrieve(workspace_id, entity_query)
-    
-    # Return as synthesized memory
-    return SynthesizedMemory(
-        raw_items=messages + entities,
-        summary=generate_summary(messages),
-        entities={e.content["name"]: e.content for e in entities},
-        relevance_score=1.0
-    )
-```
-
-### Entity Extraction and Storage
-
-```python
-async def extract_and_store_entities(text: str, conversation_id: str, workspace_id: str) -> List[str]:
-    # Extract entities from text
-    entities = entity_extractor.extract(text)
-    
-    # Store each entity as a memory item
-    entity_ids = []
-    for entity in entities:
-        item = MemoryItem(
-            type="entity",
-            content={
-                "name": entity.name,
-                "type": entity.type,
-                "value": entity.value
-            },
-            metadata={
-                "conversation_id": conversation_id,
-                "confidence": entity.confidence
-            },
-            timestamp=datetime.utcnow()
-        )
-        
-        entity_id = await memory_system.store(workspace_id, item)
-        entity_ids.append(entity_id)
-    
-    return entity_ids
-```
-
-## Troubleshooting
-
-### Common Issues
-
-1. **Performance Problems**
-   - Check query patterns and indexing
-   - Implement caching for frequent queries
-   - Use more specific query parameters
-
-2. **Memory Leaks**
-   - Ensure TTL values are set correctly
-   - Verify that cleanup processes are running
-   - Monitor memory usage with metrics
-
-3. **Data Consistency**
-   - Implement transactional operations when needed
-   - Handle concurrent writes appropriately
-   - Add validation for memory item content
-
-### Logging and Monitoring
-
-- Enable debug logging for memory operations
-- Track memory system metrics (items stored, retrieved, synthesized)
-- Monitor performance and resource usage
-
-## Related Topics
-
-- [OVERVIEW.md](OVERVIEW.md): System architecture overview
-- [COMPONENTS.md](COMPONENTS.md): Details on all system components
-- [DEVELOPMENT.md](DEVELOPMENT.md): Guidelines for development
-
+- [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md): Overall implementation status
+- [ARCHITECTURE.md](ARCHITECTURE.md): System architecture overview
+- [Technical_Architecture.md](/cortex-platform/ai-context/cortex/Cortex_Platform-Technical_Architecture.md): Vision document that describes the memory system concept
