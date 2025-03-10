@@ -457,7 +457,7 @@
                     handleWorkspaceChange();
                 }
                 
-                // Connect to global events
+                // Connect to global events (this now uses the correct URL format: /v1/global/global)
                 connectToSSE('global');
             } catch (error) {
                 console.error('Error loading workspaces:', error);
@@ -729,7 +729,7 @@
             let url;
             switch (type) {
                 case 'global':
-                    url = new URL(`${API_URL}/v1/global`);
+                    url = new URL(`${API_URL}/v1/global/global`);  // Fix: Add resource_id "global" for the global channel
                     break;
                 case 'workspace':
                     url = new URL(`${API_URL}/v1/workspace/${resourceId}`);
@@ -764,15 +764,17 @@
                 eventSource.onerror = (error) => {
                     console.error(`${type} events error:`, error);
                     
-                    // Clean up resource
-                    if (eventSources[type] === eventSource) {
-                        delete eventSources[type];
-                    }
-                    eventSource.close();
+                    // DO NOT automatically close the connection on first error
+                    // This was causing connections to close prematurely
                     
                     // If we never established a connection, the server may be down or rejecting
                     if (!hasConnected && reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
                         console.error(`Failed to connect to ${type} events after ${MAX_RECONNECT_ATTEMPTS} attempts, giving up`);
+                        // Only now clean up the resource
+                        if (eventSources[type] === eventSource) {
+                            delete eventSources[type];
+                        }
+                        eventSource.close();
                         return;
                     }
                     
@@ -793,7 +795,13 @@
                         reconnectAttempts++;
                         const delay = Math.min(1000 * reconnectAttempts, 5000); // Exponential backoff up to 5 seconds
                         console.log(`Reconnecting to ${type} events in ${delay/1000} seconds... (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
-                        setTimeout(() => connectToSSE(type, resourceId), delay);
+                        // Only close current connection right before creating a new one
+                        setTimeout(() => {
+                            if (eventSources[type] === eventSource) {
+                                eventSource.close();
+                            }
+                            connectToSSE(type, resourceId);
+                        }, delay);
                     }
                 };
             

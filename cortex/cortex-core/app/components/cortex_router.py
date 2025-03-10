@@ -6,6 +6,7 @@ Core component for processing inputs and routing messages
 import asyncio
 import uuid
 import logging
+from typing import Optional
 from datetime import datetime, timezone
 
 from app.interfaces.router import (
@@ -193,26 +194,40 @@ class CortexRouter(RouterInterface):
 
     async def _send_typing_indicator(self, conversation_id: str, is_typing: bool):
         """Send typing indicator directly via SSE"""
+        # Prepare payload
+        payload = {
+            "conversation_id": conversation_id,
+            "isTyping": is_typing,
+            "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+        }
+        
+        # First publish to event system to ensure delivery
+        event_system = get_event_system()
+        await event_system.publish(
+            "conversation.typing_indicator",
+            payload,
+            source="cortex_router"
+        )
+        
+        # Also try direct SSE path for active connections
         sse_service = get_sse_service()
         await sse_service.connection_manager.send_event(
             "conversation",
             conversation_id,
             "typing_indicator",
-            {
-                "conversation_id": conversation_id,
-                "isTyping": is_typing,
-                "timestamp_utc": datetime.now(timezone.utc).isoformat(),
-            },
-            republish=False
+            payload,
+            republish=False  # Already published through event system
         )
 
     async def _save_message_to_database(self, conversation_id: str, content: str,
                                        role: str, metadata: dict) -> str:
         """Save message to database and return message_id"""
         try:
+            # Import here to avoid circular imports
             from app.database.connection import db
             from app.database.repositories.conversation_repository import ConversationRepository
-
+            
+            # Create a new database session
             with db.get_db() as db_session:
                 repo = ConversationRepository(db_session)
                 message = repo.add_message(
@@ -221,9 +236,14 @@ class CortexRouter(RouterInterface):
                     role=role,
                     metadata=metadata
                 )
-
-                return message.id if message and hasattr(message, 'id') else str(uuid.uuid4())
-
+                
+                # Get the message ID or generate a random one if missing
+                if message and hasattr(message, 'id'):
+                    return message.id
+                else:
+                    self.logger.warning(f"Message saved but no ID returned for conversation {conversation_id}")
+                    return str(uuid.uuid4())
+                    
         except Exception as e:
             self.logger.error(f"Error saving message to database: {e}")
             return str(uuid.uuid4())
@@ -231,26 +251,45 @@ class CortexRouter(RouterInterface):
     async def _send_message_to_client(self, conversation_id: str, message_id: str,
                                      content: str, role: str, metadata: dict):
         """Send message directly to client via SSE"""
+        self.logger.info(f"Sending message {message_id} to conversation {conversation_id}")
+        
+        # Create the standard message payload
+        payload = {
+            "id": message_id,
+            "content": content,
+            "role": role,
+            "created_at_utc": datetime.now(timezone.utc).isoformat(),
+            "metadata": metadata,
+            "conversation_id": conversation_id
+        }
+        
+        # First, send event to clients through system events
+        # This ensures proper delivery across all connection paths
+        event_system = get_event_system()
+        await event_system.publish(
+            f"conversation.message_received",
+            payload,
+            source="cortex_router"
+        )
+        
+        # Also try to send directly through the SSE service's connection manager
+        # This is a direct path for clients with active connections
         sse_service = get_sse_service()
         await sse_service.connection_manager.send_event(
             "conversation",
             conversation_id,
             "message_received",
-            {
-                "id": message_id,
-                "content": content,
-                "role": role,
-                "created_at_utc": datetime.now(timezone.utc).isoformat(),
-                "metadata": metadata,
-                "conversation_id": conversation_id
-            },
-            republish=False
+            payload,
+            republish=False  # Already published through event system
         )
 
 
 # Global router instance
-router = CortexRouter()
+_router: Optional[CortexRouter] = None
 
 def get_router() -> RouterInterface:
     """Get the global router instance"""
-    return router
+    global _router
+    if _router is None:
+        _router = CortexRouter()
+    return _router

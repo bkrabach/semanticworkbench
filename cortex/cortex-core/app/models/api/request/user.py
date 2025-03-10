@@ -1,7 +1,7 @@
 """API request models for user endpoints."""
 
-from typing import Dict, Any, Optional
-from pydantic import BaseModel, Field, EmailStr, validator
+from typing import Dict, Any, Optional, ClassVar
+from pydantic import BaseModel, Field, EmailStr, field_validator
 
 class UserLoginRequest(BaseModel):
     """Request model for user login"""
@@ -15,8 +15,9 @@ class UserRegisterRequest(BaseModel):
     name: str = Field(..., description="User name")
     password: str = Field(..., description="User password")
     
-    @validator('password')
-    def password_strength(cls, v):
+    @field_validator('password')
+    @classmethod
+    def password_strength(cls, v: str) -> str:
         """Validate password strength"""
         if len(v) < 8:
             raise ValueError('Password must be at least 8 characters long')

@@ -2,8 +2,8 @@
 Configuration management for Cortex Core using Pydantic
 """
 
-from typing import List, Optional, Dict
-from pydantic_settings import BaseSettings
+from typing import List, Optional, Dict, ClassVar
+from pydantic_settings import BaseSettings, SettingsConfigDict
 import os
 
 
@@ -14,8 +14,7 @@ class MsalConfig(BaseSettings):
     client_secret: Optional[str] = None
     authority: str = "https://login.microsoftonline.com/common"
 
-    class Config:
-        env_prefix = "MSAL_"
+    model_config = SettingsConfigDict(env_prefix="MSAL_")
 
 
 class DatabaseConfig(BaseSettings):
@@ -23,8 +22,7 @@ class DatabaseConfig(BaseSettings):
 
     url: str = "sqlite:///./cortex.db"
 
-    class Config:
-        env_prefix = "DATABASE_"
+    model_config = SettingsConfigDict(env_prefix="DATABASE_")
 
 
 class CacheConfig(BaseSettings):
@@ -35,9 +33,10 @@ class CacheConfig(BaseSettings):
     password: Optional[str] = None
     ttl: int = 3600  # Default TTL in seconds
 
-    class Config:
-        env_prefix = "REDIS_"
-        env_nested_delimiter = None
+    model_config = SettingsConfigDict(
+        env_prefix="REDIS_", 
+        env_nested_delimiter=None
+    )
 
 
 class SecurityConfig(BaseSettings):
@@ -48,8 +47,7 @@ class SecurityConfig(BaseSettings):
     token_expiry_seconds: int = 86400
     msal_config: Optional[MsalConfig] = None
 
-    class Config:
-        env_prefix = "SECURITY_"
+    model_config = SettingsConfigDict(env_prefix="SECURITY_")
 
 
 class ServerConfig(BaseSettings):
@@ -59,8 +57,7 @@ class ServerConfig(BaseSettings):
     host: str = "localhost"
     log_level: str = "info"
 
-    class Config:
-        env_prefix = "SERVER_"
+    model_config = SettingsConfigDict(env_prefix="SERVER_")
 
 
 class MemoryConfig(BaseSettings):
@@ -70,8 +67,7 @@ class MemoryConfig(BaseSettings):
     retention_days: int = 90
     max_items: int = 10000
 
-    class Config:
-        env_prefix = "MEMORY_"
+    model_config = SettingsConfigDict(env_prefix="MEMORY_")
 
 
 class McpEndpoint(BaseSettings):
@@ -126,8 +122,7 @@ class SseConfig(BaseSettings):
     # Enable/disable SSE debugging
     debug: bool = False
 
-    class Config:
-        env_prefix = "SSE_"
+    model_config = SettingsConfigDict(env_prefix="SSE_")
 
 
 class Settings(BaseSettings):
@@ -141,10 +136,11 @@ class Settings(BaseSettings):
     mcp: McpConfig = McpConfig()
     sse: SseConfig = SseConfig()
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        extra = "ignore"
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore"
+    )
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)

@@ -8,6 +8,7 @@ domain-driven repository architecture pattern.
 from typing import Tuple
 import asyncio
 from sqlalchemy.orm import Session
+from datetime import datetime, timezone
 
 from app.components.sse.starlette_manager import SSEStarletteManager
 from app.components.sse.events import SSEEventSubscriber
@@ -233,25 +234,38 @@ class SSEService:
         # Debug the connection manager state before creating the connection
         stats = self.get_connection_stats()
         logger.info(f"Current active connections: {stats.total_connections}")
-        if channel_type == "conversation":
-            conv_key = f"conversation:{resource_id}"
-            logger.info(f"Current conversation connections: {stats.connections_by_channel.get(conv_key, 0)}")
         
-        # Handle special case for conversation channel - start publisher
+        # For conversation connections, ensure the publisher is started first
+        # This is critical as it sets up the event subscriptions needed for message routing
         if channel_type == "conversation":
             try:
+                # Import here to avoid circular imports
                 from app.components.conversation_channels import get_conversation_publisher
                 
                 # Start the publisher, but await it directly instead of creating a task
+                # This ensures the publisher is set up before the connection is established
                 publisher = await get_conversation_publisher(resource_id)
                 logger.info(f"Created conversation publisher for {resource_id}: {publisher}")
+                
+                # For debugging, check existing connections for this conversation
+                conv_key = f"conversation:{resource_id}"
+                logger.info(f"Current conversation connections: {stats.connections_by_channel.get(conv_key, 0)}")
+                
+                # For conversation channels, also log the active SSE connections to help debug
+                if hasattr(self.connection_manager, 'connections') and 'conversation' in self.connection_manager.connections:
+                    if resource_id in self.connection_manager.connections['conversation']:
+                        conn_count = len(self.connection_manager.connections['conversation'][resource_id])
+                        logger.info(f"Direct connection check: {conn_count} active connections for conversation/{resource_id}")
+                    else:
+                        logger.info(f"Direct connection check: No active connections for conversation/{resource_id}")
+                
             except Exception as e:
                 logger.error(f"Error initializing conversation publisher: {e}")
                 import traceback
                 logger.error(f"Publisher error details: {traceback.format_exc()}")
+                # Continue anyway - don't block the connection if publisher setup fails
         
-        # Use the actual request from the API endpoint
-        # This ensures that the client disconnect detection works properly
+        # Create the SSE response - this establishes the actual client connection
         logger.info(f"Creating SSE response through connection manager for {channel_type}/{resource_id}")
         try:
             response = await self.connection_manager.create_sse_response(
@@ -265,11 +279,33 @@ class SSEService:
             # Debug state after creating connection
             stats = self.get_connection_stats() 
             logger.info(f"After creating connection - total active: {stats.total_connections}")
+            
             if channel_type == "conversation":
+                # Special handling for conversation connections
                 conv_key = f"conversation:{resource_id}"
                 logger.info(f"After creating connection - conversation connections: {stats.connections_by_channel.get(conv_key, 0)}")
+                
+                # For conversation connections, immediately send a connection confirmation
+                # This helps ensure the client knows the connection is established
+                try:
+                    await self.connection_manager.send_event(
+                        channel_type,
+                        resource_id,
+                        "connection_confirmed",
+                        {
+                            "conversation_id": resource_id,
+                            "status": "connected",
+                            "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+                            "client_id": user_info.id
+                        },
+                        republish=False
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to send connection confirmation: {e}")
+                    # Continue anyway - this is not critical
             
             return response
+            
         except Exception as e:
             logger.error(f"Error creating SSE response: {e}")
             import traceback
@@ -307,14 +343,21 @@ class SSEService:
         )
 
 
-# Singleton instance for backward compatibility during migration
+# Singleton instance for the SSE service
 _sse_service = None
 
 
 # Factory function for dependency injection
 def get_sse_service(db: Session = Depends(get_db)) -> SSEService:
     """
-    Factory function to create an SSE service.
+    Factory function to get the SSE service.
+    
+    Instead of trying to maintain a single SSE service, we'll rely on FastAPI to
+    handle dependency injection properly. Our main concern is the connection tracking,
+    which is handled by the Starlette manager inside the service.
+    
+    The Starlette manager maintains its own connection data structures, which we
+    will ensure are global singletons.
 
     Args:
         db: SQLAlchemy database session
@@ -332,7 +375,11 @@ def get_sse_service(db: Session = Depends(get_db)) -> SSEService:
     from app.database.repositories.resource_access_repository import get_resource_access_repository
     
     repository = get_resource_access_repository(db)
-    return SSEService(db, repository)
+    
+    # Create a service instance with the repository
+    service = SSEService(db, repository)
+    
+    return service
 
 
 # Create an attribute for testing overrides

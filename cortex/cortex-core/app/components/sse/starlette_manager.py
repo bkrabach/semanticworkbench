@@ -20,6 +20,26 @@ from app.models.domain.sse import SSEConnection
 from app.components.sse.manager import SSEConnectionManager
 from app.components.event_system import get_event_system
 
+# Global singleton structures for connection tracking
+# This ensures all instances of SSEStarletteManager share the same connection data
+_global_connections = {
+    "global": {"global": []},  # Key is always "global", value is list of connections
+    "user": {},                # Key is user_id, value is list of connections
+    "workspace": {},           # Key is workspace_id, value is list of connections
+    "conversation": {}         # Key is conversation_id, value is list of connections
+}
+
+# Store event callbacks by channel type/resource ID with the same structure
+_global_event_callbacks = {
+    "global": {"global": []},
+    "user": {},
+    "workspace": {},
+    "conversation": {}
+}
+
+# Map connection IDs to their queues - keeping implementation details separate from domain models
+_global_connection_queues = {}
+
 
 class SSEStarletteManager(SSEConnectionManager):
     """
@@ -31,27 +51,24 @@ class SSEStarletteManager(SSEConnectionManager):
     """
 
     def __init__(self):
-        """Initialize the connection manager with empty connection collections"""
+        """
+        Initialize the connection manager with shared global connection collections
+        
+        Using global variables for connection tracking ensures all instances
+        share the same connection data, solving the issue of connections being
+        lost between different service instances.
+        """
+        # Use global connection structures for shared state
+        global _global_connections, _global_event_callbacks, _global_connection_queues
+        
         # Store connection objects by type and resource
-        # Structure is consistent: for each channel type, we use a dictionary where
-        # keys are resource IDs and values are lists of connection objects
-        self.connections = {
-            "global": {"global": []},  # Key is always "global", value is list of connections
-            "user": {},    # Key is user_id, value is list of connections
-            "workspace": {},  # Key is workspace_id, value is list of connections
-            "conversation": {}  # Key is conversation_id, value is list of connections
-        }
-
+        self.connections = _global_connections
+        
         # Store event callbacks by channel type/resource ID with the same structure
-        self.event_callbacks = {
-            "global": {"global": []},
-            "user": {},
-            "workspace": {},
-            "conversation": {}
-        }
-
-        # Map connection IDs to their queues - keeping implementation details separate from domain models
-        self.connection_queues: Dict[str, asyncio.Queue[Dict[str, Any]]] = {}
+        self.event_callbacks = _global_event_callbacks
+        
+        # Map connection IDs to their queues
+        self.connection_queues = _global_connection_queues
 
         # Log structure setup for debugging
         logger.info("SSE Starlette Manager initialized with connection structure:")
@@ -269,7 +286,7 @@ class SSEStarletteManager(SSEConnectionManager):
             resource_id: ID of the resource
             event_type: Type of event to send
             data: Event data payload
-            republish: Whether to republish to the event system (ignored in simplified version)
+            republish: Whether to republish to the event system
         """
         # Normalize resource_id for consistent lookup
         normalized_resource_id = str(resource_id)
@@ -312,10 +329,53 @@ class SSEStarletteManager(SSEConnectionManager):
         if conn_count > 0:
             logger.info(f"Sent {event_type} to {sent_count}/{conn_count} connections")
         else:
-            logger.info(f"No active connections for {channel_type}/{normalized_resource_id}")
+            # Specifically for conversation events, when no connections exist, this is a warning
+            # as it indicates a potential issue with client disconnection
+            if channel_type == "conversation" and normalized_resource_id and event_type == "message_received":
+                logger.warning(f"No active connections for {channel_type}/{normalized_resource_id} to receive {event_type}")
+            else:
+                logger.info(f"No active connections for {channel_type}/{normalized_resource_id}")
+
+        # If republish is true, also publish through the event system
+        # This ensures delivery even if connection state is inconsistent
+        if republish:
+            # Import here to avoid circular imports
+            from app.components.event_system import get_event_system
+            
+            # Use appropriate event pattern based on channel/event type
+            pattern = f"{channel_type}.{event_type}"
+            
+            # Publish through the event system
+            try:
+                await get_event_system().publish(
+                    pattern,
+                    data_with_id,
+                    source="sse_manager"
+                )
+                logger.info(f"Republished {event_type} through event system as {pattern}")
+            except Exception as e:
+                logger.error(f"Failed to republish event through event system: {e}")
 
         return
 
+    def get_connection_count(self, channel_type: str, resource_id: str) -> int:
+        """
+        Get count of active connections for a specific channel/resource
+        
+        Args:
+            channel_type: Type of channel (global, user, workspace, conversation)
+            resource_id: ID of the resource
+            
+        Returns:
+            Number of active connections
+        """
+        normalized_resource_id = str(resource_id)
+        
+        if channel_type == "global":
+            return len(self.connections["global"].get("global", []))
+        else:
+            return len(self.connections.get(channel_type, {}).get(normalized_resource_id, []))
+    
     def get_stats(self) -> Dict[str, Any]:
         """
         Get statistics about active connections

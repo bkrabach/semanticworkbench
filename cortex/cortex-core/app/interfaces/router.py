@@ -7,7 +7,7 @@ from __future__ import annotations
 from typing import Dict, List, Optional, Any, Protocol, TYPE_CHECKING
 from enum import Enum
 from pydantic import BaseModel, Field
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 
 if TYPE_CHECKING:
@@ -50,7 +50,7 @@ class CortexMessage(BaseModel):
     """Base message model for all Cortex messages"""
     
     message_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
 

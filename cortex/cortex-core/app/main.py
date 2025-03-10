@@ -54,16 +54,18 @@ async def lifespan(app: FastAPI):
 
     # Initialize SSE service
     try:
-        # Use the domain-driven service layer implementation
+        # Use the domain-driven service layer implementation with synchronous SessionLocal
         from app.database.connection import SessionLocal
         from app.database.repositories.resource_access_repository import get_resource_access_repository
         from app.services.sse_service import SSEService
         
-        # Create a direct database session (not using async generator)
+        # Create a direct database session for initialization
         db_session = SessionLocal()
         
         try:
-            # Create repository and service directly 
+            # Create repository and service directly for startup
+            # This service will be used only for initialization
+            # The routing system will use dependency injection to create service instances
             repository = get_resource_access_repository(db_session)
             app.state.sse_service = SSEService(db_session, repository)
             await app.state.sse_service.initialize()

@@ -3,7 +3,7 @@ Test suite for the router interface
 """
 
 import pytest
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List
 import uuid
 import asyncio
@@ -21,19 +21,19 @@ from app.interfaces.router import (
 
 class MockRouter(RouterInterface):
     """Mock implementation of RouterInterface for testing"""
-    
+
     def __init__(self):
         self.processed_messages: List[InputMessage] = []
         self.decisions: Dict[str, RoutingDecision] = {}
         self.should_fail: bool = False
-    
+
     async def process_input(self, message: InputMessage) -> bool:
         """Process an input message"""
         if self.should_fail:
             return False
-            
+
         self.processed_messages.append(message)
-        
+
         # Create a dummy routing decision
         decision = RoutingDecision(
             action_type=ActionType.RESPOND,
@@ -42,9 +42,14 @@ class MockRouter(RouterInterface):
             reference_id=message.message_id,
             metadata={"source": "mock_router"}
         )
-        
+
         self.decisions[message.message_id] = decision
         return True
+
+    async def cleanup(self) -> None:
+        """Clean up resources"""
+        # Mock implementation of required abstract method
+        return None
 
 
 @pytest.fixture
@@ -58,7 +63,7 @@ def sample_input_message():
     """Create a sample input message for testing"""
     return InputMessage(
         message_id=str(uuid.uuid4()),
-        timestamp=datetime.utcnow(),
+        timestamp=datetime.now(timezone.utc),
         channel_id="test-channel",
         channel_type=ChannelType.CONVERSATION,
         content="Hello, Cortex!",
@@ -74,14 +79,14 @@ async def test_router_process_input(router, sample_input_message):
     """Test basic router message processing"""
     # Process the message
     result = await router.process_input(sample_input_message)
-    
+
     # Verify
     assert result is True
     assert len(router.processed_messages) == 1
     assert router.processed_messages[0].message_id == sample_input_message.message_id
     assert router.processed_messages[0].content == "Hello, Cortex!"
     assert router.processed_messages[0].channel_id == "test-channel"
-    
+
     # Check routing decision
     assert sample_input_message.message_id in router.decisions
     decision = router.decisions[sample_input_message.message_id]
@@ -95,10 +100,10 @@ async def test_router_error_handling(router, sample_input_message):
     """Test router error handling"""
     # Set router to fail
     router.should_fail = True
-    
+
     # Process the message
     result = await router.process_input(sample_input_message)
-    
+
     # Verify
     assert result is False
     assert len(router.processed_messages) == 0
@@ -113,7 +118,7 @@ async def test_router_multiple_messages(router):
     for i in range(5):
         message = InputMessage(
             message_id=f"msg-{i}",
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             channel_id=f"channel-{i % 2}",  # Alternate between two channels
             channel_type=ChannelType.CONVERSATION,
             content=f"Message {i}",
@@ -122,21 +127,21 @@ async def test_router_multiple_messages(router):
             conversation_id="test-conversation"
         )
         messages.append(message)
-    
+
     # Process all messages concurrently
     tasks = [router.process_input(message) for message in messages]
     results = await asyncio.gather(*tasks)
-    
+
     # Verify
     assert all(results)  # All should succeed
     assert len(router.processed_messages) == 5
-    
+
     # Check decisions
     for i in range(5):
         msg_id = f"msg-{i}"
         assert msg_id in router.decisions
         assert router.decisions[msg_id].target_channels == [f"channel-{i % 2}"]
-        
+
     # Check message order (should match order of submission)
     for i, message in enumerate(router.processed_messages):
         assert message.message_id == f"msg-{i}"
@@ -152,17 +157,18 @@ async def test_channel_type_enum():
     assert ChannelType.CANVAS == "canvas"
     assert ChannelType.APP == "app"
     assert ChannelType.WEBHOOK == "webhook"
-    
+
     # Test enum in messages
     message = InputMessage(
         message_id="test",
-        timestamp=datetime.utcnow(),
+        timestamp=datetime.now(timezone.utc),
         channel_id="test-channel",
         channel_type=ChannelType.CLI,
         content="Test CLI message",
-        user_id="test-user"
+        user_id="test-user",
+        conversation_id="test-conversation"
     )
-    
+
     assert message.channel_type == ChannelType.CLI
     assert message.channel_type == "cli"
 
@@ -175,12 +181,13 @@ async def test_cortex_message_models():
     assert base_msg.message_id is not None
     assert base_msg.timestamp is not None
     assert base_msg.metadata == {}
-    
+
     # Test InputMessage
     input_msg = InputMessage(
         channel_id="test-input",
         channel_type=ChannelType.CONVERSATION,
-        content="Test input content"
+        content="Test input content",
+        conversation_id="test-conversation"
     )
     assert input_msg.message_id is not None
     assert input_msg.timestamp is not None
@@ -188,7 +195,7 @@ async def test_cortex_message_models():
     assert input_msg.channel_type == ChannelType.CONVERSATION
     assert input_msg.content == "Test input content"
     assert input_msg.user_id is None  # Optional field
-    
+
     # Test OutputMessage
     output_msg = OutputMessage(
         channel_id="test-output",
@@ -217,7 +224,7 @@ async def test_routing_decision_model():
     assert decision.status_message is None
     assert decision.reference_id is None
     assert decision.metadata == {}
-    
+
     # Test with custom values
     custom_decision = RoutingDecision(
         action_type=ActionType.DELEGATE,
@@ -227,7 +234,7 @@ async def test_routing_decision_model():
         reference_id="ref-456",
         metadata={"handler": "expert_system", "timeout": 30}
     )
-    
+
     assert custom_decision.action_type == ActionType.DELEGATE
     assert custom_decision.priority == 5
     assert custom_decision.target_channels == ["channel-1", "channel-2"]

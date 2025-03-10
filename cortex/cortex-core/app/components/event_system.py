@@ -8,10 +8,10 @@ import uuid
 import re
 import time
 import logging
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, ClassVar
 
 from app.interfaces.router import EventSystemInterface, EventCallback
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 
 class EventPayload(BaseModel):
@@ -33,7 +33,7 @@ class EventPayload(BaseModel):
     trace_id: Optional[str] = None
     correlation_id: Optional[str] = None
 
-    class Config:
+    model_config = ConfigDict(
         json_schema_extra = {
             "example": {
                 "event_type": "conversation.message.created",
@@ -42,6 +42,7 @@ class EventPayload(BaseModel):
                 "timestamp": 1625097600.0
             }
         }
+    )
 
 
 class EventSystem(EventSystemInterface):
@@ -227,7 +228,7 @@ class EventSystem(EventSystemInterface):
         Returns:
             List of subscription IDs that would receive this event
         """
-        matching_subscriptions = []
+        matching_subscriptions: List[str] = []
         
         for pattern, subscribers in self.subscriptions.items():
             if self._match_pattern(pattern, event_type):

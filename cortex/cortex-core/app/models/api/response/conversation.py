@@ -6,8 +6,8 @@ These models handle HTTP response validation and documentation.
 """
 
 from datetime import datetime
-from typing import Dict, Any, List, Optional
-from pydantic import BaseModel, Field
+from typing import Dict, Any, List, Optional, ClassVar
+from pydantic import BaseModel, Field, ConfigDict, field_serializer
 
 
 class MessageResponse(BaseModel):
@@ -20,11 +20,11 @@ class MessageResponse(BaseModel):
     created_at: datetime
     metadata: Dict[str, Any] = Field(default_factory=dict)
     
-    class Config:
-        """Pydantic configuration"""
-        json_encoders = {
-            datetime: lambda dt: dt.isoformat()
-        }
+    @field_serializer('created_at')
+    def serialize_datetime(self, dt: datetime) -> str:
+        return dt.isoformat()
+    
+    model_config = ConfigDict()
 
 
 class ConversationSummaryResponse(BaseModel):
@@ -43,11 +43,11 @@ class ConversationSummaryResponse(BaseModel):
     metadata: Dict[str, Any] = Field(default_factory=dict)
     message_count: int = 0
     
-    class Config:
-        """Pydantic configuration"""
-        json_encoders = {
-            datetime: lambda dt: dt.isoformat()
-        }
+    @field_serializer('created_at', 'last_active_at')
+    def serialize_datetime(self, dt: datetime) -> str:
+        return dt.isoformat()
+    
+    model_config = ConfigDict()
 
 
 class ConversationDetailResponse(BaseModel):
@@ -67,11 +67,11 @@ class ConversationDetailResponse(BaseModel):
     metadata: Dict[str, Any] = Field(default_factory=dict)
     messages: List[MessageResponse] = Field(default_factory=list)
     
-    class Config:
-        """Pydantic configuration"""
-        json_encoders = {
-            datetime: lambda dt: dt.isoformat()
-        }
+    @field_serializer('created_at', 'updated_at', 'last_active_at')
+    def serialize_datetime(self, dt: datetime | None) -> str | None:
+        return dt.isoformat() if dt else None
+    
+    model_config = ConfigDict()
 
 
 class ConversationListResponse(BaseModel):
@@ -81,8 +81,4 @@ class ConversationListResponse(BaseModel):
     conversations: List[ConversationSummaryResponse] = Field(default_factory=list)
     count: int
     
-    class Config:
-        """Pydantic configuration"""
-        json_encoders = {
-            datetime: lambda dt: dt.isoformat()
-        }
+    model_config = ConfigDict()

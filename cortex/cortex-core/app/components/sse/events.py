@@ -113,11 +113,20 @@ class SSEEventSubscriber:
         self.subscriptions: List[str] = []
         
         # Define event patterns and corresponding resource ID extractors
+        # These patterns must match all event types published by the router and other components
         self.event_patterns = {
+            # Main patterns for app-wide events
             "conversation.*": ("conversation_id", "conversation"),
             "workspace.*": ("workspace_id", "workspace"),
             "user.*": ("user_id", "user"),
-            "global.*": (None, "global")  # Special case for global events
+            "global.*": (None, "global"),  # Special case for global events
+            
+            # Direct conversation events from router and other components
+            "conversation.message_received": ("conversation_id", "conversation"),
+            "conversation.typing_indicator": ("conversation_id", "conversation"),
+            "conversation.status_update": ("conversation_id", "conversation"),
+            "conversation.message_added": ("conversation_id", "conversation"),
+            "conversation.created": ("conversation_id", "conversation")
         }
         
     async def initialize(self):

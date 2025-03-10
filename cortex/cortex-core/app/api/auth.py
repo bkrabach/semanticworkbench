@@ -5,7 +5,7 @@ Authentication API endpoints for Cortex Core
 from fastapi import APIRouter, Depends, HTTPException, status
 from app.components.auth_schemes import oauth2_scheme
 from typing import Optional, List
-from pydantic import BaseModel
+from pydantic import BaseModel, field_serializer, ConfigDict
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta, timezone
 import uuid
@@ -43,12 +43,11 @@ class ApiKeyResponse(BaseModel):
     key: str
     expires_at_utc: Optional[datetime] = None
     
-    model_config = {
-        "json_encoders": {
-            # Ensure datetime is serialized to ISO format
-            datetime: lambda dt: dt.isoformat()
-        }
-    }
+    @field_serializer('expires_at_utc')
+    def serialize_datetime(self, dt: Optional[datetime]) -> Optional[str]:
+        return dt.isoformat() if dt else None
+    
+    model_config = ConfigDict()
 
 # Factory functions for dependency injection
 def get_user_service_with_events(db: Session = Depends(get_db)) -> UserService:

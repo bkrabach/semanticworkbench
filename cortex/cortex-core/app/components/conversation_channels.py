@@ -148,7 +148,7 @@ class ConversationOutputPublisher(OutputPublisherInterface):
 
     async def _handle_message_event(self, event_type: str, payload):
         """
-        Handle a message event - simplified for reliability
+        Handle a message event from the event system
 
         Args:
             event_type: Type of the event
@@ -158,10 +158,38 @@ class ConversationOutputPublisher(OutputPublisherInterface):
 
         main_logger.info(f"Conversation Publisher received event: {event_type} from {payload.source}")
 
-        # Extract the output message from the event data
+        # If this is a direct message from the router (not an OutputMessage), handle it directly
+        # This handles messages from the CortexRouter which sends dictionaries directly
+        if isinstance(payload.data, dict) and "conversation_id" in payload.data:
+            target_conversation_id = str(payload.data.get("conversation_id"))
+            # Only handle if it's for this conversation
+            if target_conversation_id.lower() == self.conversation_id.lower():
+                main_logger.info(f"Handling direct router message for conversation {self.conversation_id}")
+                
+                # Create a standardized event data to send to clients
+                event_data = {
+                    "id": payload.data.get("id", str(uuid.uuid4())),
+                    "content": payload.data.get("content", ""),
+                    "role": payload.data.get("role", "assistant"),
+                    "created_at_utc": payload.data.get("created_at_utc", datetime.now(timezone.utc).isoformat()),
+                    "metadata": payload.data.get("metadata", {}),
+                    "conversation_id": self.conversation_id
+                }
+                
+                # Send directly to clients via SSE connection manager
+                sse_service = get_sse_service()
+                await sse_service.connection_manager.send_event(
+                    "conversation",
+                    self.conversation_id,
+                    "message_received",
+                    event_data,
+                    republish=False  # No need to republish, we're already in the event system
+                )
+                return
+                
+        # Handle the OutputMessage format from other components
         data = payload.data.get("message")
         if not data or not isinstance(data, OutputMessage):
-            main_logger.warning(f"Invalid message data in event payload: {payload.data}")
             return
 
         main_logger.info(f"Message in event: ID={data.message_id}, content={data.content}")
@@ -213,18 +241,29 @@ class ConversationOutputPublisher(OutputPublisherInterface):
 
         self.logger.info(f"Received status event for conversation {self.conversation_id}")
 
-        # Send status update using the new SSE service
+        # Prepare event data
+        event_data = {
+            "message": data.content,
+            "timestamp": data.timestamp.isoformat(),
+            "metadata": data.metadata,
+            "conversation_id": self.conversation_id  # Ensure conversation_id is included
+        }
+
+        # First publish through the event system
+        await self.event_system.publish(
+            "conversation.status_update",
+            event_data,
+            source="conversation_publisher"
+        )
+        
+        # Also try direct SSE path for active connections
         sse_service = get_sse_service()
         await sse_service.connection_manager.send_event(
             "conversation",
             self.conversation_id,
             "status_update",
-            {
-                "message": data.content,
-                "timestamp": data.timestamp.isoformat(),
-                "metadata": data.metadata
-            },
-            republish=True  # Enable republishing for better delivery
+            event_data,
+            republish=False  # Already published through event system
         )
 
     async def publish(self, message: OutputMessage) -> bool:
@@ -243,9 +282,6 @@ class ConversationOutputPublisher(OutputPublisherInterface):
         main_logger.info(f"Message ID: {message.message_id}, content: {message.content}")
 
         try:
-            # Get the SSE service
-            sse_service = get_sse_service()
-
             # Prepare event data
             event_data = {
                 "id": message.message_id,
@@ -256,7 +292,19 @@ class ConversationOutputPublisher(OutputPublisherInterface):
                 "conversation_id": self.conversation_id
             }
 
-            # Log active connections for this conversation
+            # First publish through the event system to ensure delivery
+            # This is the most reliable path, as it reaches all subscribers
+            await self.event_system.publish(
+                "conversation.message_received",
+                event_data,
+                source="conversation_publisher"
+            )
+            main_logger.info(f"Published message {message.message_id} to event system")
+
+            # As a fallback, also try the direct SSE path
+            sse_service = get_sse_service()
+            
+            # Log active connections for this conversation (for debugging)
             connection_manager = sse_service.connection_manager
             if hasattr(connection_manager, 'connections') and 'conversation' in connection_manager.connections:
                 if self.conversation_id in connection_manager.connections['conversation']:
@@ -265,18 +313,16 @@ class ConversationOutputPublisher(OutputPublisherInterface):
                 else:
                     main_logger.warning(f"No active connections found for conversation/{self.conversation_id}")
 
-            # This is the single path for sending messages to clients
-            # The SSE connection manager is responsible for delivering to all connected clients
+            # Try direct path too - belt and suspenders approach
             await sse_service.connection_manager.send_event(
                 "conversation",
                 self.conversation_id,
                 "message_received",
                 event_data,
-                republish=False  # No republishing - keep the path simple
+                republish=False  # Already published through event system
             )
 
             main_logger.info(f"Message published successfully: {message.message_id}")
-
             return True
 
         except Exception as e:

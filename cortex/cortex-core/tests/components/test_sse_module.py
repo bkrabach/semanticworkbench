@@ -8,7 +8,7 @@ import uuid
 from unittest.mock import MagicMock, AsyncMock, patch
 from datetime import datetime, timezone
 
-from app.services.sse_service import SSEService
+from app.services.sse_service import SSEService, get_sse_service
 from app.components.sse.manager import SSEConnectionManager
 from app.components.sse.events import SSEEventSubscriber
 
@@ -303,7 +303,7 @@ async def test_event_subscriber_event_handling(mock_event_system):
     await subscriber.initialize()
     
     # Verify subscriptions were created
-    assert mock_event_system.subscribe.call_count == 4  # 4 event patterns
+    assert mock_event_system.subscribe.call_count == 9  # Updated to match new event patterns added
     
     # Test conversation event handling
     queue, conn_id = await manager.register_connection("conversation", "conv-123", "user-123")
@@ -338,7 +338,7 @@ async def test_event_subscriber_event_handling(mock_event_system):
     
     # Test cleanup
     await subscriber.cleanup()
-    assert mock_event_system.unsubscribe.call_count == 4  # 4 subscriptions
+    assert mock_event_system.unsubscribe.call_count == 9  # Match the number of subscriptions
 
 
 @pytest.mark.asyncio
@@ -349,7 +349,7 @@ async def test_sse_service_initialization(mock_event_system):
     mock_db = MagicMock()
     
     with patch("app.services.sse_service.get_event_system", return_value=mock_event_system):
-        # Create the service
+        # Create a service instance directly
         service = SSEService(mock_db, mock_repo)
         
         # Initialize
@@ -362,6 +362,13 @@ async def test_sse_service_initialization(mock_event_system):
         
         # Clean up
         await service.cleanup()
+        
+        # Test that the factory function works
+        with patch("app.database.repositories.resource_access_repository.get_resource_access_repository", return_value=mock_repo):
+            # Should create a new service with the repository
+            returned_service = get_sse_service(mock_db)
+            assert isinstance(returned_service, SSEService)
+            assert returned_service.repository is mock_repo
 
 
 @pytest.mark.asyncio
