@@ -9,6 +9,15 @@
       "cwd": "${workspaceFolder}",
       "args": ["app.main:app"],
       "jinja": true
+    },
+    {
+      "consoleName": "cortex-core (clean each reload)",
+      "name": "cortex-core (clean each reload)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/scripts/launch_clean_debug.py",
+      "cwd": "${workspaceFolder}",
+      "jinja": true
     }
   ]
 }
