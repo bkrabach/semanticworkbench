@@ -15,6 +15,7 @@ import {
 } from '@fluentui/react-components';
 import { MoreHorizontal20Regular, CopyRegular, PersonRegular, Bot24Regular } from '@fluentui/react-icons';
 import { Message } from '@/types';
+import { formatUTCToLocalTime, formatMessageContent } from '@/utils/formatters';
 
 const useStyles = makeStyles({
     container: {
@@ -181,17 +182,18 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message }) => {
         }
     }, [message.role, styles]);
 
-    // Format timestamp
+    // Format timestamp - use exact formatter
     const formattedTime = React.useMemo(() => {
-        if (!message.created_at_utc) return '';
-        
-        const date = new Date(message.created_at_utc);
-        return date.toLocaleTimeString([], { 
-            hour: '2-digit', 
-            minute: '2-digit',
-            hour12: true 
-        });
-    }, [message.created_at_utc]);
+        if (message.id && message.id.toString().startsWith('temp-')) {
+            // For newly added messages, use current local time
+            return new Date().toLocaleTimeString([], { 
+                hour: '2-digit', 
+                minute: '2-digit',
+                hour12: true 
+            });
+        }
+        return formatUTCToLocalTime(message.created_at_utc);
+    }, [message.id, message.created_at_utc]);
     
     // Format message content with code blocks
     const formattedContent = React.useMemo(() => {

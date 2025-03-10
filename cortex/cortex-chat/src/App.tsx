@@ -27,7 +27,7 @@ import {
 } from '@fluentui/react-components';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import React from 'react';
-import { Navigate, Route, BrowserRouter as Router, Routes } from 'react-router-dom';
+import { Navigate, Route, BrowserRouter as Router, Routes, useNavigate } from 'react-router-dom';
 import './App.css';
 
 // Create a client for React Query
@@ -79,29 +79,42 @@ const useStyles = makeStyles({
 
 // Login component using Fluent UI
 const Login = () => {
-    const { login, error } = useAuth();
+    const { login, error, isAuthenticated } = useAuth();
     const styles = useStyles();
     const [email, setEmail] = React.useState('test@example.com');
     const [password, setPassword] = React.useState('password');
-
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        try {
-            await login(email, password);
-        } catch (error) {
-            console.error('Login error:', error);
-        }
-    };
+    const [isLoggingIn, setIsLoggingIn] = React.useState(false);
+    const navigate = useNavigate();
     
+    // Redirect if already authenticated
+    React.useEffect(() => {
+        if (isAuthenticated) {
+            console.log("User is authenticated, redirecting to dashboard");
+            navigate('/');
+        }
+    }, [isAuthenticated, navigate]);
+
     const handleLoginClick = async () => {
+        if (isLoggingIn) return;
+        
         try {
+            setIsLoggingIn(true);
             console.log("Login button clicked with:", { email, password });
             // This will trigger the auth flow through multiple layers
             await login(email, password);
             console.log("Login completed successfully");
+            // Navigate programmatically after successful login
+            navigate('/');
         } catch (error) {
             console.error('Login error in UI layer:', error);
+        } finally {
+            setIsLoggingIn(false);
         }
+    };
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        handleLoginClick();
     };
 
     return (
@@ -121,12 +134,6 @@ const Login = () => {
                             id="email" 
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
-                            onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                    e.preventDefault();
-                                    handleLoginClick();
-                                }
-                            }}
                         />
                     </div>
                     <div className={styles.formField}>
@@ -136,21 +143,15 @@ const Login = () => {
                             id="password" 
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
-                            onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                    e.preventDefault();
-                                    handleLoginClick();
-                                }
-                            }}
                         />
                     </div>
                     <Button 
-                        type="button" 
+                        type="submit" 
                         appearance="primary" 
                         className={styles.submitButton}
-                        onClick={handleLoginClick}
+                        disabled={isLoggingIn}
                     >
-                        Login
+                        {isLoggingIn ? 'Logging in...' : 'Login'}
                     </Button>
                 </form>
             </Card>
@@ -272,7 +273,7 @@ const Dashboard = () => {
 
         try {
             const response = await apiClient.get<{ workspaces: Workspace[] }>('/workspaces');
-            const workspaceList = response.data.workspaces || [];
+            const workspaceList = response.workspaces || [];
             setWorkspaces(workspaceList);
 
             // Select first workspace if available and we don't have one selected
@@ -296,7 +297,7 @@ const Dashboard = () => {
             const response = await apiClient.get<{ conversations: Conversation[] }>(
                 `/workspaces/${workspaceId}/conversations`
             );
-            const conversationList = response.data.conversations || [];
+            const conversationList = response.conversations || [];
             setConversations(conversationList);
 
             // Select first conversation if available and we don't have one selected
@@ -318,16 +319,15 @@ const Dashboard = () => {
 
         try {
             // Get conversation details
-            const conversationResponse = await apiClient.get<Conversation>(
+            const conversation = await apiClient.get<Conversation>(
                 `/conversations/${conversationId}`
             );
-            const conversation = conversationResponse.data;
 
             // Get messages for this conversation
             const messagesResponse = await apiClient.get<{ messages: Message[] }>(
                 `/conversations/${conversationId}/messages`
             );
-            conversation.messages = messagesResponse.data.messages || [];
+            conversation.messages = messagesResponse.messages || [];
 
             setCurrentConversation(conversation);
         } catch (error) {
@@ -347,7 +347,7 @@ const Dashboard = () => {
         setError(null);
 
         try {
-            const response = await apiClient.post<Workspace>('/workspaces', {
+            const newWorkspace = await apiClient.post<Workspace>('/workspaces', {
                 name,
                 config: {
                     default_modality: 'chat',
@@ -355,8 +355,6 @@ const Dashboard = () => {
                     retentionDays: 90,
                 },
             });
-
-            const newWorkspace = response.data;
             setWorkspaces((prev: Workspace[]) => [...prev, newWorkspace]);
             setSelectedWorkspaceId(newWorkspace.id);
         } catch (error) {
@@ -378,15 +376,13 @@ const Dashboard = () => {
         setError(null);
 
         try {
-            const response = await apiClient.post<Conversation>(
+            const newConversation = await apiClient.post<Conversation>(
                 `/workspaces/${selectedWorkspaceId}/conversations`,
                 {
                     modality: 'chat',
                     title: `Chat ${new Date().toLocaleTimeString()}`,
                 }
             );
-
-            const newConversation = response.data;
             setConversations((prev: Conversation[]) => [...prev, newConversation]);
             setSelectedConversationId(newConversation.id);
         } catch (error) {
@@ -397,38 +393,57 @@ const Dashboard = () => {
         }
     };
 
-    // Handle sending a message
+    // Handle sending a message - exactly matching web-client.html
     const handleSendMessage = async (content: string) => {
         if (!selectedConversationId || !content) return;
 
         try {
-            // Add message to UI immediately for better user experience
-            const tempMessage = {
+            console.log('Sending message:', content);
+            
+            // Create temporary message with optimistic UI update
+            const tempMessage: Message = {
                 id: `temp-${Date.now()}`,
                 conversation_id: selectedConversationId,
                 content: content,
-                role: 'user' as const,
-                created_at_utc: new Date().toISOString(),
+                role: 'user',
+                created_at_utc: new Date().toISOString()
             };
-
-            // Add to local state
+            
+            // Add to UI immediately (optimistic update)
             setCurrentConversation((prev: Conversation | null) => {
                 if (!prev) return null;
                 const messages = [...(prev.messages || []), tempMessage];
                 return { ...prev, messages };
             });
-
+            
+            // Clear input - already done by the MessageInput component
+            
             // Send to server
             await apiClient.post(`/conversations/${selectedConversationId}/messages`, {
                 content: content,
-                role: 'user',
+                role: 'user'
             });
-
+            
             // Show typing indicator - will be controlled by the server via SSE
             setIsTyping(true);
+            
+            // The response will come via SSE events
         } catch (error) {
             console.error('Error sending message:', error);
             setError('Failed to send message');
+            
+            // Remove optimistic message on error
+            setCurrentConversation((prev: Conversation | null) => {
+                if (!prev) return null;
+                
+                // Remove any message that starts with temp-
+                const messages = prev.messages?.filter(
+                    m => !m.id.toString().startsWith('temp-')
+                ) || [];
+                
+                return { ...prev, messages };
+            });
+            
             setIsTyping(false);
         }
     };
@@ -501,10 +516,13 @@ const Dashboard = () => {
         }
     };
 
-    // Handle new messages from SSE
+    // Handle new messages from SSE - exactly matching web-client.html
     const handleNewMessage = (message: Message) => {
+        console.log('New message received via SSE:', message);
+        
         // Only process if this is for the current conversation
         if (!currentConversation || currentConversation.id !== message.conversation_id) {
+            console.log('Message is not for current conversation, ignoring');
             return;
         }
 
@@ -515,6 +533,7 @@ const Dashboard = () => {
             const existingIndex =
                 prev.messages?.findIndex((m: Message) => m.id === message.id) ?? -1;
             if (existingIndex !== -1) {
+                console.log('Message already exists, ignoring duplicate');
                 return prev; // Already have this message
             }
 
@@ -531,6 +550,7 @@ const Dashboard = () => {
                     ) ?? -1;
 
                 if (tempIndex !== -1 && prev.messages) {
+                    console.log('Replacing temporary message with server version');
                     // Replace our temp message with the server version
                     const updatedMessages = [...prev.messages];
                     updatedMessages[tempIndex] = message;
@@ -539,14 +559,16 @@ const Dashboard = () => {
             }
 
             // Add the new message
+            console.log('Adding new message to conversation');
             const messages = [...(prev.messages || []), message];
+            
+            // Hide typing indicator if this is an assistant message
+            if (message.role === 'assistant') {
+                setIsTyping(false);
+            }
+            
             return { ...prev, messages };
         });
-
-        // Hide typing indicator if this is an assistant message
-        if (message.role === 'assistant') {
-            setIsTyping(false);
-        }
     };
 
     // Create the sidebar content

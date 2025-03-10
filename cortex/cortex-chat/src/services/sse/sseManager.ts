@@ -5,7 +5,7 @@ export type EventCallback = (data: any) => void;
 
 /**
  * SSE Manager for handling Server-Sent Events connections
- * Simplified implementation that follows web-client.html patterns exactly
+ * Matches web-client.html patterns exactly
  */
 export class SSEManager {
     private baseUrl: string;
@@ -13,6 +13,7 @@ export class SSEManager {
     private reconnectAttempts: Record<string, number> = {};
     private tokenProvider: () => string | null = () => null;
     private MAX_RECONNECT_ATTEMPTS = 5;
+    private hasConnected: Record<string, boolean> = {};
 
     /**
      * Create a new SSEManager
@@ -63,8 +64,12 @@ export class SSEManager {
             // Create new EventSource connection - exactly as in web-client.html
             const eventSource = new EventSource(url);
             
-            // Set up common event handlers
-            this.setupCommonEventHandlers(eventSource, type, resourceId);
+            // Reset connection state for this channel
+            this.hasConnected[type] = false;
+            this.reconnectAttempts[type] = 0;
+            
+            // Set up event handlers
+            this.setupEventHandlers(eventSource, type, resourceId);
             
             // Store connection
             this.eventSources[type] = eventSource;
@@ -101,6 +106,8 @@ export class SSEManager {
             }
         });
         this.eventSources = {};
+        this.reconnectAttempts = {};
+        this.hasConnected = {};
     }
 
     /**
@@ -152,34 +159,6 @@ export class SSEManager {
         });
     }
 
-    /**
-     * Setup for all SSE channels
-     * @param channelType The type of channel
-     * @param resourceId Optional resource ID for workspace or conversation
-     */
-    setupChannel(channelType: ChannelType, resourceId?: string): EventSource | null {
-        const eventSource = this.connectToSSE(channelType, resourceId);
-        
-        if (!eventSource) {
-            return null;
-        }
-        
-        // Add channel-specific event listeners based on channel type
-        switch (channelType) {
-            case 'global':
-                this.setupGlobalEvents(eventSource);
-                break;
-            case 'workspace':
-                this.setupWorkspaceEvents(eventSource);
-                break;
-            case 'conversation':
-                this.setupConversationEvents(eventSource);
-                break;
-        }
-        
-        return eventSource;
-    }
-
     // Private helper methods
 
     /**
@@ -187,14 +166,22 @@ export class SSEManager {
      */
     private buildSseUrl(type: ChannelType, resourceId?: string): string {
         const token = this.tokenProvider();
-        let url = new URL(`${this.baseUrl}/v1`);
+        let url: URL;
         
-        if (type === 'global') {
-            url = new URL(`${this.baseUrl}/v1/global/global`);
-        } else if (type === 'workspace' && resourceId) {
-            url = new URL(`${this.baseUrl}/v1/workspace/${resourceId}`);
-        } else if (type === 'conversation' && resourceId) {
-            url = new URL(`${this.baseUrl}/v1/conversation/${resourceId}`);
+        // Determine the URL based on the type - exact match with web-client.html
+        switch (type) {
+            case 'global':
+                url = new URL(`${this.baseUrl}/v1/global/global`);
+                break;
+            case 'workspace':
+                url = new URL(`${this.baseUrl}/v1/workspace/${resourceId}`);
+                break;
+            case 'conversation':
+                url = new URL(`${this.baseUrl}/v1/conversation/${resourceId}`);
+                break;
+            default:
+                url = new URL(`${this.baseUrl}/v1`);
+                console.error('Invalid SSE type:', type);
         }
         
         // Add token to URL exactly as web-client does
@@ -206,9 +193,9 @@ export class SSEManager {
     }
 
     /**
-     * Set up common event handlers for all SSE connections
+     * Set up all event handlers for an SSE connection
      */
-    private setupCommonEventHandlers(
+    private setupEventHandlers(
         eventSource: EventSource, 
         type: ChannelType, 
         resourceId?: string
@@ -216,66 +203,48 @@ export class SSEManager {
         // Connection opened
         eventSource.onopen = () => {
             console.log(`[SSE:${type}] Connection established`);
-            this.reconnectAttempts[type] = 0;
+            this.hasConnected[type] = true;
+            this.reconnectAttempts[type] = 0; // Reset reconnect attempts after successful connection
         };
         
-        // Connection error
+        // Connection error - exact matching of web-client.html behavior
         eventSource.onerror = (error) => {
             console.error(`[SSE:${type}] Connection error:`, error);
             
-            // Handle reconnection
-            this.reconnect(type, resourceId);
+            // If we never established a connection and have exceeded max attempts, give up
+            if (!this.hasConnected[type] && (this.reconnectAttempts[type] || 0) >= this.MAX_RECONNECT_ATTEMPTS) {
+                console.error(`[SSE:${type}] Failed to connect after ${this.MAX_RECONNECT_ATTEMPTS} attempts, giving up`);
+                
+                // Clean up the resource
+                if (this.eventSources[type] === eventSource) {
+                    this.closeConnection(type);
+                }
+                return;
+            }
+            
+            // Check if service is unavailable or connection was rejected
+            // @ts-ignore - EventSource error has target property
+            const isServiceUnavailable = error.target && error.target.readyState === EventSource.CONNECTING;
+            
+            // Determine if we should reconnect - follows web-client.html logic exactly
+            const shouldReconnect = (
+                !isServiceUnavailable && 
+                (this.reconnectAttempts[type] || 0) < this.MAX_RECONNECT_ATTEMPTS
+            );
+            
+            if (shouldReconnect) {
+                this.reconnect(type, resourceId);
+            }
         };
         
-        // Common events for all channels
+        // Common events
         eventSource.addEventListener('connect', (event) => {
-            console.log(`[SSE:${type}] Connect event received:`, event.data);
+            console.log(`[SSE:${type}] Connect event received:`, event.data ? JSON.parse(event.data) : {});
         });
         
         eventSource.addEventListener('heartbeat', (event) => {
-            console.log(`[SSE:${type}] Heartbeat received`);
+            console.log(`[SSE:${type}] Heartbeat received:`, event.data ? JSON.parse(event.data) : {});
         });
-    }
-
-    /**
-     * Set up global channel specific event listeners
-     */
-    private setupGlobalEvents(eventSource: EventSource): void {
-        eventSource.addEventListener('notification', (event) => {
-            try {
-                const data = JSON.parse(event.data);
-                console.log('[SSE:global] Notification received:', data);
-                // Global notifications can be handled here
-            } catch (error) {
-                console.error('[SSE:global] Error parsing notification:', error);
-            }
-        });
-        
-        eventSource.addEventListener('system_update', (event) => {
-            try {
-                const data = JSON.parse(event.data);
-                console.log('[SSE:global] System update received:', data);
-                // System updates can be handled here
-            } catch (error) {
-                console.error('[SSE:global] Error parsing system update:', error);
-            }
-        });
-    }
-
-    /**
-     * Set up workspace channel specific event listeners
-     */
-    private setupWorkspaceEvents(eventSource: EventSource): void {
-        // These will be handled by the components that need this data
-        // The components will add their own listeners via addEventListener
-    }
-
-    /**
-     * Set up conversation channel specific event listeners
-     */
-    private setupConversationEvents(eventSource: EventSource): void {
-        // These will be handled by the components that need this data
-        // The components will add their own listeners via addEventListener
     }
 
     /**
@@ -285,12 +254,6 @@ export class SSEManager {
         // Get current attempt count
         const attempts = this.reconnectAttempts[type] || 0;
         
-        // Check if we've exceeded max reconnect attempts
-        if (attempts >= this.MAX_RECONNECT_ATTEMPTS) {
-            console.error(`[SSE:${type}] Max reconnect attempts reached (${this.MAX_RECONNECT_ATTEMPTS})`);
-            return;
-        }
-        
         // Increment attempt counter
         this.reconnectAttempts[type] = attempts + 1;
         
@@ -299,8 +262,12 @@ export class SSEManager {
         
         console.log(`[SSE:${type}] Reconnecting in ${delay/1000} seconds... (attempt ${this.reconnectAttempts[type]}/${this.MAX_RECONNECT_ATTEMPTS})`);
         
-        // Set timeout for reconnection
+        // Set timeout for reconnection - matching web-client.html pattern
         setTimeout(() => {
+            // Only close current connection right before creating a new one
+            if (this.eventSources[type]) {
+                this.eventSources[type].close();
+            }
             this.connectToSSE(type, resourceId);
         }, delay);
     }

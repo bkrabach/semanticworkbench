@@ -1,152 +1,88 @@
-import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
-import { ApiResponse, ErrorResponse } from '@/types';
+import { API_URL } from '@/config';
 
 /**
- * API Client for making HTTP requests to the Cortex Core API
+ * Simple API client that matches web-client.html patterns exactly
  */
-export class ApiClient {
-    private client: AxiosInstance;
-    private tokenProvider: () => string | null = () => null;
+export const apiClient = {
+    /**
+     * Get authentication token
+     */
+    getAuthToken: (): string | null => {
+        return localStorage.getItem('authToken');
+    },
 
     /**
-     * Create a new ApiClient
-     * @param baseURL The base URL for API requests
-     * @param config Additional axios configuration
+     * Make a request to the API
+     * @param endpoint The API endpoint
+     * @param method The HTTP method
+     * @param body Optional request body
+     * @returns Promise with response data
      */
-    constructor(baseURL: string, config: AxiosRequestConfig = {}) {
-        this.client = axios.create({
-            baseURL,
-            timeout: 30000, // 30 seconds default timeout
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            ...config,
-        });
+    async request<T>(
+        endpoint: string,
+        method: string = 'GET',
+        body?: any
+    ): Promise<T> {
+        const url = `${API_URL}${endpoint}`;
+        const headers: Record<string, string> = {
+            'Content-Type': 'application/json'
+        };
 
-        // Request interceptor for adding auth token
-        this.client.interceptors.request.use(
-            (config) => {
-                const token = this.tokenProvider();
-                if (token) {
-                    config.headers.Authorization = `Bearer ${token}`;
-                }
-                return config;
-            },
-            (error) => Promise.reject(error)
-        );
+        // Add authorization token if available
+        const token = apiClient.getAuthToken();
+        if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+        }
 
-        // Response interceptor for handling errors
-        this.client.interceptors.response.use(
-            (response) => response,
-            async (error) => {
-                // Handle specific error cases
-                if (error.response) {
-                    // Handle 401 Unauthorized
-                    if (error.response.status === 401) {
-                        // We'll handle token refresh in the auth service
-                        // For now, just return the error
-                    }
+        // Build request options
+        const options: RequestInit = {
+            method,
+            headers,
+            body: body ? JSON.stringify(body) : undefined
+        };
 
-                    // Format error response
-                    const errorResponse: ErrorResponse = {
-                        error: {
-                            code: error.response.data?.error?.code || 'unknown_error',
-                            message: error.response.data?.error?.message || 'An unknown error occurred',
-                            details: error.response.data?.error?.details,
-                        },
-                    };
+        // Make the request
+        console.log(`Making ${method} request to ${url}`);
+        const response = await fetch(url, options);
 
-                    return Promise.reject(errorResponse);
-                }
-
-                // Network errors or other issues
-                return Promise.reject({
-                    error: {
-                        code: 'network_error',
-                        message: error.message || 'Network error',
-                    },
-                });
+        // Handle errors
+        if (!response.ok) {
+            try {
+                const errorData = await response.json();
+                console.error(`Request failed with status ${response.status}:`, errorData);
+                throw new Error(errorData.message || `Request failed with status ${response.status}`);
+            } catch (e) {
+                console.error(`Request failed with status ${response.status}`);
+                throw new Error(`Request failed with status ${response.status}`);
             }
-        );
-    }
+        }
 
-    /**
-     * Set a function to provide authentication tokens
-     * @param provider Function that returns the current auth token
-     */
-    setTokenProvider(provider: () => string | null): void {
-        this.tokenProvider = provider;
-    }
+        // For empty responses (e.g. 204 No Content)
+        if (response.status === 204) {
+            return {} as T;
+        }
+
+        // Parse and return the response data
+        return response.json();
+    },
 
     /**
      * Make a GET request
-     * @param url The URL to request
-     * @param config Additional axios config
-     * @returns Promise with the response data
      */
-    async get<T>(url: string, config?: AxiosRequestConfig): Promise<ApiResponse<T>> {
-        const response = await this.client.get<T>(url, config);
-        return this.formatResponse(response);
-    }
+    get: <T>(endpoint: string) => apiClient.request<T>(endpoint),
 
     /**
      * Make a POST request
-     * @param url The URL to request
-     * @param data The data to send
-     * @param config Additional axios config
-     * @returns Promise with the response data
      */
-    async post<T>(
-        url: string,
-        data?: any,
-        config?: AxiosRequestConfig
-    ): Promise<ApiResponse<T>> {
-        console.log(`Making POST request to ${url} with data:`, data);
-        try {
-            const response = await this.client.post<T>(url, data, config);
-            console.log(`POST response from ${url}:`, response);
-            return this.formatResponse(response);
-        } catch (error) {
-            console.error(`POST request to ${url} failed:`, error);
-            throw error;
-        }
-    }
+    post: <T>(endpoint: string, data?: any) => apiClient.request<T>(endpoint, 'POST', data),
 
     /**
      * Make a PUT request
-     * @param url The URL to request
-     * @param data The data to send
-     * @param config Additional axios config
-     * @returns Promise with the response data
      */
-    async put<T>(
-        url: string,
-        data?: any,
-        config?: AxiosRequestConfig
-    ): Promise<ApiResponse<T>> {
-        const response = await this.client.put<T>(url, data, config);
-        return this.formatResponse(response);
-    }
+    put: <T>(endpoint: string, data?: any) => apiClient.request<T>(endpoint, 'PUT', data),
 
     /**
      * Make a DELETE request
-     * @param url The URL to request
-     * @param config Additional axios config
-     * @returns Promise with the response data
      */
-    async delete<T>(url: string, config?: AxiosRequestConfig): Promise<ApiResponse<T>> {
-        const response = await this.client.delete<T>(url, config);
-        return this.formatResponse(response);
-    }
-
-    /**
-     * Format the axios response into our ApiResponse type
-     */
-    private formatResponse<T>(response: AxiosResponse<any>): ApiResponse<T> {
-        return {
-            data: response.data,
-            status: response.status,
-            message: response.statusText,
-        };
-    }
-}
+    delete: <T>(endpoint: string) => apiClient.request<T>(endpoint, 'DELETE')
+};

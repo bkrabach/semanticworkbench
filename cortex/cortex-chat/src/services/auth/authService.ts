@@ -1,5 +1,5 @@
 import { User } from '@/types';
-import { ApiClient } from '@services/api/apiClient';
+import { apiClient } from '@services/api/apiClient';
 
 interface LoginResponse {
     access_token: string;
@@ -8,22 +8,12 @@ interface LoginResponse {
 
 /**
  * Authentication Service for managing user authentication
+ * Matches web-client.html pattern exactly
  */
 export class AuthService {
-    private apiClient: ApiClient;
-    private tokenKey = 'cortex_auth_token';
-    private userKey = 'cortex_user';
-
-    /**
-     * Create a new AuthService
-     * @param apiClient The API client instance
-     */
-    constructor(apiClient: ApiClient) {
-        this.apiClient = apiClient;
-        
-        // Set the token provider for the API client
-        this.apiClient.setTokenProvider(() => this.getToken());
-    }
+    private tokenKey = 'authToken'; // Exact key from web-client.html
+    private userIdKey = 'userId'; // Exact key from web-client.html
+    private userEmailKey = 'userEmail'; // Exact key from web-client.html
 
     /**
      * Log in with email and password
@@ -33,25 +23,40 @@ export class AuthService {
      */
     async login(email: string, password: string): Promise<User> {
         try {
-            console.log(`Attempting to login with email: ${email}`);
+            console.log(`[AuthService] Attempting to login with email: ${email}`);
             
-            const response = await this.apiClient.post<LoginResponse>('/auth/login', {
+            const response = await apiClient.post<LoginResponse>('/auth/login', {
                 email,
                 password,
             });
 
-            console.log('Login response received:', response);
+            console.log('[AuthService] Login response received:', response);
             
-            const { access_token, user } = response.data;
+            // The response is directly the data, no need to access .data property
+            const { access_token, user } = response;
             
-            // Store token and user data
-            this.setToken(access_token);
-            this.setUser(user);
+            console.log('[AuthService] Extracted token and user:', { 
+                tokenReceived: !!access_token, 
+                userId: user?.id,
+                userEmail: user?.email
+            });
             
-            console.log('Login successful, user:', user);
+            // Store tokens exactly as in web-client.html
+            localStorage.setItem(this.tokenKey, access_token);
+            localStorage.setItem(this.userIdKey, user.id);
+            localStorage.setItem(this.userEmailKey, user.email);
+            
+            // Double-check localStorage to make sure items were saved
+            const savedToken = localStorage.getItem(this.tokenKey);
+            console.log('[AuthService] Token saved to localStorage:', { 
+                savedSuccessfully: !!savedToken,
+                tokenLength: savedToken?.length
+            });
+            
+            console.log('[AuthService] Login successful, user:', user);
             return user;
         } catch (error) {
-            console.error('Login failed:', error);
+            console.error('[AuthService] Login failed:', error);
             throw error;
         }
     }
@@ -60,9 +65,10 @@ export class AuthService {
      * Log out the current user
      */
     logout(): void {
-        // Remove token and user data from storage
+        // Clear state exactly as in web-client.html
         localStorage.removeItem(this.tokenKey);
-        localStorage.removeItem(this.userKey);
+        localStorage.removeItem(this.userIdKey);
+        localStorage.removeItem(this.userEmailKey);
     }
 
     /**
@@ -86,30 +92,33 @@ export class AuthService {
      * @returns The user object or null if not authenticated
      */
     getUser(): User | null {
-        const userJson = localStorage.getItem(this.userKey);
-        if (!userJson) return null;
+        const id = localStorage.getItem(this.userIdKey);
+        const email = localStorage.getItem(this.userEmailKey);
         
-        try {
-            return JSON.parse(userJson);
-        } catch (error) {
-            console.error('Error parsing user data:', error);
-            return null;
+        if (!id || !email) return null;
+        
+        return {
+            id,
+            email
+        };
+    }
+
+    /**
+     * Check session and get auth data
+     * Exactly matches web-client.html pattern
+     */
+    checkSession(): {isAuthenticated: boolean, user: User | null, token: string | null} {
+        const token = this.getToken();
+        if (token) {
+            return {
+                isAuthenticated: true,
+                user: {
+                    id: localStorage.getItem(this.userIdKey) || '',
+                    email: localStorage.getItem(this.userEmailKey) || ''
+                },
+                token
+            };
         }
-    }
-
-    /**
-     * Set the authentication token
-     * @param token The token to store
-     */
-    private setToken(token: string): void {
-        localStorage.setItem(this.tokenKey, token);
-    }
-
-    /**
-     * Set the user data
-     * @param user The user object to store
-     */
-    private setUser(user: User): void {
-        localStorage.setItem(this.userKey, JSON.stringify(user));
+        return { isAuthenticated: false, user: null, token: null };
     }
 }

@@ -1,19 +1,16 @@
-import { ApiClient } from './api/apiClient';
+import { apiClient } from './api/apiClient';
 import { AuthService } from './auth/authService';
 import { SSEManager } from './sse/sseManager';
-
-// API base URL - match what's used in web-client.html
-const API_URL = 'http://127.0.0.1:8000';
+import { API_URL } from '@/config';
 
 // Create service instances
-export const apiClient = new ApiClient(API_URL);
-export const authService = new AuthService(apiClient);
+export { apiClient } from './api/apiClient';
+export const authService = new AuthService();
 export const sseManager = new SSEManager(API_URL);
 
 // Set up SSE token provider to use the auth service
 sseManager.setTokenProvider(() => authService.getToken());
 
 // Export service classes
-export { ApiClient } from './api/apiClient';
 export { AuthService } from './auth/authService';
 export { SSEManager } from './sse/sseManager';

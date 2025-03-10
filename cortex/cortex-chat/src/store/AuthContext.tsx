@@ -74,27 +74,36 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
      * Login function
      */
     const login = async (email: string, password: string): Promise<void> => {
+        console.log('[AuthContext] Starting login process');
         setAuthState(prev => ({
             ...prev,
             isLoading: true,
             error: null,
         }));
+        console.log('[AuthContext] Set loading state');
 
         try {
+            console.log('[AuthContext] Calling authService.login');
             const user = await authService.login(email, password);
+            console.log('[AuthContext] Login successful, updating state');
+            
             setAuthState({
                 user,
                 isAuthenticated: true,
                 isLoading: false,
                 error: null,
             });
+            
+            console.log('[AuthContext] Auth state updated, isAuthenticated=true');
         } catch (error) {
+            console.error('[AuthContext] Login error:', error);
             setAuthState({
                 user: null,
                 isAuthenticated: false,
                 isLoading: false,
                 error: 'Login failed',
             });
+            console.log('[AuthContext] Auth state updated with error');
             throw error;
         }
     };
