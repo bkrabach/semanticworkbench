@@ -41,100 +41,175 @@ Ensures routes are only accessible to authenticated users.
 **Props**:
 - `children`: React nodes to render when authenticated
 
-### Layout Components (Planned)
+### Layout Components
 
 These components handle the layout and structure of the application:
 
-#### `<AppLayout>` (Future)
+#### `<AppLayout>`
 
-Will provide the main layout structure for the application, including navigation, sidebars, and content areas.
+Provides the main layout structure for the application, including a responsive header, collapsible sidebar, and footer.
 
 **Usage**:
 ```tsx
-<AppLayout>
+<AppLayout
+  user={currentUser}
+  onLogout={handleLogout}
+  sidebar={sidebarContent}
+>
   <YourContent />
 </AppLayout>
 ```
 
-#### `<Sidebar>` (Future)
+**Props**:
+- `children`: Content to display in the main area
+- `sidebar`: React node to display in the sidebar
+- `user`: User object with information for the header
+- `onLogout`: Function to handle user logout
+- `className`: Optional CSS class name
 
-Will provide a sidebar for navigation, workspace selection, etc.
+Features:
+- Responsive design that adapts to desktop and mobile screens
+- Collapsible sidebar with toggle button
+- User menu in the header with logout option
+- Persistent footer
+- Proper styling using Fluent UI tokens
 
-**Usage**:
-```tsx
-<Sidebar>
-  <WorkspaceList />
-  <ConversationList />
-</Sidebar>
-```
-
-### Chat Components (Planned)
+### Chat Components
 
 Components for chat functionality:
 
-#### `<MessageList>` (Future)
+#### `<MessageList>`
 
-Will display a list of messages in a conversation.
+Displays a list of messages in a conversation with proper styling for different message types.
 
 **Usage**:
 ```tsx
 <MessageList 
   messages={messages} 
-  isLoading={isLoading} 
+  isLoading={isLoading}
+  isTyping={isTyping}
+  conversationTitle="Conversation Title"
 />
 ```
 
-#### `<MessageInput>` (Future)
+**Props**:
+- `messages`: Array of message objects
+- `isLoading`: Boolean indicating if messages are loading
+- `isTyping`: Boolean indicating if the assistant is typing
+- `conversationTitle`: Optional title to display in empty state
+- `className`: Optional CSS class name
 
-Will provide an input field for sending messages.
+#### `<MessageItem>`
+
+Renders a single message with appropriate styling based on the sender (user, assistant, system).
+
+**Usage**:
+```tsx
+<MessageItem 
+  message={message}
+/>
+```
+
+**Props**:
+- `message`: Message object to render
+
+#### `<MessageInput>`
+
+Provides a textarea for composing and sending messages with auto-resize functionality.
 
 **Usage**:
 ```tsx
 <MessageInput 
   onSendMessage={handleSendMessage} 
-  isDisabled={!isConnected} 
+  isDisabled={!isConnected}
+  placeholder="Type your message..."
+  maxLength={2000} 
 />
 ```
 
-#### `<ConversationView>` (Future)
+**Props**:
+- `onSendMessage`: Function called when a message is sent
+- `isDisabled`: Boolean to disable input when disconnected
+- `placeholder`: Text placeholder
+- `maxLength`: Maximum character limit
+- `className`: Optional CSS class name
 
-Will provide a complete view of a conversation, including messages and input.
+#### `<ConversationView>`
+
+Provides a complete view of a conversation, including message list, input, and conversation details.
 
 **Usage**:
 ```tsx
 <ConversationView 
-  conversationId={id} 
+  conversation={conversation}
+  isLoading={isLoading}
+  isTyping={isTyping}
+  onSendMessage={handleSendMessage}
+  onEditTitle={handleEditTitle}
+  onDeleteConversation={handleDeleteConversation}
 />
 ```
 
-### Workspace Components (Planned)
+**Props**:
+- `conversation`: Conversation object with messages
+- `isLoading`: Boolean indicating loading state
+- `isTyping`: Boolean indicating typing state
+- `onSendMessage`: Function to handle sending messages
+- `onEditTitle`: Optional function to edit conversation title
+- `onDeleteConversation`: Optional function to delete conversation
+- `className`: Optional CSS class name
+
+### Workspace Components
 
 Components for managing workspaces:
 
-#### `<WorkspaceList>` (Future)
+#### `<WorkspaceList>`
 
-Will display a list of available workspaces.
+Displays a list of available workspaces with selection and creation functionality.
 
 **Usage**:
 ```tsx
 <WorkspaceList 
-  workspaces={workspaces} 
-  onSelectWorkspace={handleSelectWorkspace} 
+  workspaces={workspaces}
+  selectedWorkspaceId={selectedId}
+  onSelectWorkspace={handleSelectWorkspace}
+  onCreateWorkspace={handleCreateWorkspace}
+  onDeleteWorkspace={handleDeleteWorkspace}
 />
 ```
 
-#### `<ConversationList>` (Future)
+**Props**:
+- `workspaces`: Array of workspace objects
+- `selectedWorkspaceId`: ID of the currently selected workspace
+- `onSelectWorkspace`: Function called when a workspace is selected
+- `onCreateWorkspace`: Function called to create a new workspace
+- `onDeleteWorkspace`: Optional function to delete workspaces
 
-Will display a list of conversations in the current workspace.
+#### `<ConversationList>`
+
+Displays a list of conversations in the current workspace with selection and management options.
 
 **Usage**:
 ```tsx
 <ConversationList 
-  conversations={conversations} 
-  currentConversationId={currentId} 
-  onSelectConversation={handleSelectConversation} 
+  conversations={conversations}
+  currentConversationId={currentId}
+  onSelectConversation={handleSelectConversation}
+  onCreateConversation={handleCreateConversation}
+  onDeleteConversation={handleDeleteConversation}
+  onRenameConversation={handleRenameConversation}
+  isLoading={isLoading}
 />
 ```
+
+**Props**:
+- `conversations`: Array of conversation objects
+- `currentConversationId`: ID of the currently selected conversation
+- `onSelectConversation`: Function called when a conversation is selected
+- `onCreateConversation`: Function called to create a new conversation
+- `onDeleteConversation`: Optional function to delete conversations
+- `onRenameConversation`: Optional function to rename conversations
+- `isLoading`: Boolean indicating loading state
 
 ## Component Design Guidelines
 

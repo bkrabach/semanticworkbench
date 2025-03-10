@@ -11,6 +11,9 @@ importers:
       '@fluentui/react-components':
         specifier: ^9.60.0
         version: 9.60.0(@types/react-dom@18.2.19)(@types/react@18.2.61)(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(scheduler@0.23.0)
+      '@fluentui/react-icons':
+        specifier: ^2.0.279
+        version: 2.0.279(react@18.2.0)
       '@tanstack/react-query':
         specifier: ^5.67.2
         version: 5.67.2(react@18.2.0)
