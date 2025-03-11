@@ -4,17 +4,19 @@ This guide provides step-by-step instructions for implementing the Model Context
 
 ## Table of Contents
 
+## Table of Contents
+
 - [Overview](#overview)
 - [Architecture](#architecture)
 - [Implementation Steps](#implementation-steps)
-  - [1. Create the Integration Hub Component](#1-create-the-integration-hub-component) ✅
-  - [2. Update Configuration](#2-update-configuration) ✅
-  - [3. Update Application Lifecycle](#3-update-application-lifecycle) ✅
-  - [4. Add API Routes](#4-add-api-routes) ✅
-  - [5. Implement Event System Integration](#5-implement-event-system-integration) ❌
-  - [6. Update Dependencies](#6-update-dependencies) ✅
-- [Domain Expert Implementation](#domain-expert-implementation) ❌
-- [Testing](#testing) ✅
+  - [1. Create the Integration Hub Component ✅](#1-create-the-integration-hub-component-)
+  - [2. Update Configuration ✅](#2-update-configuration-)
+  - [3. Update Application Lifecycle ✅](#3-update-application-lifecycle-)
+  - [4. Add API Routes ✅](#4-add-api-routes-)
+  - [5. Implement Event System Integration ❌](#5-implement-event-system-integration-)
+  - [6. Update Dependencies ✅](#6-update-dependencies-)
+- [Domain Expert Implementation ❌](#domain-expert-implementation-)
+- [Testing ✅](#testing-)
 - [Troubleshooting](#troubleshooting)
 
 ## Overview
@@ -57,6 +59,7 @@ Create a new file `app/components/integration_hub.py` that implements the Integr
 **Status: Completed**
 
 The Integration Hub component has been successfully implemented with additional enhancements:
+
 - Uses a `CortexMcpClient` wrapper class to manage MCP client sessions
 - Implements a circuit breaker pattern for resilient communication
 - Uses a singleton pattern for system-wide access
@@ -80,60 +83,60 @@ logger = get_logger(__name__)
 
 class CortexMcpClient:
     """Wrapper for MCP client using the official Python SDK"""
-    
+
     def __init__(self, endpoint: str, service_name: str):
         self.endpoint = endpoint
         self.service_name = service_name
         self.client: Optional[ClientSession] = None
-        
+
     async def connect(self) -> None:
         """Connect to the MCP server"""
         # Implementation...
-        
+
     async def list_tools(self) -> Dict[str, Any]:
         """List available tools from the MCP server"""
         # Implementation...
-        
+
     async def call_tool(self, name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """Call a tool on the MCP server"""
         # Implementation...
-        
+
     async def read_resource(self, uri: str) -> Dict[str, Any]:
         """Read a resource from the MCP server"""
         # Implementation...
-        
+
     async def close(self) -> None:
         """Close the MCP client"""
         # Implementation...
 
 class IntegrationHub:
     """Manages connections to Domain Expert services via MCP"""
-    
+
     def __init__(self):
         self.settings = get_settings()
         self.clients: Dict[str, CortexMcpClient] = {}
         self.circuit_breakers: Dict[str, CircuitBreaker] = {}
-        
+
     async def startup(self):
         """Initialize connections to all configured MCP endpoints"""
         # Implementation...
-                
+
     async def shutdown(self):
         """Close all MCP connections"""
         # Implementation...
-    
+
     async def list_experts(self) -> List[str]:
         """List all available domain experts"""
         # Implementation...
-    
+
     async def list_expert_tools(self, expert_name: str) -> Dict[str, Any]:
         """List all tools available from a specific domain expert"""
         # Implementation with circuit breaker pattern...
-    
+
     async def invoke_expert_tool(self, expert_name: str, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """Invoke a tool on a specific domain expert"""
         # Implementation with circuit breaker pattern...
-    
+
     async def read_expert_resource(self, expert_name: str, uri: str) -> Dict[str, Any]:
         """Read a resource from a specific domain expert"""
         # Implementation with circuit breaker pattern...
@@ -177,10 +180,10 @@ class McpConfig(BaseSettings):
     """MCP configuration - for internal service-to-service communication only"""
     # Flag to explicitly indicate that MCP is for internal use only
     internal_only: bool = True
-    
+
     # List of MCP endpoints (internal services)
     endpoints: List[Dict[str, str]] = []
-    
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
@@ -206,7 +209,7 @@ class Settings(BaseSettings):
     """Main application settings"""
     # Other settings...
     mcp: McpConfig = McpConfig()
-    
+
     # Other configuration...
 ```
 
@@ -500,7 +503,7 @@ async def invoke_expert_tool(
     try:
         # Extract correlation ID if present in headers
         correlation_id = request.headers.get("X-Correlation-ID")
-        
+
         # Publish event before execution
         await request.app.state.event_system.publish(
             event_type="mcp.tool.execution.started",
@@ -512,14 +515,14 @@ async def invoke_expert_tool(
             },
             source="integration_hub"
         )
-        
+
         # Execute the tool
         result = await integration_hub.invoke_expert_tool(
             expert_name=expert_name,
             tool_name=tool_name,
             arguments=tool_call.arguments
         )
-        
+
         # Publish success event
         await request.app.state.event_system.publish(
             event_type="mcp.tool.execution.completed",
@@ -530,7 +533,7 @@ async def invoke_expert_tool(
             },
             source="integration_hub"
         )
-        
+
         return result
     except Exception as e:
         # Publish failure event
@@ -571,27 +574,27 @@ except ImportError:
     # Define a stub ClientSession for when MCP isn't available
     class ClientSession:  # type: ignore
         """Stub implementation of ClientSession for testing and type checking"""
-        
+
         def __init__(self, read_stream=None, write_stream=None):
             """Initialize with optional streams"""
             pass
-            
+
         async def initialize(self):
             """Initialize the session"""
             return {"version": "stub-1.0.0", "capabilities": {}}
-            
+
         async def list_tools(self):
             """List available tools"""
             return {"tools": []}
-            
+
         async def call_tool(self, name, arguments):
             """Call a tool"""
             return {"result": "success"}
-            
+
         async def read_resource(self, uri):
             """Read a resource"""
             return {"content": "test"}
-            
+
         async def shutdown(self):
             """Shut down the session"""
             pass
@@ -656,13 +659,13 @@ async def example_tool(parameter: str, ctx: Context) -> Dict[str, Any]:
     """Example tool description"""
     # Access lifespan context
     db = ctx.request_context.lifespan_context.db
-    
+
     # Show progress
     ctx.info(f"Processing: {parameter}")
-    
+
     # Implement tool logic
     result = "Example result"
-    
+
     return {
         "content": [
             {
@@ -690,7 +693,7 @@ if __name__ == "__main__":
 **Implementation plan:** Domain Expert services will be developed as separate microservices that implement MCP servers. These will include specialized services like:
 
 1. Code Assistant - For code-related tasks
-2. Deep Research - For in-depth research capabilities  
+2. Deep Research - For in-depth research capabilities
 3. Data Analysis - For data processing and visualization
 4. Document Processing - For document understanding and manipulation
 
@@ -727,39 +730,39 @@ from app.components.integration_hub import (
 
 class TestCortexMcpClient:
     """Test suite for the CortexMcpClient class"""
-    
+
     @pytest.fixture
     def mock_mcp_client(self):
         """Create a mock for the MCP client"""
         mock_client = AsyncMock()
         # Setup mock methods...
         return mock_client
-    
+
     @pytest.mark.asyncio
     async def test_connect(self, mock_mcp_client):
         """Test connection initialization"""
         # Test connection logic...
-    
+
     @pytest.mark.asyncio
     async def test_list_tools(self, mock_mcp_client):
         """Test listing tools"""
         # Test list_tools method...
-    
+
     @pytest.mark.asyncio
     async def test_call_tool(self, mock_mcp_client):
         """Test calling a tool"""
         # Test call_tool method...
-    
+
     @pytest.mark.asyncio
     async def test_read_resource(self, mock_mcp_client):
         """Test reading a resource"""
         # Test read_resource method...
-    
+
     @pytest.mark.asyncio
     async def test_close(self, mock_mcp_client):
         """Test closing the connection"""
         # Test connection closing...
-    
+
     @pytest.mark.asyncio
     async def test_connect_error_handling(self):
         """Test error handling during connection"""
@@ -768,47 +771,47 @@ class TestCortexMcpClient:
 
 class TestIntegrationHub:
     """Test suite for the IntegrationHub class"""
-    
+
     @pytest.fixture
     def mock_settings(self):
         """Create mock settings with test MCP endpoints"""
         # Setup mock settings...
-    
+
     @pytest.fixture
     def mock_client(self):
         """Create a mock for the CortexMcpClient"""
         # Setup mock client...
-    
+
     @pytest.mark.asyncio
     async def test_startup(self, mock_settings, mock_client):
         """Test startup initializes connections to all endpoints"""
         # Test startup logic...
-    
+
     @pytest.mark.asyncio
     async def test_shutdown(self, mock_settings, mock_client):
         """Test shutdown closes all connections"""
         # Test shutdown logic...
-    
+
     @pytest.mark.asyncio
     async def test_list_experts(self, mock_settings):
         """Test listing available experts"""
         # Test list_experts method...
-    
+
     @pytest.mark.asyncio
     async def test_list_expert_tools(self, mock_settings, mock_client):
         """Test listing tools for a specific expert"""
         # Test list_expert_tools method...
-    
+
     @pytest.mark.asyncio
     async def test_list_expert_tools_unknown_expert(self, mock_settings):
         """Test listing tools for an unknown expert"""
         # Test behavior with unknown expert...
-    
+
     @pytest.mark.asyncio
     async def test_invoke_expert_tool(self, mock_settings, mock_client):
         """Test invoking a tool on a specific expert"""
         # Test invoke_expert_tool method...
-    
+
     @pytest.mark.asyncio
     async def test_read_expert_resource(self, mock_settings, mock_client):
         """Test reading a resource from a specific expert"""
@@ -869,17 +872,20 @@ def test_read_expert_resource(mock_integration_hub):
 If you encounter problems connecting to MCP endpoints:
 
 1. **Check Endpoint URL**: Verify the endpoint URL is correct and accessible
+
    ```bash
    curl -v http://localhost:5001/mcp
    ```
 
 2. **Transport Compatibility**: Ensure the endpoint supports the SSE transport
+
    ```python
    # Domain expert must be configured with SSE transport
    mcp.run(transport="sse", host="0.0.0.0", port=5001)
    ```
 
 3. **Authentication**: Verify API keys are correctly configured if required
+
    ```
    # Check environment variables or .env file
    MCP_ENDPOINTS='[{"name":"expert", "endpoint":"http://localhost:5001/mcp", "type":"expert", "api_key":"your-key"}]'
@@ -892,12 +898,14 @@ If you encounter problems connecting to MCP endpoints:
 For issues with tool execution:
 
 1. **Tool Exists**: Verify the tool exists on the domain expert
+
    ```bash
    # List tools on the expert
    curl http://localhost:4000/integrations/experts/expert_name/tools
    ```
 
 2. **Parameter Validation**: Check parameter types match the tool's schema
+
    ```python
    # Domain expert tool definition
    @mcp.tool()
@@ -910,11 +918,13 @@ For issues with tool execution:
 ### General Debugging
 
 1. **Logs**: Check the logs for detailed error messages
+
    ```bash
    tail -f logs/cortex.log
    ```
 
 2. **Circuit Breaker**: Check if the circuit breaker has tripped for an endpoint
+
    ```python
    # Get the current state of a circuit breaker
    breaker = integration_hub.circuit_breakers["expert_name"]
@@ -930,15 +940,15 @@ For issues with tool execution:
 
 Here's a summary of the current MCP implementation status:
 
-| Component | Status | Notes |
-|-----------|--------|-------|
-| Integration Hub | ✅ Completed | Enhanced with circuit breaker and singleton pattern |
-| Configuration | ✅ Completed | Supports both JSON and individual endpoint config |
-| Application Lifecycle | ✅ Completed | Proper startup/shutdown with error handling |
-| API Routes | ✅ Completed | Authentication, error handling, and clean API design |
-| Event System Integration | ❌ Pending | Event publication for MCP operations |
-| Dependencies | ✅ Completed | Graceful fallbacks for testing without MCP |
-| Domain Expert Implementation | ❌ Pending | Services will be separate microservices |
-| Testing | ✅ Completed | Comprehensive tests for Integration Hub |
+| Component                    | Status       | Notes                                                |
+| ---------------------------- | ------------ | ---------------------------------------------------- |
+| Integration Hub              | ✅ Completed | Enhanced with circuit breaker and singleton pattern  |
+| Configuration                | ✅ Completed | Supports both JSON and individual endpoint config    |
+| Application Lifecycle        | ✅ Completed | Proper startup/shutdown with error handling          |
+| API Routes                   | ✅ Completed | Authentication, error handling, and clean API design |
+| Event System Integration     | ❌ Pending   | Event publication for MCP operations                 |
+| Dependencies                 | ✅ Completed | Graceful fallbacks for testing without MCP           |
+| Domain Expert Implementation | ❌ Pending   | Services will be separate microservices              |
+| Testing                      | ✅ Completed | Comprehensive tests for Integration Hub              |
 
 This guide provides a comprehensive foundation for implementing MCP integration in the Cortex Core project. The core infrastructure for connecting to Domain Expert services is in place, but the actual Domain Expert implementations and some enhanced features like event system integration are still pending.
