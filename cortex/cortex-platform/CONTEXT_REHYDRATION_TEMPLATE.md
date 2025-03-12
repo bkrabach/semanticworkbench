@@ -1,0 +1,279 @@
+# [TASK NAME] - Complete Context Rehydration
+
+## STEP 1: READ THIS ENTIRE DOCUMENT FIRST
+This document contains instructions for rehydrating your understanding of our ongoing work. After reading this document completely, follow the examination steps below in order.
+
+## Original Request and Task History
+
+The human asked us to perform [BRIEF TASK DESCRIPTION], following this sequence:
+
+1. First request: "[EXACT QUOTE OF FIRST REQUEST]" 
+   - Key points: [BULLET POINTS OF IMPORTANT CONTEXT FROM FIRST REQUEST]
+   - Insights gained: [WHAT WE LEARNED OR ESTABLISHED FROM THIS REQUEST]
+
+2. Second request: "[EXACT QUOTE OF SECOND REQUEST]"
+   - This revealed: [KEY INSIGHTS OR FINDINGS]
+     - [BULLET POINT DETAIL 1]
+     - [BULLET POINT DETAIL 2]
+     - [BULLET POINT DETAIL 3]
+
+3. Main task request: "[EXACT QUOTE OF MAIN TASK REQUEST]"
+   - [ANY ADDITIONAL CONTEXT OR CLARIFICATION]
+
+4. Most recent request: "[EXACT QUOTE OF MOST RECENT REQUEST]"
+   - Current status: [WHERE WE ARE NOW]
+   - Next actions needed: [WHAT NEEDS TO BE DONE NEXT]
+
+## Current Task Status
+
+We have:
+1. [COMPLETED STEP 1]
+2. [COMPLETED STEP 2]
+3. [COMPLETED STEP 3]
+4. [COMPLETED STEP 4]
+5. [COMPLETED STEP 5]
+
+We still need to:
+1. [PENDING STEP 1]
+2. [PENDING STEP 2]
+3. [PENDING STEP 3]
+
+## Critical Files to Examine (IN THIS ORDER)
+
+1. First, examine [FIRST FILE CATEGORY]:
+   ```
+   [FULL PATH TO FILE 1]
+   ```
+   Purpose: [WHY THIS FILE IS IMPORTANT AND WHAT TO LOOK FOR]
+
+2. Second, examine [SECOND FILE CATEGORY]:
+   ```
+   [FULL PATH TO FILE 2]
+   ```
+   Purpose: [WHY THIS FILE IS IMPORTANT AND WHAT TO LOOK FOR]
+
+3. Third, examine [THIRD FILE CATEGORY]:
+   ```
+   [PATHS TO RELATED DOCUMENTATION FILES]
+   ```
+   Purpose: [WHAT ARCHITECTURAL PRINCIPLES OR GUIDELINES TO UNDERSTAND]
+
+4. Fourth, examine [FOURTH FILE CATEGORY]:
+   ```
+   [PATHS TO IMPLEMENTATION FILES IN RECOMMENDED VIEWING ORDER]
+   ```
+   Purpose: [HOW THESE FILES WORK TOGETHER]
+
+5. Finally, examine [FIFTH FILE CATEGORY]:
+   ```
+   [PATHS TO TEST FILES]
+   ```
+   Purpose: [HOW THE FUNCTIONALITY IS TESTED]
+
+## Key Design Principles Applied
+
+Our work follows these core principles, which should guide any further changes:
+
+1. **[PRINCIPLE 1]**: [EXPLANATION OF PRINCIPLE 1]
+   - [SPECIFIC APPLICATION OF PRINCIPLE 1]
+   - [HOW IT ADDRESSES PREVIOUS ISSUES]
+
+2. **[PRINCIPLE 2]**: [EXPLANATION OF PRINCIPLE 2]
+   - [COMPONENT 1]: [HOW IT EMBODIES PRINCIPLE 2]
+   - [COMPONENT 2]: [HOW IT EMBODIES PRINCIPLE 2]
+
+3. **[PRINCIPLE 3]**: [EXPLANATION OF PRINCIPLE 3]
+   - [BENEFITS OF THIS APPROACH]
+   - [HOW IT ENABLES FUTURE EXTENSION]
+
+4. **[PRINCIPLE 4]**: [EXPLANATION OF PRINCIPLE 4]
+
+5. **[PRINCIPLE 5]**: [EXPLANATION OF PRINCIPLE 5]
+
+6. **[PRINCIPLE 6]**: [EXPLANATION OF PRINCIPLE 6]
+
+7. **[PRINCIPLE 7]**: [EXPLANATION OF PRINCIPLE 7]
+   - [KEY POINT 1]
+   - [KEY POINT 2]
+   - [KEY POINT 3]
+
+## Component Architecture and Relationships
+
+Our architecture follows this structure:
+
+```
+[DIRECTORY/PACKAGE STRUCTURE DIAGRAM]
+```
+
+## Key Components and Their Responsibilities
+
+1. **[COMPONENT 1]** ([LOCATION]): [PRIMARY RESPONSIBILITY]
+   - [SPECIFIC RESPONSIBILITY 1]
+   - [SPECIFIC RESPONSIBILITY 2]
+   - [SPECIFIC RESPONSIBILITY 3]
+   - [RELATIONSHIP TO OTHER COMPONENTS]
+
+2. **[COMPONENT 2]** ([LOCATION]): [PRIMARY RESPONSIBILITY]
+   - [SPECIFIC RESPONSIBILITY 1]
+   - [SPECIFIC RESPONSIBILITY 2]
+   - [SPECIFIC RESPONSIBILITY 3]
+   - [RELATIONSHIP TO OTHER COMPONENTS]
+
+3. **[COMPONENT 3]** ([LOCATION]): [PRIMARY RESPONSIBILITY]
+   - [SPECIFIC RESPONSIBILITY 1]
+   - [SPECIFIC RESPONSIBILITY 2]
+   - [RELATIONSHIP TO OTHER COMPONENTS]
+
+4. **[COMPONENT 4]** ([LOCATION]): [PRIMARY RESPONSIBILITY]
+   - [SUBCOMPONENT 1]: [RESPONSIBILITY]
+   - [SUBCOMPONENT 2]: [RESPONSIBILITY]
+   - [SUBCOMPONENT 3]: [RESPONSIBILITY]
+
+5. **[COMPONENT 5]** ([LOCATION]): [PRIMARY RESPONSIBILITY]
+   - [SPECIFIC RESPONSIBILITY 1]
+   - [SPECIFIC RESPONSIBILITY 2]
+
+## Complete System Flow
+
+This is the full flow through the system:
+
+1. [STEP 1 OF FLOW]
+2. [STEP 2 OF FLOW]
+3. [STEP 3 OF FLOW]
+4. [STEP 4 OF FLOW]
+5. [STEP 5 OF FLOW]
+6. [STEP 6 OF FLOW]
+7. [STEP 7 OF FLOW]
+8. [STEP 8 OF FLOW]
+9. [STEP 9 OF FLOW]
+
+For [SPECIAL CASE]:
+1. [SPECIAL CASE STEP 1]
+2. [SPECIAL CASE STEP 2]
+3. [SPECIAL CASE STEP 3]
+
+## Known Areas for Potential Issues
+
+When continuing this work, pay special attention to these areas:
+
+1. **[ISSUE AREA 1]**: [DESCRIPTION OF POTENTIAL ISSUE]
+   - [SPECIFIC CONCERN 1]
+   - [SPECIFIC CONCERN 2]
+   - [MITIGATION STRATEGY]
+
+2. **[ISSUE AREA 2]**: [DESCRIPTION OF POTENTIAL ISSUE]
+   - [SPECIFIC CONCERN 1]
+   - [SPECIFIC CONCERN 2]
+
+3. **[ISSUE AREA 3]**: [DESCRIPTION OF POTENTIAL ISSUE]
+   - [SPECIFIC CONCERN 1]
+   - [SPECIFIC CONCERN 2]
+
+4. **[ISSUE AREA 4]**: [DESCRIPTION OF POTENTIAL ISSUE]
+   - [SPECIFIC CONCERN 1]
+   - [SPECIFIC CONCERN 2]
+
+5. **[ISSUE AREA 5]**: [DESCRIPTION OF POTENTIAL ISSUE]
+   - [SPECIFIC CONCERN 1]
+   - [SPECIFIC CONCERN 2]
+
+## Quality Guidelines
+
+When making changes, follow these strict guidelines:
+
+1. **[GUIDELINE CATEGORY 1]**: 
+   - [SPECIFIC RULE 1]
+   - [SPECIFIC RULE 2]
+   - [SPECIFIC RULE 3]
+   - [SPECIFIC RULE 4]
+
+2. **[GUIDELINE CATEGORY 2]**:
+   - [SPECIFIC RULE 1]
+   - [SPECIFIC RULE 2]
+   - [SPECIFIC RULE 3]
+   - [SPECIFIC RULE 4]
+
+3. **[GUIDELINE CATEGORY 3]**:
+   - [SPECIFIC RULE 1]
+   - [SPECIFIC RULE 2]
+   - [SPECIFIC RULE 3]
+   - [SPECIFIC RULE 4]
+
+4. **[GUIDELINE CATEGORY 4]**:
+   - [SPECIFIC RULE 1]
+   - [SPECIFIC RULE 2]
+   - [SPECIFIC RULE 3]
+   - [SPECIFIC RULE 4]
+
+5. **[GUIDELINE CATEGORY 5]**:
+   - [SPECIFIC RULE 1]
+   - [SPECIFIC RULE 2]
+   - [SPECIFIC RULE 3]
+   - [SPECIFIC RULE 4]
+
+## Validation Commands
+
+After making changes, run these commands to validate:
+
+1. [VALIDATION TYPE 1]:
+   ```
+   [COMMAND 1]
+   ```
+
+2. [VALIDATION TYPE 2]:
+   ```
+   [COMMAND 2]
+   ```
+
+3. [VALIDATION TYPE 3]:
+   ```
+   [COMMAND 3]
+   ```
+
+4. [VALIDATION TYPE 4]:
+   ```
+   [COMMAND 4]
+   ```
+
+5. [VALIDATION TYPE 5]:
+   ```
+   [COMMAND 5]
+   ```
+
+## Next Steps
+
+1. [IMMEDIATE NEXT STEP]:
+   ```
+   [SPECIFIC COMMAND OR ACTION]
+   ```
+
+2. [FOLLOWING STEP]:
+   - [SUB-STEP 1]
+   - [SUB-STEP 2]
+   - [SUB-STEP 3]
+   - [SUB-STEP 4]
+
+3. [VALIDATION STEP]
+
+4. [FALLBACK PLAN IF NEEDED]:
+   - [ALTERNATIVE APPROACH 1]
+   - [ALTERNATIVE APPROACH 2]
+   - [ALTERNATIVE APPROACH 3]
+   - [ALTERNATIVE APPROACH 4]
+   - [ALTERNATIVE APPROACH 5]
+
+## Human Preferences and Project Context
+
+1. This is a **[PRODUCTION/PRE-PRODUCTION/PROTOTYPE]** codebase - [BACKWARD COMPATIBILITY REQUIREMENTS].
+
+2. The human **values [VALUE 1]** over [ALTERNATIVE APPROACH].
+
+3. The human prefers **[PREFERENCE 1]** with [SPECIFIC QUALITIES].
+
+4. The project is moving toward **[FUTURE DIRECTION]** where [COMPONENT] will [FUTURE FUNCTIONALITY].
+
+5. The human appreciates **[APPROACH TYPE]** over [ALTERNATIVE APPROACH] - [REASONING].
+
+6. The codebase follows **[ARCHITECTURAL PATTERN]** that must be respected.
+
+7. The human values **[VALUE 2]** that can [BENEFIT].
