@@ -123,6 +123,37 @@ Will provide in-depth research and analysis capabilities:
 
 To create a new Domain Expert service that integrates with Cortex Core:
 
+### Type-Safe URI Handling
+
+When creating resources in your Domain Expert service, be aware that URIs must conform to the standards required by Pydantic's AnyUrl type:
+
+```python
+# Correct URI formats
+@mcp.resource("file:///documents/{document_id}")  # Absolute file path with triple slash
+@mcp.resource("http://api.example.com/{endpoint}")  # HTTP URL
+@mcp.resource("custom-scheme://{parameter}/resource")  # Custom scheme
+
+# Incorrect URI formats (will cause validation errors)
+@mcp.resource("{parameter}")  # Missing scheme
+@mcp.resource("file:/relative/path")  # Relative file path with incorrect slashes
+```
+
+When reading resources from the client side, always use valid URI formats:
+
+```python
+# Correct
+resource = await integration_hub.read_expert_resource(
+    expert_name="expert",
+    uri="file:///path/to/resource.txt"
+)
+
+# Incorrect - will fail validation
+resource = await integration_hub.read_expert_resource(
+    expert_name="expert",
+    uri="invalid-uri-format"
+)
+```
+
 ### 1. Implement an MCP Server
 
 ```python
@@ -190,14 +221,15 @@ file = await integration_hub.read_expert_resource(
 
 | Component | Status | Notes |
 |-----------|--------|-------|
-| Integration Hub | Implemented | Core framework for MCP integration |
-| MCP Client | Implemented | Client for Model Context Protocol |
-| Circuit Breaker | Implemented | Fault tolerance for domain expert calls |
-| Tool Discovery | Implemented | API for listing available tools |
-| Tool Invocation | Implemented | API for invoking tools with arguments |
-| Resource Access | Implemented | API for reading resources |
-| Code Assistant | Planned | Not yet implemented |
-| Deep Research | Planned | Not yet implemented |
+| Integration Hub | ✅ Implemented | Core framework for MCP integration in `app/components/integration_hub.py` |
+| MCP Client | ✅ Implemented | Client for Model Context Protocol in `app/components/mcp/cortex_mcp_client.py` |
+| Circuit Breaker | ✅ Implemented | Fault tolerance for domain expert calls in `app/utils/circuit_breaker.py` |
+| Tool Discovery | ✅ Implemented | API for listing available tools with proper error handling |
+| Tool Invocation | ✅ Implemented | API for invoking tools with arguments and circuit breaker protection |
+| Resource Access | ✅ Implemented | API for reading resources with type-safe URI handling |
+| Reference Implementation | ✅ Implemented | Basic reference implementation in `app/components/mcp/reference_domain_expert.py` |
+| Code Assistant | 🔮 Planned | Not yet implemented |
+| Deep Research | 🔮 Planned | Not yet implemented |
 
 ## Testing and Mocking
 

@@ -9,13 +9,13 @@ Domain Expert services are specialized AI modules that provide deep expertise in
 ```mermaid
 graph LR
     CortexCore[Cortex Core]
-    DEM[Domain Expert Manager]
+    IH[Integration Hub]
     MCP[MCP Client]
     DE1[Code Assistant]
     DE2[Research Expert]
     
-    CortexCore --> DEM
-    DEM --> MCP
+    CortexCore --> IH
+    IH --> MCP
     MCP --> DE1
     MCP --> DE2
 ```
@@ -43,28 +43,28 @@ settings = Settings(
 ## Basic Usage
 
 ```python
-from app.components.domain_expert_manager import get_domain_expert_manager
+from app.components.integration_hub import get_integration_hub
 
-# Get the domain expert manager
-manager = get_domain_expert_manager()
+# Get the Integration Hub
+hub = get_integration_hub()
 
 # List available experts
-experts = await manager.list_experts()
+experts = await hub.list_experts()
 # ['code_assistant', 'research']
 
 # List tools for an expert
-tools = await manager.list_expert_tools("code_assistant")
+tools = await hub.list_expert_tools("code_assistant")
 # {'tools': [{'name': 'generate_code', ...}, {'name': 'analyze_code', ...}]}
 
 # Call a tool
-result = await manager.invoke_expert_tool(
+result = await hub.invoke_expert_tool(
     expert_name="code_assistant",
     tool_name="generate_code",
     arguments={"prompt": "Write a Python function to calculate Fibonacci numbers"}
 )
 
 # Read a resource
-resource = await manager.read_expert_resource(
+resource = await hub.read_expert_resource(
     expert_name="research",
     uri="paper://neural-networks"
 )
@@ -73,11 +73,12 @@ resource = await manager.read_expert_resource(
 ## Error Handling
 
 ```python
-from app.components.domain_expert_manager import get_domain_expert_manager, DomainExpertError
+from app.components.integration_hub import get_integration_hub
+from app.exceptions import ServiceError
 
 try:
-    manager = get_domain_expert_manager()
-    result = await manager.invoke_expert_tool(
+    hub = get_integration_hub()
+    result = await hub.invoke_expert_tool(
         expert_name="code_assistant",
         tool_name="generate_code",
         arguments={"prompt": "Write a Python function to calculate Fibonacci numbers"}
@@ -85,25 +86,26 @@ try:
 except ValueError as e:
     # Unknown expert or tool
     print(f"Unknown expert or tool: {str(e)}")
-except DomainExpertError as e:
+except ServiceError as e:
     # Communication error
     print(f"Error communicating with domain expert: {str(e)}")
 ```
 
 ## Health Monitoring
 
-The Domain Expert Manager automatically monitors the health of all registered domain experts. This ensures that unavailable or failing services are properly marked:
+The Integration Hub automatically monitors the health of all registered domain experts. This ensures that unavailable or failing services are properly marked:
 
 ```python
 # Get all experts with status
-manager = get_domain_expert_manager()
-experts = manager.experts
+hub = get_integration_hub()
+expert_status = await hub.get_expert_status()
 
-for name, expert in experts.items():
+for name, status in expert_status.items():
     print(f"Expert: {name}")
-    print(f"  Available: {expert.is_available}")
-    if not expert.is_available:
-        print(f"  Last Error: {expert.last_error}")
+    print(f"  Available: {status['available']}")
+    print(f"  State: {status['state']}")
+    if not status['available'] and status['last_error']:
+        print(f"  Last Error: {status['last_error']}")
 ```
 
 ## Creating a Domain Expert
@@ -221,10 +223,10 @@ def get_user_profile(user_id: str) -> dict:
 
 ## Circuit Breaking
 
-The DomainExpertClient implements circuit breaking to handle failures gracefully:
+The Integration Hub implements circuit breaking to handle failures gracefully:
 
 - After 3 consecutive failures, the circuit opens and blocks requests
 - After 60 seconds, the circuit enters half-open state to test recovery
 - If the test request succeeds, the circuit closes and normal operation resumes
 
-This prevents cascading failures when a domain expert service is experiencing issues.
+This prevents cascading failures when a domain expert service is experiencing issues. Each domain expert has its own circuit breaker to maintain reliability of the system.

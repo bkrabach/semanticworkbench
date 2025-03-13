@@ -209,11 +209,11 @@ def get_integration_hub() -> IntegrationHub:
     return _integration_hub
 ```
 
-## Implementing MCP for Domain Experts using FastMCP ⏳
+## Implementing MCP for Domain Experts using FastMCP ⚙️
 
 Domain Expert services should implement MCP servers using the FastMCP API from the Python SDK, which greatly simplifies implementation.
 
-> **TO BE IMPLEMENTED:** This section describes the next step in the MCP integration process. The infrastructure for connecting to Domain Experts is in place, but no Domain Expert services have been implemented yet in the codebase.
+> **PARTIAL IMPLEMENTATION:** A reference implementation exists in `app/components/mcp/reference_domain_expert.py`, demonstrating the basic patterns for creating Domain Expert services. However, specialized Domain Expert services (like Code Assistant, Deep Research) have not been implemented yet in the codebase.
 
 ### FastMCP Server Implementation Example
 
@@ -371,11 +371,11 @@ async def fetch_documentation(url: str) -> str:
         return await response.text()
 ```
 
-## Implementing MCP for External Tools ⏳
+## Implementing MCP for External Tools 🔮
 
 External tools like VS Code extensions can also implement MCP to integrate with Cortex Core.
 
-> **TO BE IMPLEMENTED:** This section describes future plans for extending the MCP integration to external tools. The infrastructure for connecting to external tools is in place via the Integration Hub, but no external tool implementations have been created yet.
+> **PLANNED FEATURE:** This section describes future plans for extending the MCP integration to external tools. The infrastructure for connecting to external tools is in place via the Integration Hub, but no external tool implementations have been created yet.
 
 ### Resource Sharing with Python SDK
 
@@ -486,11 +486,11 @@ export function activate(context: vscode.ExtensionContext) {
 }
 ```
 
-## Security Considerations ⏳
+## Security Considerations 🔒
 
 When implementing MCP for internal services:
 
-> **TO BE IMPLEMENTED:** This section describes security measures that should be implemented for MCP services. Currently, only basic authentication through FastAPI's dependency system is in place. Advanced security measures like API keys and mutual TLS are not yet implemented.
+> **CURRENT STATUS:** Basic authentication is implemented through FastAPI's dependency system. Advanced security measures like API keys and mutual TLS are planned but not yet implemented.
 
 1. **Authentication**:
 
@@ -515,9 +515,9 @@ When implementing MCP for internal services:
    - Monitor for unusual patterns or abuse
    - Implement rate limiting for protection
 
-## Testing and Debugging ⏳
+## Testing and Debugging 🧪
 
-> **PARTIALLY IMPLEMENTED:** Basic testing infrastructure for the Integration Hub is in place with good test coverage, but the specialized MCP testing utilities described below have not yet been integrated.
+> **CURRENT STATUS:** Comprehensive testing infrastructure for the Integration Hub is implemented with good test coverage in `tests/components/test_integration_hub.py`, but the specialized MCP testing utilities described below have not yet been integrated.
 
 ### MCP Testing Utilities
 
