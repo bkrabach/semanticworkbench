@@ -2,6 +2,8 @@
 
 import win32com.client as win32
 
+from mcp_server.types import WordCommentData
+
 
 def get_word_app():
     """Connect to Word if it is running, or start a new instance."""
@@ -35,16 +37,28 @@ def replace_document_content(doc, content):
     doc.Content.Text = content
 
 
-def get_markdown_representation(doc):
+def get_markdown_representation(doc, include_comments: bool = False) -> str:
     """
     Get the markdown representation of the document.
-    Supports Headings, plaintext, bulleted/numbered lists, bold, and italic.
+    Supports Headings, plaintext, bulleted/numbered lists, bold, italic, and code blocks.
     """
     markdown_text = []
-
+    in_code_block = False
     for i in range(1, doc.Paragraphs.Count + 1):
         paragraph = doc.Paragraphs(i)
         style_name = paragraph.Style.NameLocal
+
+        # Handle Code style for code blocks
+        if style_name == "Code":
+            if not in_code_block:
+                markdown_text.append("```")
+                in_code_block = True
+            markdown_text.append(paragraph.Range.Text.rstrip())
+            continue
+        elif in_code_block:
+            # Close code block when style changes
+            markdown_text.append("```")
+            in_code_block = False
 
         # Process paragraph style first
         prefix = ""
@@ -129,7 +143,15 @@ def get_markdown_representation(doc):
         else:
             markdown_text.append(f"{prefix}{para_text}")
 
-    # Join all lines with newlines
+    # Close any open code block at the end of document
+    if in_code_block:
+        markdown_text.append("```")
+
+    if include_comments:
+        comment_section = get_comments_markdown_representation(doc)
+        if comment_section:
+            markdown_text.append(comment_section)
+
     return "\n".join(markdown_text)
 
 
@@ -204,24 +226,75 @@ def _write_formatted_text(selection, text):
     selection.Font.Italic = False
 
 
-def write_markdown_to_document(doc, markdown_text):
+def write_markdown_to_document(doc, markdown_text: str) -> None:
+    """Writes markdown text to a Word document with appropriate formatting.
+
+    Converts markdown syntax to Word formatting, including:
+    - Headings (# to Heading styles)
+    - Lists (bulleted and numbered)
+    - Text formatting (bold, italic)
+    - Code blocks (``` to Code style)
     """
-    Write the markdown text to the document.
-    Supports headings, plaintext, bulleted/numbered lists, bold, and italic.
-    """
-    # Clear the document content and formatting
+    comments = get_document_comments(doc)
+
     doc.Content.Delete()
 
     word_app = doc.Application
     selection = word_app.Selection
 
+    # Create "Code" style if it doesn't exist
+    try:
+        # Check if Code style exists
+        code_style = word_app.ActiveDocument.Styles("Code")
+    except Exception:
+        # Create the Code style
+        code_style = word_app.ActiveDocument.Styles.Add("Code", 1)
+        code_style.Font.Name = "Cascadia Code"
+        code_style.Font.Size = 10
+        code_style.ParagraphFormat.SpaceAfter = 0
+        code_style.QuickStyle = True
+        code_style.LinkStyle = True
+
+    # This fixes an issue where if there are comments on a doc, there is no selection
+    # which causes insertion to fail
+    doc.Range(0, 0).Select()
+
     # Ensure we start with normal style
     selection.Style = word_app.ActiveDocument.Styles("Normal")
 
     lines = markdown_text.split("\n")
-    for line in lines:
-        line = line.strip()
+    i = 0
+    in_code_block = False
+    while i < len(lines):
+        line = lines[i].strip()
+        i += 1
+
         if not line:
+            selection.TypeParagraph()
+            continue
+
+        if line.startswith("```"):
+            in_code_block = True
+            i_start = i
+
+            # Find the end of the code block
+            while i < len(lines) and not lines[i].strip().startswith("```"):
+                i += 1
+
+            # Process all lines in the code block
+            for j in range(i_start, i):
+                code_line = lines[j]
+                selection.TypeText(code_line)
+                selection.Style = word_app.ActiveDocument.Styles("Code")
+                selection.TypeParagraph()
+
+            # Skip the closing code fence
+            if i < len(lines):
+                i += 1
+            in_code_block = False
+
+            # Restore normal style for next paragraph
+            selection.Style = word_app.ActiveDocument.Styles("Normal")
             continue
 
         # Check if the line is a heading
@@ -236,7 +309,6 @@ def write_markdown_to_document(doc, markdown_text):
             # Remove the # characters and any leading space
             text = line[heading_level:].strip()
 
-            # Insert the text at the end of the document with formatting support
             _write_formatted_text(selection, text)
 
             # Get the current paragraph and set its style
@@ -244,7 +316,6 @@ def write_markdown_to_document(doc, markdown_text):
             if 1 <= heading_level <= 9:  # Word supports Heading 1-9
                 current_paragraph.Style = f"Heading {heading_level}"
 
-            # Add a new line for the next paragraph
             selection.TypeParagraph()
 
         # Check if line is a bulleted list item
@@ -252,16 +323,12 @@ def write_markdown_to_document(doc, markdown_text):
             # Extract the text after the bullet marker
             text = line[2:].strip()
 
-            # Type the text with formatting support
             _write_formatted_text(selection, text)
 
             # Apply bullet formatting
             selection.Range.ListFormat.ApplyBulletDefault()
 
-            # Add a new line
             selection.TypeParagraph()
-
-            # Reset formatting to normal to prevent carrying over to next paragraph
             selection.Style = word_app.ActiveDocument.Styles("Normal")
 
         # Check if line is a numbered list item
@@ -278,16 +345,11 @@ def write_markdown_to_document(doc, markdown_text):
                     text = parts[1]
 
             if text:
-                # Type the text with formatting support
                 _write_formatted_text(selection, text)
 
                 # Apply numbered list formatting
                 selection.Range.ListFormat.ApplyNumberDefault()
-
-                # Add a new line
                 selection.TypeParagraph()
-
-                # Reset formatting to normal to prevent carrying over to next paragraph
                 selection.Style = word_app.ActiveDocument.Styles("Normal")
             else:
                 # If parsing failed, just add the line as normal text
@@ -301,3 +363,158 @@ def write_markdown_to_document(doc, markdown_text):
 
     # Move cursor to the beginning of the document
     doc.Range(0, 0).Select()
+
+    # Reapply comments. Note this implicitly will remove any comments that have locations not in the new text.
+    for comment in comments:
+        add_document_comment(doc, comment)
+
+
+def add_document_comment(
+    doc,
+    comment_data: WordCommentData,
+) -> bool:
+    """
+    Add a comment to specific text within a Word document.
+
+    Returns:
+        bool: True if comment was added successfully, False otherwise
+    """
+    try:
+        content_range = doc.Content
+        found_range = None
+
+        # Find the specified occurrence of the text
+        found_count = 0
+
+        # Use FindText to locate the text
+        content_range.Find.ClearFormatting()
+        found = content_range.Find.Execute(FindText=comment_data.location_text, MatchCase=True, MatchWholeWord=False)
+
+        while found:
+            found_count += 1
+            if found_count == comment_data.occurrence:
+                found_range = content_range.Duplicate
+                break
+
+            # Continue searching from the end of the current match
+            content_range.Collapse(Direction=0)  # Collapse to end
+            found = content_range.Find.Execute(
+                FindText=comment_data.location_text, MatchCase=True, MatchWholeWord=False
+            )
+
+        if not found_range:
+            return False
+
+        # Add a comment to the found range
+        comment = doc.Comments.Add(Range=found_range, Text=comment_data.comment_text)
+        if comment_data.author:
+            comment.Author = comment_data.author
+        return True
+    except Exception:
+        return False
+
+
+def get_document_comments(doc) -> list[WordCommentData]:
+    """
+    Retrieve all comments from a Word document.
+    """
+    comments: list[WordCommentData] = []
+
+    try:
+        if doc.Comments.Count == 0:
+            return comments
+
+        for i in range(1, doc.Comments.Count + 1):
+            try:
+                comment = doc.Comments(i)
+
+                comment_text = ""
+                try:
+                    comment_text = comment.Range.Text
+                except Exception:
+                    pass
+
+                author = "Unknown"
+                try:
+                    author = comment.Author
+                except Exception:
+                    pass
+
+                date = ""
+                try:
+                    date = str(comment.Date)
+                except Exception:
+                    pass
+
+                reference_text = ""
+                try:
+                    if hasattr(comment, "Scope"):
+                        reference_text = comment.Scope.Text
+                except Exception:
+                    pass
+
+                comment_info = WordCommentData(
+                    id=str(i),
+                    comment_text=comment_text,
+                    location_text=reference_text,
+                    date=date,
+                    author=author,
+                )
+                comments.append(comment_info)
+            except Exception:
+                continue
+
+        return comments
+    except Exception as e:
+        print(f"Error retrieving comments: {e}")
+        return comments
+
+
+def get_comments_markdown_representation(doc) -> str:
+    comments = get_document_comments(doc)
+
+    if not comments:
+        return ""
+
+    comment_section = "\n\n<comments>\n"
+    for i, comment in enumerate(comments, 1):
+        comment_section += f'<comment id={i} author="{comment.author}">\n'
+        comment_section += f"  <location_text>{comment.location_text}</location_text>\n"
+        comment_section += f"  <comment_text>{comment.comment_text}</comment_text>\n"
+        comment_section += "</comment>\n"
+    comment_section.rstrip()
+    comment_section += "</comments>"
+    return comment_section
+
+
+def delete_comments_containing_text(doc, search_text: str, case_sensitive: bool = False) -> int:
+    """
+    Delete comments containing specific text.
+
+    Args:
+        doc: Word document object
+        search_text: Text to search for in comments
+        case_sensitive: Whether the search should be case-sensitive
+
+    Returns:
+        int: Number of comments deleted
+    """
+    deleted_count = 0
+    try:
+        if not case_sensitive:
+            search_text = search_text.lower()
+
+        # Work backwards to avoid index shifting issues when deleting
+        for i in range(doc.Comments.Count, 0, -1):
+            comment = doc.Comments(i)
+            comment_text = comment.Range.Text
+
+            if not case_sensitive:
+                comment_text = comment_text.lower()
+
+            if search_text in comment_text:
+                comment.Delete()
+                deleted_count += 1
+        return deleted_count
+    except Exception:
+        return deleted_count
