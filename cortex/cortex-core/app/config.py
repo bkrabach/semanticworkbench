@@ -2,9 +2,10 @@
 Configuration management for Cortex Core using Pydantic
 """
 
-from typing import List, Optional, Dict, ClassVar
-from pydantic_settings import BaseSettings, SettingsConfigDict
 import os
+from typing import Dict, List, Optional
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class MsalConfig(BaseSettings):
@@ -33,10 +34,7 @@ class CacheConfig(BaseSettings):
     password: Optional[str] = None
     ttl: int = 3600  # Default TTL in seconds
 
-    model_config = SettingsConfigDict(
-        env_prefix="REDIS_", 
-        env_nested_delimiter=None
-    )
+    model_config = SettingsConfigDict(env_prefix="REDIS_", env_nested_delimiter=None)
 
 
 class SecurityConfig(BaseSettings):
@@ -127,16 +125,16 @@ class SseConfig(BaseSettings):
 
 class LlmConfig(BaseSettings):
     """LLM provider configuration"""
-    
+
     # Default model to use
     default_model: str = "openai/gpt-3.5-turbo"
-    
+
     # Whether to actually call LLMs or use echo mode for testing
     use_mock: bool = False
-    
+
     # Timeout for LLM API calls in seconds
     timeout: int = 60
-    
+
     # Model config - used to store API keys for various providers
     model_config = SettingsConfigDict(env_prefix="LLM_")
 
@@ -153,11 +151,7 @@ class Settings(BaseSettings):
     sse: SseConfig = SseConfig()
     llm: LlmConfig = LlmConfig()
 
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        extra="ignore"
-    )
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)

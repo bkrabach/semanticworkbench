@@ -15,8 +15,8 @@
   ],
   "settings": {
     "markdown.validate.enabled": true,
-    "ruff.configuration": "${workspaceFolder}/../ruff.toml",
-    "ruff.interpreter": ["${workspaceFolder}/../.venv"],
+    "ruff.configuration": "${workspaceFolder}/../../ruff.toml",
+    "ruff.interpreter": ["${workspaceFolder}/../../.venv"],
     "ruff.importStrategy": "useBundled",
     "ruff.nativeServer": "on",
     "[python]": {
