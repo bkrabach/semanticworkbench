@@ -334,13 +334,8 @@ class SSEService:
 
         # Transform the raw data into a properly typed domain model
         # This provides validation and ensures consistent structure
-        return SSEConnectionStats(
-            id="stats",
-            total_connections=stats_dict["total_connections"],
-            connections_by_channel=stats_dict["connections_by_channel"],
-            connections_by_user=stats_dict["connections_by_user"],
-            generated_at=stats_dict["generated_at"]
-        )
+        # Use the factory method to create the instance from the dictionary
+        return SSEConnectionStats.from_dict(stats_dict)
 
 
 # Singleton instance for the SSE service

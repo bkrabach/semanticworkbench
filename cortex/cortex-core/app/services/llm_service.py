@@ -8,13 +8,13 @@ layer over various model providers like OpenAI, Anthropic, etc.
 import asyncio
 import logging
 from dataclasses import dataclass
-from typing import Any, AsyncGenerator, AsyncIterable, Dict, List, Optional, Protocol, Union
-from typing import TypeVar, Generic, cast
+from typing import Any, AsyncGenerator, AsyncIterable, Dict, Generic, List, Optional, Protocol, TypeVar, Union, cast
 
 from app.config import settings
 
 try:
     from litellm import acompletion as _litellm_acompletion
+
     HAS_LITELLM = True
 except ImportError:
     _litellm_acompletion = None  # Define as None if import fails
@@ -31,12 +31,30 @@ BaseModel = Any
 
 # Define types for LiteLLM responses to help with type checking
 @dataclass
+class FunctionParameters:
+    """Function parameters within a tool call."""
+    name: str
+    arguments: str
+
+
+@dataclass
+class ToolCall:
+    """Tool call with function parameters."""
+    function: FunctionParameters
+    id: Optional[str] = None
+    type: str = "function"
+
+
+@dataclass
 class MessageContent:
+    """Content of a message in a completion response."""
     content: Optional[str] = None
+    tool_calls: Optional[List[ToolCall]] = None
 
 
 @dataclass
 class DeltaContent:
+    """Content of a delta in a streaming response."""
     content: Optional[str] = None
 
 
@@ -119,7 +137,7 @@ async def litellm_adapter(
     max_tokens: Optional[int] = None,
     timeout: Optional[int] = None,
     stream: bool = False,
-    **kwargs: Any
+    **kwargs: Any,
 ) -> Union[CompletionResponse, AsyncIterable[StreamingResponse]]:
     """Adapter for litellm acompletion that conforms to our AsyncCompletionCallable protocol"""
     if HAS_LITELLM and _litellm_acompletion:
@@ -132,9 +150,9 @@ async def litellm_adapter(
             max_tokens=max_tokens,
             timeout=timeout,
             stream=stream,
-            **kwargs
+            **kwargs,
         )
-        
+
         # Type checking and conversion to ensure return type matches expected signature
         if stream:
             # For streaming responses, ensure it's an AsyncIterable of StreamingResponses
@@ -151,8 +169,9 @@ async def litellm_adapter(
             max_tokens=max_tokens,
             timeout=timeout,
             stream=stream,
-            **kwargs
+            **kwargs,
         )
+
 
 # Define completion callable interface that matches our expected function signature
 # Use our adapter function that implements the AsyncCompletionCallable protocol
@@ -184,6 +203,7 @@ class LlmService:
         temperature: float = 0.7,
         max_tokens: Optional[int] = None,
         system_prompt: Optional[str] = None,
+        tools: Optional[List[Dict[str, Any]]] = None,
     ) -> str:
         """
         Get a completion from an LLM for the given prompt.
@@ -194,6 +214,7 @@ class LlmService:
             temperature: Temperature for generation (0.0-2.0)
             max_tokens: Maximum tokens to generate
             system_prompt: Optional system prompt to set context
+            tools: Optional list of tools to provide to the model in OpenAI format
 
         Returns:
             The text response from the model
@@ -201,7 +222,8 @@ class LlmService:
         if self.use_mock:
             # In mock mode, just echo the prompt with info about the mock
             await asyncio.sleep(1)  # Simulate API delay
-            return f"[MOCK LLM RESPONSE] Echo: {prompt}"
+            tool_info = f" with {len(tools)} tools" if tools else ""
+            return f"[MOCK LLM RESPONSE{tool_info}] Echo: {prompt}"
 
         try:
             # Prepare messages in the format LiteLLM expects
@@ -217,6 +239,26 @@ class LlmService:
             # Use the model specified or fall back to default
             model_name = model or self.default_model
 
+            # Prepare kwargs for additional parameters
+            kwargs: Dict[str, Any] = {}
+
+            # Add tools if provided
+            if tools:
+                self.logger.info(f"Providing {len(tools)} tools to LLM")
+                # Log detailed tool information to verify what's being sent
+                for i, tool in enumerate(tools):
+                    if isinstance(tool, dict) and tool.get("type") == "function" and "function" in tool:
+                        func_info = tool["function"]
+                        self.logger.info(
+                            f"Tool {i + 1}: {func_info.get('name', 'unnamed')} - {func_info.get('description', 'no description')}"
+                        )
+
+                kwargs["tools"] = tools
+                kwargs["tool_choice"] = "auto"  # Let the model decide when to use tools
+                self.logger.info("Tool choice strategy: auto (model decides)")
+            else:
+                self.logger.info("No tools provided to LLM for this request")
+
             # Call LiteLLM async completion
             response = await acompletion(
                 model=model_name,
@@ -224,12 +266,41 @@ class LlmService:
                 temperature=temperature,
                 max_tokens=max_tokens,
                 timeout=self.timeout,
+                **kwargs,
             )
 
             # Since we're not streaming, we expect a CompletionResponse
             if isinstance(response, AsyncIterable):
                 self.logger.error("Received streaming response when not requested")
                 return "Error: Received unexpected streaming response"
+
+            # Log the entire response for debugging
+            self.logger.info(f"LLM response received: {type(response)}")
+
+            # Check for tool usage in the response
+            try:
+                if (
+                    hasattr(response, "choices")
+                    and response.choices
+                    and len(response.choices) > 0
+                    and hasattr(response.choices[0], "message")
+                ):
+                    message = response.choices[0].message
+
+                    # Check if the message contains tool calls
+                    if hasattr(message, "tool_calls") and message.tool_calls:
+                        self.logger.info(f"Model has decided to use tools! Found {len(message.tool_calls)} tool calls")
+                        for i, tool_call in enumerate(message.tool_calls):
+                            self.logger.info(
+                                f"Tool call {i + 1}: {tool_call.function.name} with args: {tool_call.function.arguments}"
+                            )
+
+                            # Here we would normally execute the tool calls, but that's handled elsewhere
+                            # This is just for logging purposes
+                    else:
+                        self.logger.info("Model response doesn't include any tool calls")
+            except Exception as e:
+                self.logger.error(f"Error inspecting response for tool calls: {e}")
 
             # Extract and return the content from the response using safe attribute access
             if (
@@ -239,7 +310,9 @@ class LlmService:
                 and hasattr(response.choices[0], "message")
                 and hasattr(response.choices[0].message, "content")
             ):
-                return response.choices[0].message.content or ""
+                content = response.choices[0].message.content or ""
+                self.logger.info(f"Returning content from LLM (length: {len(content)} chars)")
+                return content
             else:
                 self.logger.error(f"Invalid response structure from LLM: {response}")
                 return ""

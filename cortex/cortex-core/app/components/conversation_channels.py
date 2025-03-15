@@ -121,8 +121,13 @@ class ConversationOutputPublisher(OutputPublisherInterface):
         # We'll store subscription IDs for cleanup
         self.subscriptions: list[str] = []
 
-    async def _subscribe_to_events(self):
-        """Subscribe to events for this channel"""
+    async def _subscribe_to_events(self) -> None:
+        """
+        Subscribe to events for this channel
+        
+        Returns:
+            None - This method sets up subscriptions but doesn't return any value
+        """
         from app.utils.logger import logger as main_logger
 
         main_logger.info(f"Setting up event subscriptions for conversation {self.conversation_id}")
@@ -145,6 +150,9 @@ class ConversationOutputPublisher(OutputPublisherInterface):
         main_logger.info(f"Current subscribers for {message_pattern}: {len(subscribers)}")
 
         main_logger.info(f"Successfully subscribed to events for conversation {self.conversation_id}")
+        
+        # Explicitly return None to make it clear this method doesn't return a value
+        return None
 
     async def _handle_message_event(self, event_type: str, payload):
         """

@@ -2,10 +2,12 @@
 Server-Sent Events (SSE) API endpoints for Cortex Core
 """
 
-from fastapi import APIRouter, Depends, Request, HTTPException
-from typing import Optional
-from app.services.sse_service import get_sse_service, SSEService
+from typing import Any
+
+from fastapi import APIRouter, Depends, HTTPException, Request
+
 from app.models.api.response.sse import SSEConnectionStatsResponse
+from app.services.sse_service import SSEService, get_sse_service
 
 router = APIRouter(prefix="/v1", tags=["Events"])
 
@@ -17,7 +19,7 @@ async def events(
     request: Request,
     token: str,
     sse_service: SSEService = Depends(get_sse_service),
-):
+) -> Any:  # Using Any as a workaround for the EventSourceResponse type
     """
     Unified SSE endpoint for all event types
 
@@ -34,17 +36,12 @@ async def events(
     # Validate channel type
     valid_channels = ["global", "user", "workspace", "conversation"]
     if channel_type not in valid_channels:
-        raise HTTPException(
-            status_code=400, 
-            detail=f"Invalid channel type: {channel_type}"
-        )
-    
-    # Pass to service to create stream
+        raise HTTPException(status_code=400, detail=f"Invalid channel type: {channel_type}")
+
+    # Pass to service to create stream and return directly
+    # EventSourceResponse is a special response type for FastAPI that handles streaming
     return await sse_service.create_sse_stream(
-        channel_type=channel_type,
-        resource_id=resource_id,
-        token=token,
-        request=request
+        channel_type=channel_type, resource_id=resource_id, token=token, request=request
     )
 
 
@@ -60,7 +57,7 @@ async def connection_stats(sse_service: SSEService = Depends(get_sse_service)):
         Connection statistics
     """
     stats = sse_service.get_connection_stats()
-    
+
     return SSEConnectionStatsResponse(
         total_connections=stats.total_connections,
         connections_by_channel=stats.connections_by_channel,

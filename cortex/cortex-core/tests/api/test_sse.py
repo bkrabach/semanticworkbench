@@ -93,14 +93,17 @@ def mock_sse_service():
 
     # Mock get_connection_stats with domain model
     from app.models.domain.sse import SSEConnectionStats
+    # Create stats dictionary
+    stats_dict = {
+        "total_connections": 1,
+        "connections_by_channel": {"global": 1, "user": 0, "workspace": 0, "conversation": 0},
+        "connections_by_user": {"test-user-id": 1},
+        "generated_at": now
+    }
+    
+    # Use factory method for consistent creation
     mock_service.get_connection_stats = MagicMock(
-        return_value=SSEConnectionStats(
-            id="stats",
-            total_connections=1,
-            connections_by_channel={"global": 1, "user": 0, "workspace": 0, "conversation": 0},
-            connections_by_user={"test-user-id": 1},
-            generated_at=now
-        )
+        return_value=SSEConnectionStats.from_dict(stats_dict)
     )
 
     # Setup the dependency override using the override attribute
@@ -407,13 +410,16 @@ async def test_connection_stats_endpoint():
 
     # Create mock service with domain model return
     mock_service = MagicMock()
-    mock_service.get_connection_stats.return_value = SSEConnectionStats(
-        id="stats",
-        total_connections=1,
-        connections_by_channel={"global": 1, "user": 0, "workspace": 0, "conversation": 0},
-        connections_by_user={"test-user-id": 1},
-        generated_at=now
-    )
+    # Create stats dictionary
+    stats_dict = {
+        "total_connections": 1,
+        "connections_by_channel": {"global": 1, "user": 0, "workspace": 0, "conversation": 0},
+        "connections_by_user": {"test-user-id": 1},
+        "generated_at": now
+    }
+    
+    # Use factory method for consistent creation
+    mock_service.get_connection_stats.return_value = SSEConnectionStats.from_dict(stats_dict)
 
     # Import the function to test
     from app.api.sse import connection_stats

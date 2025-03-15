@@ -85,14 +85,15 @@ class IntegrationHub:
         self._startup_complete = False
 
     async def startup(self) -> None:
-        """Initialize connections to all configured MCP endpoints"""
-        connection_tasks: List[Tuple[str, asyncio.Task]] = []
-        
-        # Create clients, circuit breakers, and status tracking
+        """Initialize connections to all configured MCP endpoints in the background"""
+        # Create client instances, circuit breakers, and status tracking first
         for endpoint in self.settings.mcp.endpoints:
             name = endpoint["name"]
             endpoint_url = endpoint["endpoint"]
             expert_type = endpoint.get("type", "unknown")
+            
+            # Log endpoint configuration
+            logger.info(f"Configuring MCP endpoint: {name} at {endpoint_url} (type: {expert_type})")
             
             # Create client
             client = CortexMcpClient(
@@ -115,30 +116,50 @@ class IntegrationHub:
                 expert_type=expert_type
             )
             
-            # Start connection task
-            task = asyncio.create_task(
-                self._connect_endpoint(name, client),
+        # Mark as startup complete before starting connections
+        # This ensures the application can continue while connections are established
+        self._startup_complete = True
+        
+        logger.info(f"Integration Hub setup complete. Starting connections to {len(self.clients)} endpoints.")
+        
+        # Start connection tasks in the background
+        # This way they won't block the application startup
+        for name, client in self.clients.items():
+            # Start each connection in a separate background task
+            asyncio.create_task(
+                self._connect_endpoint_with_status_update(name, client),
                 name=f"connect-{name}"
             )
-            connection_tasks.append((name, task))
-            
-        # Wait for all connections to complete (with error handling)
-        for name, task in connection_tasks:
-            try:
-                await task
-                logger.info(f"Successfully connected to MCP endpoint: {name}")
-            except Exception as e:
-                # Connection errors are already logged in _connect_endpoint
-                # Just update the status here
-                if name in self.expert_status:
-                    self.expert_status[name].available = False
-                    self.expert_status[name].last_error = str(e)
         
-        # Update all expert status information
-        self._update_expert_status()
+        # Return immediately, letting connections proceed in the background
+        # This resolves the blocking issue during application startup
+                    
+    async def _connect_endpoint_with_status_update(self, name: str, client: CortexMcpClient) -> None:
+        """Connect to endpoint and update status regardless of outcome"""
+        try:
+            await self._connect_endpoint(name, client)
+            logger.info(f"Successfully connected to MCP endpoint: {name}")
             
-        self._startup_complete = True
-        logger.info(f"Integration Hub startup complete. Connected to {len(self.clients)} endpoints.")
+            # Update status after successful connection
+            if name in self.expert_status:
+                self.expert_status[name].update_from_client(client)
+                
+            # Log successful connection
+            connected_count = sum(1 for status in self.expert_status.values() if status.available)
+            total_count = len(self.expert_status)
+            logger.info(f"Domain Expert connection status: {connected_count}/{total_count} connected")
+            
+        except Exception as e:
+            # Connection errors are already logged in _connect_endpoint
+            # Just update the status here
+            if name in self.expert_status:
+                self.expert_status[name].available = False
+                self.expert_status[name].last_error = str(e)
+                
+            # Log connection failure
+            logger.error(f"Failed to connect to Domain Expert {name}: {str(e)}")
+            
+            # Don't re-raise, as we want the task to complete without errors
         
     async def _connect_endpoint(self, name: str, client: CortexMcpClient) -> None:
         """Connect to a single endpoint with error handling"""
@@ -201,17 +222,44 @@ class IntegrationHub:
     async def list_expert_tools(self, expert_name: str) -> Dict[str, Any]:
         """List all tools available from a specific domain expert"""
         if expert_name not in self.clients:
+            logger.error(f"Unknown domain expert requested: {expert_name}")
             raise ValueError(f"Unknown domain expert: {expert_name}")
 
         client = self.clients[expert_name]
         circuit_breaker = self.circuit_breakers[expert_name]
-
+        
+        logger.info(f"Listing tools for domain expert: {expert_name}")
+        logger.info(f"Current client state: {client.state}, connected: {client.is_connected}")
+        
         try:
-            return await circuit_breaker.execute(client.list_tools)
+            # Include detailed logging around the tool listing process
+            logger.info(f"Executing list_tools via circuit breaker for {expert_name}")
+            tools_result = await circuit_breaker.execute(client.list_tools)
+            
+            # Log the result to see what tools we got
+            if isinstance(tools_result, dict) and "tools" in tools_result:
+                tools_count = len(tools_result["tools"])
+                
+                # Check if tools is a dictionary or a list
+                if isinstance(tools_result["tools"], dict):
+                    logger.info(f"Successfully listed {tools_count} tools from {expert_name}: {list(tools_result['tools'].keys())}")
+                elif isinstance(tools_result["tools"], list):
+                    # Handle the case when tools is a list of dictionaries
+                    tool_names = [tool.get("name", "unnamed") for tool in tools_result["tools"] if isinstance(tool, dict)]
+                    logger.info(f"Successfully listed {tools_count} tools from {expert_name}: {tool_names}")
+                else:
+                    logger.warning(f"Unexpected tools format from {expert_name}: {type(tools_result['tools'])}")
+            else:
+                logger.warning(f"Unexpected tools result format from {expert_name}: {type(tools_result)}")
+                
+            return tools_result
         except Exception as e:
             # Update status on error
             if expert_name in self.expert_status:
                 self.expert_status[expert_name].update_from_client(client)
+            
+            # Log the error with more context
+            logger.error(f"Failed to list tools from {expert_name}: {str(e)}")
             # Re-raise the exception
             raise
 

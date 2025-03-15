@@ -58,8 +58,8 @@ async def test_publisher_init():
         assert publisher.channel_id == "conversation-test-conversation-id"
         assert publisher.subscriptions == []
         
-        # Initialize subscriptions
-        await publisher._subscribe_to_events()
+        # Initialize subscriptions - explicitly discard None return value
+        _ = await publisher._subscribe_to_events()
         
         # Verify event system interactions
         assert mock_system.subscribe.call_count == 2

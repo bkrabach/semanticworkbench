@@ -148,10 +148,119 @@ class CortexRouter(RouterInterface):
             # Get LLM service
             llm_service = get_llm_service()
             
-            # Get response from LLM
+            # Get integration hub to fetch domain expert tools
+            from app.components.integration_hub import get_integration_hub
+            integration_hub = get_integration_hub()
+            
+            # Get available tools from all domain experts
+            tools = []
+            available_experts = []
+            
+            try:
+                # List all available domain experts
+                experts = await integration_hub.list_experts()
+                
+                # Get status of domain experts to check which ones are actually available
+                # This is important since we know from looking at the server logs that 
+                # we might have situations where the server thinks it's connected but
+                # the client hasn't completed initialization
+                expert_status = await integration_hub.get_expert_status()
+                
+                # For debugging output
+                for name, status in expert_status.items():
+                    self.logger.info(f"Expert {name} status: available={status.get('available', False)}, "
+                                    f"state={status.get('state', 'unknown')}, "
+                                    f"capabilities={status.get('capabilities', [])}")
+                
+                # Only consider experts that are marked as fully available
+                available_experts = [name for name, status in expert_status.items() 
+                                    if status.get("available", False)]
+                
+                self.logger.info(f"Found {len(available_experts)}/{len(experts)} available domain experts")
+                
+                # Only try to fetch tools from experts that are marked as available
+                self.logger.info(f"Available experts: {available_experts}")
+                
+                # Check for specific expert types that should handle this request
+                request_keywords = message.content.lower()
+                prioritized_experts = []
+                
+                # Log the message content to help debug tool selection
+                first_20_words = ' '.join(message.content.split()[:20])
+                self.logger.info(f"Processing message starting with: {first_20_words}...")
+                
+                if "code" in request_keywords or "check" in request_keywords or "lint" in request_keywords:
+                    # This looks like a request that the Code Assistant could handle
+                    code_experts = [name for name in available_experts 
+                                  if "code" in name.lower() or "assistant" in name.lower()]
+                    if code_experts:
+                        self.logger.info(f"This appears to be a code-related request. Prioritizing experts: {code_experts}")
+                        # Move code experts to the front of the list
+                        prioritized_experts = code_experts + [e for e in available_experts if e not in code_experts]
+                    else:
+                        self.logger.info("This appears to be a code-related request but no code experts are available")
+                        prioritized_experts = available_experts
+                else:
+                    # No special prioritization needed
+                    prioritized_experts = available_experts
+                
+                for expert_name in prioritized_experts:
+                    try:
+                        # We need a longer timeout for the first request to each expert
+                        # since it might need to establish/validate the connection
+                        self.logger.info(f"Fetching tools from expert {expert_name}")
+                        expert_tools = await asyncio.wait_for(
+                            integration_hub.list_expert_tools(expert_name),
+                            timeout=10.0  # Longer timeout for tool fetching
+                        )
+                        
+                        # Format tools in OpenAI compatible format
+                        if "tools" in expert_tools:
+                            for tool_name, tool_info in expert_tools["tools"].items():
+                                # Create tool definition in the format expected by LiteLLM/OpenAI
+                                formatted_tool = {
+                                    "type": "function",
+                                    "function": {
+                                        "name": f"{expert_name}.{tool_name}",
+                                        "description": tool_info.get("description", f"Tool {tool_name} from {expert_name}"),
+                                        "parameters": tool_info.get("parameters", {})
+                                    }
+                                }
+                                tools.append(formatted_tool)
+                                
+                            self.logger.info(f"Added {len(expert_tools.get('tools', {}))} tools from expert {expert_name}")
+                        else:
+                            self.logger.info(f"No tools found in response from expert {expert_name}")
+                            
+                    except asyncio.TimeoutError:
+                        self.logger.warning(f"Timeout fetching tools from expert {expert_name}")
+                    except Exception as tool_error:
+                        self.logger.warning(f"Failed to fetch tools from expert {expert_name}: {tool_error}")
+            except Exception as expert_error:
+                self.logger.warning(f"Failed to fetch domain experts: {expert_error}")
+            
+            # Add helpful log for debugging
+            if tools:
+                self.logger.info(f"Providing {len(tools)} tools from {len(available_experts)} experts to LLM")
+            else:
+                self.logger.info("No domain expert tools available for this request")
+            
+            # Construct an appropriate system prompt that encourages tool use
+            system_prompt = (
+                "You are a helpful AI assistant with access to specialized tools. "
+                "When a user's request can be addressed using one of your tools, you should choose "
+                "the appropriate tool rather than attempting to provide the information directly. "
+                "This is especially important for tasks like code checking, data processing, "
+                "or accessing specialized knowledge. "
+                "Respond accurately and clearly to the user's request, using tools when appropriate."
+            )
+            
+            # Get response from LLM with tools
+            self.logger.info(f"Sending request to LLM with {len(tools) if tools else 0} tools")
             response_content = await llm_service.get_completion(
                 prompt=message.content,
-                system_prompt="You are a helpful AI assistant. Respond accurately and clearly to the user's request."
+                system_prompt=system_prompt,
+                tools=tools if tools else None
             )
             
             # If response is empty, provide a fallback
@@ -162,7 +271,9 @@ class CortexRouter(RouterInterface):
             metadata = {
                 "source": "cortex_router",
                 "llm_enabled": True,
-                "timestamp": datetime.now(timezone.utc).isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "tools_provided": bool(tools),
+                "tool_count": len(tools)
             }
             
             # Save to database and get message_id
