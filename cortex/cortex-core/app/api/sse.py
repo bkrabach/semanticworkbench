@@ -18,10 +18,10 @@ router = APIRouter(tags=["sse"])
 @router.get("/sse/{resource_type}/{resource_id}")
 async def sse_endpoint(
     request: Request,
-    resource_type: str = Path(..., description="The type of resource to subscribe to"),
-    resource_id: str = Path(..., description="The ID of the resource to subscribe to"),
     current_user: Annotated[UserInfo, Depends(get_current_user)],
     sse_manager: Annotated[SseManager, Depends(get_sse_manager)],
+    resource_type: str = Path(..., description="The type of resource to subscribe to"),
+    resource_id: str = Path(..., description="The ID of the resource to subscribe to"),
 ) -> EventSourceResponse:
     """
     Subscribe to SSE events for a specific resource.

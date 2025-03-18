@@ -65,8 +65,14 @@ Every time you (the AI assistant) begin a new conversation with a user about thi
 
 ### Dependencies
 
-- Install Dev Dependencies: `uv add --dev <package>`
+- Install Dev Dependencies: `uv add --dev <package>` (preferred over pip for latest versions)
 - Install Type Stubs: `uv add --dev types-<package>`
+- List Dependency Tree: `uv tree`
+- Use PIP Commands: `uv pip <command>`
+
+> **IMPORTANT**: Always use `uv add` for installing dependencies to ensure consistent versioning and the latest packages.
+> 
+> **IMPORTANT**: Never make git commits directly. Always suggest changes to the user and let them handle git operations.
 
 ## Codebase Philosophy and Goals
 

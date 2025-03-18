@@ -23,7 +23,11 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = ["alembic>=1.15.1"]
+dev = [
+    "alembic>=1.15.1",
+    "mypy>=1.15.0",
+    "ruff>=0.11.0",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["app"]

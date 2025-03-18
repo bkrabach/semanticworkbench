@@ -39,6 +39,8 @@ class Settings(BaseSettings):
     
     # MCP settings
     MCP_DEFAULT_TIMEOUT: int = 60  # seconds
+    MCP_ENDPOINT: str = "http://localhost:8100"  # Default MCP server endpoint
+    MCP_DOMAIN_EXPERTS_ENDPOINT: str = "http://localhost:8101"  # Domain experts MCP endpoint
     
     # Path settings
     BASE_DIR: str = os.path.dirname(os.path.abspath(__file__))
