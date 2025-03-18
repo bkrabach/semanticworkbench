@@ -1,6 +1,6 @@
 """User service for business logic."""
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 from uuid import UUID
 
 from jose import jwt, JWTError
@@ -11,7 +11,7 @@ from app.config import settings
 from app.database.repositories import UserRepository
 from app.models.domain.user import UserCreate, UserInfo, UserUpdate, UserWithWorkspaces, WorkspaceAccess
 from app.services.base import BaseService
-from app.exceptions import ResourceNotFoundError, AuthenticationError
+from app.exceptions import ResourceNotFoundError
 
 
 class UserService(BaseService[UserRepository, UserInfo]):

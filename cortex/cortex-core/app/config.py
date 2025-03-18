@@ -1,6 +1,6 @@
 """Configuration settings for the Cortex application."""
 import os
-from typing import Any, Dict, List, Optional, Union
+from typing import List, Optional
 
 from pydantic_settings import BaseSettings
 

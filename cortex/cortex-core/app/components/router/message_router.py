@@ -7,14 +7,11 @@ appropriate handlers.
 """
 
 import asyncio
-import uuid
 import time
-from typing import Dict, Any, List, Optional, Callable, Awaitable
-from datetime import datetime
-from collections import deque
+from typing import Dict, Any, Optional, Callable, Awaitable
 
 from app.interfaces.event_system import EventSystemInterface
-from app.interfaces.router import RouterInterface, RouterMessage, MessagePriority
+from app.interfaces.router import RouterInterface, RouterMessage
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -37,7 +34,7 @@ class MessageRouter(RouterInterface):
             event_system: The event system for publishing routing events
         """
         self.event_system = event_system
-        self._queue = asyncio.PriorityQueue()
+        self._queue: asyncio.PriorityQueue = asyncio.PriorityQueue()
         self._processing = False
         self._handler_task: Optional[asyncio.Task] = None
         self._stats = {

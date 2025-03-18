@@ -1,5 +1,5 @@
 """Base service for business logic."""
-from typing import Generic, Type, TypeVar
+from typing import Generic, TypeVar
 
 from sqlalchemy.ext.asyncio import AsyncSession
 

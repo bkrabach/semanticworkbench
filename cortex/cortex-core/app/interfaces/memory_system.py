@@ -6,9 +6,8 @@ The interface is designed to be simple and focused on core functionality while b
 extensible for future enhancements.
 """
 
-from typing import Dict, List, Any, Optional, Protocol
+from typing import Dict, List, Any, Protocol
 from uuid import UUID
-from datetime import datetime
 
 from app.models.domain.memory import MemoryItemCreate, MemoryItemInfo, MemoryQuery, MemoryContext
 

@@ -3,9 +3,9 @@ Workspace API endpoints for the Cortex application.
 
 This module handles workspace CRUD operations and workspace membership management.
 """
-from typing import Annotated, List, Optional
+from typing import Annotated, List
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.api.auth import get_current_user
 from app.database.connection import get_db
@@ -13,7 +13,6 @@ from app.exceptions import PermissionDeniedError, ResourceNotFoundError
 from app.models.api.request.workspace import WorkspaceCreate, WorkspaceUpdate, WorkspaceMemberUpdate
 from app.models.api.response.user import UserInfo
 from app.models.api.response.workspace import WorkspaceInfo, WorkspaceWithUsers
-from app.models.domain.workspace import WorkspaceRole
 from app.services.workspace_service import WorkspaceService
 
 router = APIRouter(tags=["workspaces"])

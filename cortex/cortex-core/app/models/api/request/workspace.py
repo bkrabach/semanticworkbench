@@ -1,5 +1,4 @@
 """API request models for workspace endpoints."""
-from uuid import UUID
 
 from app.models.domain.workspace import (
     WorkspaceCreate, WorkspaceUpdate, WorkspaceUserAccess

@@ -6,7 +6,8 @@ and event delivery.
 """
 import asyncio
 import uuid
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple, Union
+from uuid import UUID
 
 from app.config import settings
 from app.utils.logger import get_logger
@@ -39,7 +40,7 @@ class SseManager:
         self,
         resource_type: str,
         resource_id: str,
-        user_id: str,
+        user_id: Union[str, UUID],
     ) -> Tuple[asyncio.Queue, str]:
         """
         Register a new SSE connection.
@@ -56,7 +57,7 @@ class SseManager:
         connection_id = str(uuid.uuid4())
         
         # Create a queue for the connection
-        queue = asyncio.Queue()
+        queue: asyncio.Queue = asyncio.Queue()
         
         # Store connection details
         self.connections[connection_id] = {

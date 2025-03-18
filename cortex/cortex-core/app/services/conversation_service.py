@@ -1,5 +1,5 @@
 """Conversation service for business logic."""
-from typing import List, Optional
+from typing import List
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,7 +10,7 @@ from app.models.domain.conversation import (
     MessageCreate, MessageInfo
 )
 from app.services.base import BaseService
-from app.exceptions import ResourceNotFoundError, PermissionDeniedError
+from app.exceptions import PermissionDeniedError
 
 
 class ConversationService(BaseService[ConversationRepository, ConversationInfo]):

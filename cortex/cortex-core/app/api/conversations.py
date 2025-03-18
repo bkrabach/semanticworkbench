@@ -3,9 +3,11 @@ Conversation API endpoints for the Cortex application.
 
 This module handles conversation CRUD operations and message creation.
 """
-from typing import Annotated, List, Optional
+import asyncio
+from typing import Annotated, List
+from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.api.auth import get_current_user
 from app.database.connection import get_db
@@ -57,6 +59,19 @@ async def create_conversation(
             conversation_data=conversation_data,
             user_id=current_user.id,
         )
+        
+        # Create and register an output publisher for this conversation
+        from app.components.io import create_conversation_output_publisher, get_io_manager
+        
+        output_publisher = create_conversation_output_publisher(
+            conversation_id=UUID(conversation.id) 
+            if isinstance(conversation.id, str) 
+            else conversation.id
+        )
+        
+        io_manager = get_io_manager()
+        io_manager.register_output_publisher(output_publisher)
+        
         return conversation
     except ResourceNotFoundError:
         raise HTTPException(
@@ -304,11 +319,40 @@ async def create_message(
         HTTPException: If creation fails
     """
     try:
+        # Save message to database first
         message = await conversation_service.create_message(
             conversation_id=conversation_id,
             message_data=message_data,
             user_id=current_user.id,
         )
+        
+        # Get the conversation to get the workspace_id
+        conversation = await conversation_service.get_conversation(
+            conversation_id=conversation_id,
+            user_id=current_user.id,
+        )
+        
+        # Create workspace UUID from string
+        workspace_id = UUID(conversation.workspace_id) if isinstance(conversation.workspace_id, str) else conversation.workspace_id
+        
+        # Send to input receiver for processing
+        from app.components.io import create_conversation_input_receiver
+        from app.components.router import get_router
+        
+        router = get_router()
+        input_receiver = create_conversation_input_receiver(router)
+        
+        # Process asynchronously so we can return the message immediately
+        asyncio.create_task(
+            input_receiver.receive_input(
+                conversation_id=UUID(conversation_id),
+                workspace_id=workspace_id,
+                user_id=current_user.id,
+                content=message_data.content,
+                metadata=message_data.metadata
+            )
+        )
+        
         return message
     except ResourceNotFoundError:
         raise HTTPException(

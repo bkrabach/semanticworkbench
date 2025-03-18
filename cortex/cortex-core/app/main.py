@@ -4,9 +4,8 @@ Cortex Core FastAPI Application Entry Point
 This module initializes the FastAPI application and includes all routers.
 It also handles startup and shutdown events for the application.
 """
-import asyncio
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator, Optional
+from typing import AsyncGenerator
 
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
@@ -22,9 +21,8 @@ from app.components.memory import get_memory_manager
 from app.components.router import get_router
 from app.components.sse.manager import get_sse_manager
 from app.config import settings
-from app.database.connection import close_db_connection, get_db, init_db
+from app.database.connection import close_db_connection, init_db
 from app.interfaces.event_system import EventSystemInterface
-from app.interfaces.input_output import InputReceiverInterface, OutputPublisherInterface
 from app.interfaces.mcp_client import McpClientInterface
 from app.interfaces.memory_system import MemorySystemInterface
 from app.interfaces.router import RouterInterface
@@ -75,8 +73,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     
     # Initialize component managers
     event_system = get_event_manager()
+    # Initialize each manager to set up the singletons
     io_manager = get_io_manager(event_system)
-    memory_manager = get_memory_manager()
+    _ = get_memory_manager()
     message_router = get_router(event_system)
     sse_manager = get_sse_manager()
     
@@ -95,8 +94,20 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except ConnectionError as e:
         logger.warning(f"Could not connect to domain experts MCP service: {str(e)}")
     
-    # Register default message type handlers with the router
-    # (placeholder for future handlers)
+    # Register message handlers
+    from app.components.router.message_handlers import register_handlers
+    register_handlers(message_router)
+    logger.info("Registered message handlers")
+    
+    # Initialize default input receiver for conversations
+    from app.components.io import create_conversation_input_receiver
+    conversation_input = create_conversation_input_receiver(message_router)
+    io_manager.register_input_receiver(conversation_input)
+    logger.info(f"Registered conversation input receiver: {conversation_input.get_channel_id()}")
+    
+    # TODO: In a future implementation, we could retrieve existing conversations
+    # from the database and register output publishers for each one
+    # For now, publishers will be created dynamically when a conversation is created
     
     yield
     

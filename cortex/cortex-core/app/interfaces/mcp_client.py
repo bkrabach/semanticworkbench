@@ -5,8 +5,7 @@ This module defines the interface for the Model Context Protocol (MCP) client,
 which is used to communicate with domain experts and other MCP-enabled services.
 """
 
-from typing import Dict, Any, List, Optional, Protocol
-from uuid import UUID
+from typing import Dict, Any, Protocol
 
 
 class McpClientInterface(Protocol):

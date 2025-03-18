@@ -1,7 +1,6 @@
 """Base domain models for the Cortex application."""
 from datetime import datetime
-from typing import Any, Dict, Optional
-from uuid import UUID, uuid4
+from typing import Any, Dict
 
 from pydantic import BaseModel, Field
 

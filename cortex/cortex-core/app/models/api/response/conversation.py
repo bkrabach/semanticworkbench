@@ -1,8 +1,7 @@
 """API response models for conversation endpoints."""
-from typing import Dict, Any, List, Optional
-from uuid import UUID
+from typing import List
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from app.models.domain.conversation import (
     ConversationInfo, ConversationWithMessages, MessageInfo

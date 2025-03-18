@@ -1,7 +1,5 @@
 """API response models for user endpoints."""
-from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
-from uuid import UUID
+from typing import List
 
 from pydantic import BaseModel, Field
 

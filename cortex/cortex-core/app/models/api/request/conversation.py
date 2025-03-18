@@ -1,8 +1,8 @@
 """API request models for conversation endpoints."""
-from typing import Dict, Any, Optional
+from typing import Optional
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from app.models.domain.conversation import (
     ConversationCreate, ConversationUpdate, MessageCreate

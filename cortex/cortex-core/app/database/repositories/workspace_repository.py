@@ -5,7 +5,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database.models import Workspace, UserWorkspaceAccess, User
+from app.database.models import Workspace, UserWorkspaceAccess
 from app.database.repositories.base import BaseRepository
 from app.models.domain.workspace import WorkspaceCreate, WorkspaceUpdate
 

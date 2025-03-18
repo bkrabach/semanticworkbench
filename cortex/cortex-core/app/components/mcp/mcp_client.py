@@ -8,7 +8,7 @@ for interacting with domain experts and other MCP-enabled services.
 import json
 import uuid
 import asyncio
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, Optional
 import httpx
 
 from app.config import settings
@@ -109,13 +109,17 @@ class McpClient(McpClientInterface):
         await self._ensure_connected()
         
         try:
+            # Ensure client is not None
+            if self.client is None:
+                raise ConnectionError("Client is not initialized")
+                
             response = await self.client.get("/tools")
             if response.status_code != 200:
                 raise ConnectionError(f"Failed to list tools: {response.text}")
                 
             tools_data = response.json()
             self._tools_cache = tools_data
-            return tools_data
+            return dict(tools_data)
             
         except httpx.TimeoutException as e:
             logger.error(f"Timeout listing tools: {str(e)}")
@@ -144,6 +148,10 @@ class McpClient(McpClientInterface):
         await self._ensure_connected()
         
         try:
+            # Ensure client is not None
+            if self.client is None:
+                raise ConnectionError("Client is not initialized")
+                
             logger.debug(f"Calling tool '{name}' with arguments: {json.dumps(arguments)[:100]}...")
             
             response = await self.client.post(
@@ -158,7 +166,8 @@ class McpClient(McpClientInterface):
             elif response.status_code != 200:
                 raise ConnectionError(f"Error calling tool '{name}': {response.text}")
                 
-            return response.json()
+            result = response.json()
+            return dict(result)
             
         except httpx.TimeoutException as e:
             logger.error(f"Timeout calling tool '{name}': {str(e)}")
@@ -186,6 +195,10 @@ class McpClient(McpClientInterface):
         await self._ensure_connected()
         
         try:
+            # Ensure client is not None
+            if self.client is None:
+                raise ConnectionError("Client is not initialized")
+                
             logger.debug(f"Reading resource '{uri}'")
             
             response = await self.client.get(f"/resources?uri={uri}")
@@ -195,7 +208,8 @@ class McpClient(McpClientInterface):
             elif response.status_code != 200:
                 raise ConnectionError(f"Error reading resource '{uri}': {response.text}")
                 
-            return response.json()
+            result = response.json()
+            return dict(result)
             
         except httpx.TimeoutException as e:
             logger.error(f"Timeout reading resource '{uri}': {str(e)}")

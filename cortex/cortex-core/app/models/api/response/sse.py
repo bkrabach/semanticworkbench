@@ -1,7 +1,6 @@
 """API response models for SSE (Server-Sent Events)."""
 from datetime import datetime
-from typing import Any, Dict, Optional, Union
-from uuid import UUID
+from typing import Any, Dict, Optional
 
 from pydantic import BaseModel, Field
 

@@ -3,9 +3,9 @@ Server-Sent Events (SSE) API endpoints for the Cortex application.
 
 This module handles SSE connections for real-time updates.
 """
-from typing import Annotated, Optional
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, Path, Query, Request
+from fastapi import APIRouter, Depends, Path, Request
 from sse_starlette.sse import EventSourceResponse
 
 from app.api.auth import get_current_user

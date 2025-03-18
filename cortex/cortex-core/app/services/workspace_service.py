@@ -1,5 +1,4 @@
 """Workspace service for business logic."""
-from typing import List, Optional, Tuple
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -7,10 +6,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database.repositories import WorkspaceRepository, UserRepository
 from app.models.domain.workspace import (
     WorkspaceCreate, WorkspaceInfo, WorkspaceUpdate, 
-    WorkspaceWithUsers, UserAccess, WorkspaceUserAccess
+    WorkspaceWithUsers, UserAccess
 )
 from app.services.base import BaseService
-from app.exceptions import ResourceNotFoundError, PermissionDeniedError
+from app.exceptions import PermissionDeniedError
 
 
 class WorkspaceService(BaseService[WorkspaceRepository, WorkspaceInfo]):

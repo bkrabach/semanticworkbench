@@ -5,9 +5,9 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database.models import User, UserWorkspaceAccess, Workspace
+from app.database.models import User, UserWorkspaceAccess
 from app.database.repositories.base import BaseRepository
-from app.models.domain.user import UserCreate, UserInfo, UserUpdate
+from app.models.domain.user import UserCreate, UserUpdate
 
 
 class UserRepository(BaseRepository[User, UserCreate, UserUpdate]):

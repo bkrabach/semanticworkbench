@@ -9,9 +9,7 @@ while maintaining the core architectural pattern.
 import asyncio
 import time
 import uuid
-import logging
-from typing import Dict, List, Any, Optional, Callable, Awaitable
-from datetime import datetime
+from typing import Dict, List, Any, Optional
 
 from app.utils.logger import get_logger
 from app.interfaces.event_system import EventSystemInterface, EventCallback
