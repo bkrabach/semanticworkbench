@@ -1,0 +1,1 @@
+"""Server-Sent Events (SSE) package for real-time updates."""
