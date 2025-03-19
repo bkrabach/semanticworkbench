@@ -8,26 +8,33 @@ from typing import Annotated, List
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import get_current_user
 from app.database.connection import get_db
-from app.exceptions import PermissionDeniedError, ResourceNotFoundError
+from app.exceptions import ResourceNotFoundError
+from app.exceptions import AuthorizationError as PermissionDeniedError
 from app.models.api.request.conversation import ConversationCreate, ConversationUpdate, MessageCreate
 from app.models.api.response.conversation import ConversationInfo, MessageInfo
 from app.models.api.response.user import UserInfo
 from app.services.conversation_service import ConversationService
+from app.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 router = APIRouter(tags=["conversations"])
 
 
-async def get_conversation_service() -> ConversationService:
+async def get_conversation_service(db: AsyncSession = Depends(get_db)) -> ConversationService:
     """
     Dependency to get a ConversationService instance.
     
+    Args:
+        db: The database session
+        
     Returns:
         A ConversationService instance
     """
-    db = await get_db()
     return ConversationService(db=db)
 
 
@@ -54,23 +61,42 @@ async def create_conversation(
         HTTPException: If creation fails
     """
     try:
+        # Create a CreateConversationRequest with the workspace ID
+        from app.models.api.request.conversation import CreateConversationRequest
+        
+        # Convert workspace_id to UUID
+        ws_id = UUID(workspace_id) if isinstance(workspace_id, str) else workspace_id
+        
+        # Create the request model with workspace_id
+        conversation_request = CreateConversationRequest(
+            **conversation_data.model_dump(),
+            workspace_id=ws_id
+        )
+        
         conversation = await conversation_service.create_conversation(
-            workspace_id=workspace_id,
-            conversation_data=conversation_data,
+            conversation_in=conversation_request,
             user_id=current_user.id,
         )
         
-        # Create and register an output publisher for this conversation
-        from app.components.io import create_conversation_output_publisher, get_io_manager
+        # Get conversation ID as UUID
+        conv_id = UUID(conversation.id) if isinstance(conversation.id, str) else conversation.id
         
-        output_publisher = create_conversation_output_publisher(
-            conversation_id=UUID(conversation.id) 
-            if isinstance(conversation.id, str) 
-            else conversation.id
-        )
+        # Register I/O channels for this conversation
+        from app.components.io import create_conversation_input_receiver, create_conversation_output_publisher, get_io_manager
+        from app.components.router import get_router
         
+        router = get_router()
         io_manager = get_io_manager()
+        
+        # Create and register input receiver
+        input_receiver = create_conversation_input_receiver(router)
+        io_manager.register_input_receiver(input_receiver)
+        logger.info(f"Registered input receiver for new conversation {conv_id}")
+        
+        # Create and register output publisher
+        output_publisher = create_conversation_output_publisher(conv_id)
         io_manager.register_output_publisher(output_publisher)
+        logger.info(f"Registered output publisher for new conversation {conv_id}")
         
         return conversation
     except ResourceNotFoundError:
@@ -115,8 +141,11 @@ async def list_conversations(
         HTTPException: If listing fails
     """
     try:
+        # Convert workspace_id to UUID
+        ws_id = UUID(workspace_id) if isinstance(workspace_id, str) else workspace_id
+        
         conversations = await conversation_service.get_workspace_conversations(
-            workspace_id=workspace_id,
+            workspace_id=ws_id,
             user_id=current_user.id,
             skip=skip,
             limit=limit,
@@ -155,8 +184,11 @@ async def get_conversation(
         HTTPException: If retrieval fails
     """
     try:
+        # Convert conversation_id to UUID
+        conv_id = UUID(conversation_id) if isinstance(conversation_id, str) else conversation_id
+        
         conversation = await conversation_service.get_conversation(
-            conversation_id=conversation_id,
+            conversation_id=conv_id,
             user_id=current_user.id,
         )
         return conversation
@@ -195,9 +227,12 @@ async def update_conversation(
         HTTPException: If update fails
     """
     try:
+        # Convert conversation_id to UUID
+        conv_id = UUID(conversation_id) if isinstance(conversation_id, str) else conversation_id
+        
         conversation = await conversation_service.update_conversation(
-            conversation_id=conversation_id,
-            conversation_data=conversation_data,
+            conversation_id=conv_id,
+            conversation_in=conversation_data,
             user_id=current_user.id,
         )
         return conversation
@@ -236,8 +271,11 @@ async def delete_conversation(
         HTTPException: If deletion fails
     """
     try:
+        # Convert conversation_id to UUID
+        conv_id = UUID(conversation_id) if isinstance(conversation_id, str) else conversation_id
+        
         await conversation_service.delete_conversation(
-            conversation_id=conversation_id,
+            conversation_id=conv_id,
             user_id=current_user.id,
         )
     except ResourceNotFoundError:
@@ -277,8 +315,12 @@ async def list_messages(
         HTTPException: If listing fails
     """
     try:
-        messages = await conversation_service.get_conversation_messages(
-            conversation_id=conversation_id,
+        # Convert conversation_id to UUID
+        conv_id = UUID(conversation_id) if isinstance(conversation_id, str) else conversation_id
+        
+        # Get messages for this conversation
+        messages = await conversation_service.get_messages(
+            conversation_id=conv_id,
             user_id=current_user.id,
             skip=skip,
             limit=limit,
@@ -319,37 +361,41 @@ async def create_message(
         HTTPException: If creation fails
     """
     try:
+        # Convert conversation_id to UUID
+        conv_id = UUID(conversation_id) if isinstance(conversation_id, str) else conversation_id
+        
         # Save message to database first
-        message = await conversation_service.create_message(
-            conversation_id=conversation_id,
-            message_data=message_data,
+        message = await conversation_service.add_message(
+            conversation_id=conv_id,
+            message_in=message_data,
             user_id=current_user.id,
         )
         
         # Get the conversation to get the workspace_id
         conversation = await conversation_service.get_conversation(
-            conversation_id=conversation_id,
+            conversation_id=conv_id,
             user_id=current_user.id,
         )
         
         # Create workspace UUID from string
         workspace_id = UUID(conversation.workspace_id) if isinstance(conversation.workspace_id, str) else conversation.workspace_id
         
-        # Send to input receiver for processing
-        from app.components.io import create_conversation_input_receiver
+        # Process message through router
         from app.components.router import get_router
         
         router = get_router()
-        input_receiver = create_conversation_input_receiver(router)
         
         # Process asynchronously so we can return the message immediately
         asyncio.create_task(
-            input_receiver.receive_input(
-                conversation_id=UUID(conversation_id),
-                workspace_id=workspace_id,
-                user_id=current_user.id,
-                content=message_data.content,
-                metadata=message_data.metadata
+            router.route_message(
+                message_type="text",
+                payload={
+                    "conversation_id": conv_id,
+                    "workspace_id": workspace_id,
+                    "message": message,
+                    "metadata": message_data.metadata
+                },
+                priority=2
             )
         )
         

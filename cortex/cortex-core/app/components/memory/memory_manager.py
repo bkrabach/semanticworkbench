@@ -43,6 +43,39 @@ class MemoryManager(MemorySystemInterface):
         self._context_cache: Dict[UUID, Dict[UUID, MemoryContext]] = {}
         
         logger.info("Memory Manager initialized")
+        
+    async def add_to_memory(
+        self, 
+        workspace_id: UUID, 
+        conversation_id: UUID, 
+        content: str, 
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> UUID:
+        """
+        Add a message or other content to memory for a conversation.
+        
+        Args:
+            workspace_id: The workspace ID
+            conversation_id: The conversation ID
+            content: The content to store
+            metadata: Optional metadata about the content
+            
+        Returns:
+            The ID of the stored memory item
+        """
+        # Create a memory item
+        item = MemoryItemCreate(
+            item_type="message",
+            content=content,
+            content_type="text",
+            metadata={
+                "conversation_id": str(conversation_id),
+                **(metadata or {})
+            }
+        )
+        
+        # Store it
+        return await self.store(workspace_id, item)
     
     async def store(self, workspace_id: UUID, item: MemoryItemCreate) -> UUID:
         """

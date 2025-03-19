@@ -49,6 +49,105 @@ class MessageRouter(RouterInterface):
         self._handlers: Dict[str, Callable[[RouterMessage], Awaitable[bool]]] = {}
         
         logger.info("Message Router initialized")
+        
+    async def route_message(self, message_type: str, payload: Dict[str, Any], priority: int = 2) -> bool:
+        """
+        Route a message to the appropriate handler.
+        
+        This is a convenience method that creates a RouterMessage from the provided
+        parameters and routes it to the appropriate handler.
+        
+        Args:
+            message_type: The type of message to route
+            payload: The message payload
+            priority: The message priority (1-4, higher is more urgent)
+            
+        Returns:
+            True if the message was successfully queued, False otherwise
+        """
+        try:
+            # Extract conversation_id from payload
+            conversation_id = payload.get("conversation_id")
+            if not conversation_id:
+                logger.error("Missing conversation_id in message payload")
+                return False
+                
+            # Create a message ID
+            import uuid as uuid_module
+            message_id = uuid_module.uuid4()
+            
+            # Create router message
+            from app.interfaces.router import RouterMessage, MessageDirection, MessageType, MessageSource, MessagePriority
+            from datetime import datetime
+            
+            # For now, assume a mapping from string type to enum values
+            # This could be more sophisticated in the future
+            msg_type = MessageType.TEXT
+            if message_type == "text":
+                msg_type = MessageType.TEXT
+            elif message_type == "action":
+                msg_type = MessageType.ACTION
+            elif message_type == "system":
+                msg_type = MessageType.SYSTEM
+                
+            # Convert priority int to enum
+            msg_priority = MessagePriority.NORMAL
+            if priority == 1:
+                msg_priority = MessagePriority.LOW
+            elif priority == 2:
+                msg_priority = MessagePriority.NORMAL
+            elif priority == 3:
+                msg_priority = MessagePriority.HIGH
+            elif priority == 4:
+                msg_priority = MessagePriority.URGENT
+                
+            # Ensure we have a valid workspace_id
+            workspace_id = payload.get("workspace_id")
+            if not workspace_id:
+                logger.error("Missing workspace_id in message payload")
+                return False
+                
+            # Convert to UUID if it's a string
+            if isinstance(workspace_id, str):
+                try:
+                    workspace_id = uuid_module.UUID(workspace_id)
+                except ValueError:
+                    logger.error(f"Invalid workspace_id: {workspace_id}")
+                    return False
+            elif not isinstance(workspace_id, uuid_module.UUID):
+                logger.error(f"workspace_id must be a UUID or string, got {type(workspace_id)}")
+                return False
+                
+            # Same for conversation_id
+            if isinstance(conversation_id, str):
+                try:
+                    conversation_id = uuid_module.UUID(conversation_id)
+                except ValueError:
+                    logger.error(f"Invalid conversation_id: {conversation_id}")
+                    return False
+            elif not isinstance(conversation_id, uuid_module.UUID):
+                logger.error(f"conversation_id must be a UUID or string, got {type(conversation_id)}")
+                return False
+                
+            router_message = RouterMessage(
+                id=message_id,
+                timestamp=datetime.now(),
+                conversation_id=conversation_id,
+                workspace_id=workspace_id,
+                direction=MessageDirection.INBOUND,
+                type=msg_type,
+                source=MessageSource.USER,
+                content=payload.get("content", payload),
+                metadata=payload.get("metadata", {}),
+                priority=msg_priority
+            )
+            
+            # Process the message
+            return await self.process_message(router_message)
+            
+        except Exception as e:
+            logger.error(f"Error routing message: {str(e)}")
+            return False
     
     async def process_message(self, message: RouterMessage) -> bool:
         """

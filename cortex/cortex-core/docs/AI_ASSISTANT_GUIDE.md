@@ -218,6 +218,20 @@ When encountering apparent contradictions with the established plan of record:
 - Create minimal but sufficient documentation for new concepts
 - Remember: code that is simple and clear requires less documentation
 
+## Testing and Running the Application
+
+### Server Testing Workflow
+
+When testing server implementation changes:
+
+1. **Do not run the server directly using Bash tools**
+2. **Ask the user to run the server** and provide feedback on the results
+3. **Request specific test scenarios** that would validate the implemented changes
+4. **Suggest curl commands or API requests** that would test specific functionality
+5. **Wait for user feedback** before making additional changes
+
+This approach ensures the user maintains control over server execution and can provide valuable feedback on the implementation results.
+
 ## Problem-Solving Approach
 
 ### Continuous Codebase Improvement
