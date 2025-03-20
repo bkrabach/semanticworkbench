@@ -17,6 +17,7 @@ Cortex Core is the central orchestration engine for the Cortex Platform. It prov
 ### Prerequisites
 
 - Python 3.11+
+- UV
 - PostgreSQL
 
 ### Installation
@@ -28,17 +29,16 @@ git clone <repository-url>
 cd cortex-core
 ```
 
-2. Set up a virtual environment:
+2. Set up a virtual environment & install dependencies:
 
 ```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+make
 ```
 
-3. Install dependencies:
+3. Activate the virtual environment:
 
 ```bash
-pip install -r requirements.txt
+source .venv/bin/activate # Linux, on Windows use .venv\Scripts\activate
 ```
 
 4. Configure environment variables:
@@ -60,15 +60,6 @@ uv run alembic upgrade head
 uv run -m app.main
 ```
 
-The server will be available at http://localhost:8000.
-
-## API Documentation
-
-Once the server is running, you can access the API documentation at:
-
-- Swagger UI: http://localhost:8000/docs
-- ReDoc: http://localhost:8000/redoc
-
 ## Development
 
 ### Running Tests
@@ -89,19 +80,3 @@ mypy app tests
 ```bash
 make revision MSG="description"
 ```
-
-## Architecture
-
-Cortex Core follows a domain-driven repository architecture with:
-
-1. **API Layer**: FastAPI endpoints
-2. **Service Layer**: Business logic
-3. **Repository Layer**: Data access
-4. **Model Layer**: Data models (Domain, API)
-5. **Component Layer**: Core system components
-
-For detailed architecture information, see the [documentation](./docs/).
-
-## License
-
-[License details]
