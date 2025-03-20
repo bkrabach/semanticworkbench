@@ -60,7 +60,8 @@
     "settings.json",
     "uv.lock",
     "logs",
-    ".env"
+    ".env",
+    "docs"
   ],
   "cSpell.words": [
     "abstractmethod",

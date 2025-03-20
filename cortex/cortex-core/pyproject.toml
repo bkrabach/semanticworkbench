@@ -12,13 +12,23 @@ dependencies = [
     "pydantic>=2.10.6",
     "pydantic-settings>=2.3.0",
     "python-dotenv>=1.0.1",
+    "python-jose>=3.4.0",
+    "python-multipart>=0.0.20",
     "sqlalchemy>=2.0.39",
     "sse-starlette>=2.2.1",
     "uvicorn>=0.34.0",
 ]
 
 [dependency-groups]
-dev = ["alembic>=1.15.1", "mypy>=1.15.0", "ruff>=0.11.0"]
+dev = [
+    "alembic>=1.15.1",
+    "httpx>=0.28.1",
+    "mypy>=1.15.0",
+    "pytest>=8.3.5",
+    "pytest-asyncio>=0.25.3",
+    "ruff>=0.11.0",
+    "types-python-jose>=3.4.0.20250224",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["app"]
