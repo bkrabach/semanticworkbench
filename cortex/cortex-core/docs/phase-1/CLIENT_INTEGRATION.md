@@ -37,10 +37,15 @@ graph TD
     AC --> |"POST /auth/login"| Auth
     AC --> |"POST/GET /config/*"| Config
 
-    style Auth stroke:#f66,stroke-width:4
-    style Input stroke:#66f,stroke-width:4
-    style Output stroke:#6f6,stroke-width:4
-    style Config stroke:#f6f,stroke-width:4
+    classDef auth stroke:#f66,stroke-width:4
+    classDef input stroke:#66f,stroke-width:4
+    classDef output stroke:#6f6,stroke-width:4
+    classDef config stroke:#f6f,stroke-width:4
+    
+    class Auth auth
+    class Input input
+    class Output output
+    class Config config
 ```
 
 ## Authentication Implementation
@@ -50,6 +55,26 @@ All client applications must implement authentication to access the API. The aut
 1. Send credentials to the `/auth/login` endpoint
 2. Receive a JWT token
 3. Include the token in all subsequent requests
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant AuthAPI as Authentication API
+    participant JWT as JWT Handler
+    
+    Client->>AuthAPI: POST /auth/login (username, password)
+    AuthAPI->>AuthAPI: Validate credentials
+    AuthAPI->>JWT: Generate JWT token
+    JWT-->>AuthAPI: JWT token
+    AuthAPI-->>Client: Return token
+    
+    Note over Client,Client: Store token securely
+    
+    Client->>AuthAPI: Request with Bearer token
+    AuthAPI->>JWT: Validate token
+    JWT-->>AuthAPI: User information
+    AuthAPI-->>Client: Protected resource
+```
 
 ### JavaScript Authentication Implementation
 
@@ -318,6 +343,30 @@ class AuthService:
 ## Input Client Implementation
 
 Input clients send data to the Cortex Core API via the `/input` endpoint.
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant InputAPI as Input API
+    participant EventBus as Event Bus
+    participant Storage as Storage
+    
+    Client->>InputAPI: POST /input with message data
+    InputAPI->>InputAPI: Validate request
+    InputAPI->>InputAPI: Authenticate user
+    
+    alt Valid Request
+        InputAPI->>EventBus: Publish input event
+        InputAPI->>Storage: Store message
+        InputAPI-->>Client: Success response (200 OK)
+        
+        Note over Client,Client: Process success
+    else Invalid Request
+        InputAPI-->>Client: Error response (400/401/422)
+        
+        Note over Client,Client: Retry or handle error
+    end
+```
 
 ### JavaScript Input Client
 
@@ -599,6 +648,32 @@ class InputService:
 ## Output Client Implementation
 
 Output clients receive real-time updates from the Cortex Core API via the Server-Sent Events (SSE) protocol.
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant OutputAPI as Output API
+    participant EventBus as Event Bus
+    
+    Client->>OutputAPI: GET /output/stream
+    OutputAPI->>OutputAPI: Authenticate user
+    OutputAPI->>EventBus: Subscribe (create queue)
+    OutputAPI-->>Client: SSE connection established
+    
+    loop While Connection Open
+        EventBus-->>OutputAPI: Events (all users)
+        OutputAPI->>OutputAPI: Filter by user_id
+        OutputAPI-->>Client: User-specific events
+    end
+    
+    alt Client Disconnect
+        Client->>OutputAPI: Close connection
+        OutputAPI->>EventBus: Unsubscribe
+    else Connection Timeout
+        OutputAPI-->>Client: Heartbeat event
+        Client-->>OutputAPI: Connection maintained
+    end
+```
 
 ### JavaScript SSE Client
 
@@ -1253,6 +1328,34 @@ window.addEventListener("beforeunload", () => {
 ## Configuration Endpoints Client
 
 Configuration endpoints manage workspaces and conversations.
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant ConfigAPI as Configuration API
+    participant Storage as Storage
+    
+    %% Workspace Management
+    Client->>ConfigAPI: POST /config/workspace (create)
+    ConfigAPI->>Storage: Store workspace
+    ConfigAPI-->>Client: Workspace details
+    
+    Client->>ConfigAPI: GET /config/workspace (list)
+    ConfigAPI->>Storage: Retrieve workspaces
+    ConfigAPI-->>Client: List of workspaces
+    
+    %% Conversation Management
+    Client->>ConfigAPI: POST /config/conversation (create)
+    ConfigAPI->>Storage: Store conversation
+    ConfigAPI-->>Client: Conversation details
+    
+    Client->>ConfigAPI: GET /config/conversation?workspace_id=xyz
+    ConfigAPI->>Storage: Retrieve conversations
+    ConfigAPI-->>Client: List of conversations
+    
+    %% Hierarchical Relationship
+    Note over Client,Storage: Workspaces contain Conversations,<br>which contain Messages
+```
 
 ### JavaScript Configuration Client
 
