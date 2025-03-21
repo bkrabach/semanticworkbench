@@ -1,0 +1,1089 @@
+<!DOCTYPE html>
+<!--
+  IMPORTANT: THIS IS A PROOF OF CONCEPT CLIENT
+  
+  This web client is intended solely for testing and demonstration purposes.
+  It is not production-ready and may contain simplifications and experimental code.
+  Feel free to modify, extend, or completely rewrite as needed for your use case.
+-->
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cortex Client - PoC</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            color: #333;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        header {
+            background-color: #2c3e50;
+            color: white;
+            padding: 1rem;
+        }
+        
+        .main {
+            display: flex;
+            height: calc(100vh - 140px);
+        }
+        
+        .sidebar {
+            width: 250px;
+            background-color: #f5f5f5;
+            padding: 1rem;
+            overflow-y: auto;
+        }
+        
+        .content {
+            flex: 1;
+            padding: 1rem;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .conversation-list {
+            list-style: none;
+            padding: 0;
+        }
+        
+        .conversation-item {
+            padding: 0.5rem;
+            margin-bottom: 0.5rem;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        
+        .conversation-item:hover, .conversation-item.active {
+            background-color: #e0e0e0;
+        }
+        
+        .messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1rem;
+            background-color: #f9f9f9;
+            border-radius: 4px;
+            margin-bottom: 1rem;
+        }
+        
+        .message {
+            margin-bottom: 1rem;
+            padding: 0.5rem;
+            border-radius: 4px;
+        }
+        
+        .user-message {
+            background-color: #dcf8c6;
+            align-self: flex-end;
+            margin-left: 20%;
+        }
+        
+        .assistant-message {
+            background-color: #f1f0f0;
+            align-self: flex-start;
+            margin-right: 20%;
+        }
+        
+        .system-message {
+            background-color: #ffe4c4;
+            font-style: italic;
+        }
+        
+        .input-area {
+            display: flex;
+            gap: 1rem;
+        }
+        
+        input, button, textarea, select {
+            padding: 0.5rem;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+        }
+        
+        button {
+            background-color: #2c3e50;
+            color: white;
+            cursor: pointer;
+            border: none;
+        }
+        
+        button:hover {
+            background-color: #1a252f;
+        }
+        
+        textarea {
+            flex: 1;
+            resize: none;
+            height: 80px;
+        }
+        
+        .login-form {
+            max-width: 400px;
+            margin: 0 auto;
+            padding: 2rem;
+            background-color: #f5f5f5;
+            border-radius: 8px;
+        }
+        
+        .form-group {
+            margin-bottom: 1rem;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+        }
+        
+        .form-group input {
+            width: 100%;
+        }
+        
+        .hidden {
+            display: none;
+        }
+        
+        .section-title {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .btn-small {
+            font-size: 0.8rem;
+            padding: 0.3rem 0.5rem;
+        }
+        
+        .typing-indicator {
+            display: none;
+            margin-bottom: 1rem;
+            padding: 0.5rem;
+            border-radius: 4px;
+            background-color: #f1f0f0;
+            align-self: flex-start;
+            margin-right: 20%;
+            font-style: italic;
+        }
+        
+        .dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: #888;
+            animation: wave 1.3s linear infinite;
+            margin-right: 3px;
+        }
+        
+        .dot:nth-child(2) {
+            animation-delay: -1.1s;
+        }
+        
+        .dot:nth-child(3) {
+            animation-delay: -0.9s;
+        }
+        
+        @keyframes wave {
+            0%, 60%, 100% {
+                transform: initial;
+            }
+            30% {
+                transform: translateY(-5px);
+            }
+        }
+
+        .message-content {
+            white-space: pre-wrap;
+        }
+
+        .message-content pre {
+            background-color: #f0f0f0;
+            padding: 8px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+
+        .message-time {
+            font-size: 0.8rem;
+            color: #888;
+            text-align: right;
+            margin-top: 4px;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1>Cortex Client</h1>
+            <div id="user-info" class="hidden">
+                Welcome, <span id="username">User</span> | <button id="logout-btn">Logout</button>
+            </div>
+        </div>
+    </header>
+    
+    <div class="container">
+        <!-- Login Form -->
+        <div id="login-section" class="login-form">
+            <h2>Login</h2>
+            <form id="login-form" onsubmit="event.preventDefault(); login();">
+                <div class="form-group">
+                    <label for="email">Email</label>
+                    <input type="email" id="email" placeholder="Enter your email" value="test@example.com" autocomplete="email">
+                </div>
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" placeholder="Enter your password" value="password" autocomplete="current-password">
+                </div>
+                <button type="submit" id="login-btn">Login</button>
+                <p id="login-error" style="color: red;"></p>
+            </form>
+        </div>
+        
+        <!-- Main Application -->
+        <div id="app-section" class="hidden">
+            <div class="main">
+                <div class="sidebar">
+                    <div class="section-title">
+                        <h2>Workspaces</h2>
+                        <button id="new-workspace-btn" class="btn-small">+ New</button>
+                    </div>
+                    <select id="workspace-select">
+                        <option value="">Select Workspace</option>
+                    </select>
+                    
+                    <div class="section-title">
+                        <h3>Conversations</h3>
+                        <button id="new-conversation-btn" class="btn-small">+ New</button>
+                    </div>
+                    <ul id="conversation-list" class="conversation-list">
+                        <!-- Conversations will be added here -->
+                    </ul>
+                </div>
+                
+                <div class="content">
+                    <div id="messages" class="messages">
+                        <!-- Messages will be added here -->
+                        <div class="message system-message">
+                            Select or create a conversation to start chatting!
+                        </div>
+                    </div>
+                    
+                    <div id="typing-indicator" class="typing-indicator">
+                        <span class="dot"></span>
+                        <span class="dot"></span>
+                        <span class="dot"></span>
+                    </div>
+                    
+                    <div class="input-area">
+                        <textarea id="message-input" placeholder="Type your message..."></textarea>
+                        <button id="send-btn">Send</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // API configuration
+        const API_URL = 'http://127.0.0.1:8000'; // Default API URL
+        
+        // State
+        let authToken = null;
+        let currentUser = null;
+        let workspaces = [];
+        let currentWorkspace = null;
+        let conversations = [];
+        let currentConversation = null;
+        let eventSources = {}; // To store active SSE connections
+        
+        // Elements
+        const loginSection = document.getElementById('login-section');
+        const appSection = document.getElementById('app-section');
+        const userInfo = document.getElementById('user-info');
+        const usernameEl = document.getElementById('username');
+        const loginBtn = document.getElementById('login-btn');
+        const logoutBtn = document.getElementById('logout-btn');
+        const loginError = document.getElementById('login-error');
+        const emailInput = document.getElementById('email');
+        const passwordInput = document.getElementById('password');
+        const workspaceSelect = document.getElementById('workspace-select');
+        const newWorkspaceBtn = document.getElementById('new-workspace-btn');
+        const conversationList = document.getElementById('conversation-list');
+        const newConversationBtn = document.getElementById('new-conversation-btn');
+        const messagesContainer = document.getElementById('messages');
+        const messageInput = document.getElementById('message-input');
+        const sendBtn = document.getElementById('send-btn');
+        const typingIndicator = document.getElementById('typing-indicator');
+        
+        // Event Listeners
+        loginBtn.addEventListener('click', login);
+        logoutBtn.addEventListener('click', logout);
+        workspaceSelect.addEventListener('change', handleWorkspaceChange);
+        newWorkspaceBtn.addEventListener('click', createWorkspace);
+        newConversationBtn.addEventListener('click', createConversation);
+        sendBtn.addEventListener('click', sendMessage);
+        messageInput.addEventListener('keydown', e => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+        
+        // Check for existing auth token
+        init();
+        
+        async function init() {
+            const token = localStorage.getItem('authToken');
+            if (token) {
+                authToken = token;
+                try {
+                    currentUser = {
+                        id: localStorage.getItem('userId'),
+                        email: localStorage.getItem('userEmail')
+                    };
+                    showApp();
+                    await loadWorkspaces();
+                } catch (error) {
+                    console.error('Failed to validate token:', error);
+                    logout();
+                }
+            } else {
+                showLogin();
+            }
+        }
+        
+        async function login() {
+            const email = emailInput.value.trim();
+            const password = passwordInput.value;
+            
+            if (!email || !password) {
+                loginError.textContent = 'Please enter email and password';
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_URL}/auth/login`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        email: email,
+                        password: password
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Authentication failed');
+                }
+                
+                const data = await response.json();
+                // The API returns access_token, not token
+                authToken = data.access_token;
+                currentUser = {
+                    // User info is in the user object
+                    id: data.user.id,
+                    email: data.user.email
+                };
+                
+                // Save to local storage
+                localStorage.setItem('authToken', authToken);
+                localStorage.setItem('userId', currentUser.id);
+                localStorage.setItem('userEmail', currentUser.email);
+                
+                showApp();
+                await loadWorkspaces();
+            } catch (error) {
+                loginError.textContent = error.message || 'Failed to login';
+                console.error('Login error:', error);
+            }
+        }
+        
+        function logout() {
+            // Close all SSE connections
+            for (const key in eventSources) {
+                if (eventSources[key]) {
+                    eventSources[key].close();
+                }
+            }
+            eventSources = {};
+            
+            // Clear state
+            authToken = null;
+            currentUser = null;
+            workspaces = [];
+            currentWorkspace = null;
+            conversations = [];
+            currentConversation = null;
+            
+            // Clear localStorage
+            localStorage.removeItem('authToken');
+            localStorage.removeItem('userId');
+            localStorage.removeItem('userEmail');
+            
+            // Show login page
+            showLogin();
+        }
+        
+        async function loadWorkspaces() {
+            try {
+                const response = await fetch(`${API_URL}/workspaces`, {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Failed to fetch workspaces');
+                }
+                
+                const data = await response.json();
+                workspaces = data.workspaces || [];
+                
+                // Update UI
+                renderWorkspaces();
+                
+                // Load first workspace if exists
+                if (workspaces.length > 0) {
+                    workspaceSelect.value = workspaces[0].id;
+                    handleWorkspaceChange();
+                }
+                
+                // Connect to global events (this now uses the correct URL format: /v1/global/global)
+                connectToSSE('global');
+            } catch (error) {
+                console.error('Error loading workspaces:', error);
+            }
+        }
+        
+        async function createWorkspace() {
+            const name = prompt('Enter workspace name:');
+            if (!name) return;
+            
+            try {
+                const response = await fetch(`${API_URL}/workspaces`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ 
+                        name,
+                        config: {
+                            default_modality: 'chat',
+                            sharingEnabled: false,
+                            retentionDays: 90
+                        }
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Failed to create workspace');
+                }
+                
+                const newWorkspace = await response.json();
+                workspaces.push(newWorkspace);
+                
+                // Update UI
+                renderWorkspaces();
+                
+                // Select new workspace
+                workspaceSelect.value = newWorkspace.id;
+                handleWorkspaceChange();
+            } catch (error) {
+                console.error('Error creating workspace:', error);
+                alert('Failed to create workspace');
+            }
+        }
+        
+        async function handleWorkspaceChange() {
+            const workspaceId = workspaceSelect.value;
+            if (!workspaceId) {
+                currentWorkspace = null;
+                conversations = [];
+                renderConversations();
+                return;
+            }
+            
+            currentWorkspace = workspaces.find(w => w.id === workspaceId);
+            await loadConversations(workspaceId);
+            
+            // Connect to workspace events
+            connectToSSE('workspace', workspaceId);
+        }
+        
+        async function loadConversations(workspaceId) {
+            try {
+                const response = await fetch(`${API_URL}/workspaces/${workspaceId}/conversations`, {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Failed to fetch conversations');
+                }
+                
+                const data = await response.json();
+                conversations = data.conversations || [];
+                
+                // Update UI
+                renderConversations();
+                
+                // Load first conversation if exists
+                if (conversations.length > 0) {
+                    selectConversation(conversations[0].id);
+                } else {
+                    currentConversation = null;
+                    renderMessages();
+                }
+            } catch (error) {
+                console.error('Error loading conversations:', error);
+            }
+        }
+        
+        async function createConversation() {
+            if (!currentWorkspace) {
+                alert('Please select a workspace first');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_URL}/workspaces/${currentWorkspace.id}/conversations`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        modality: 'chat',
+                        title: `Chat ${new Date().toLocaleTimeString()}`
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Failed to create conversation');
+                }
+                
+                const newConversation = await response.json();
+                conversations.push(newConversation);
+                
+                // Update UI
+                renderConversations();
+                
+                // Select new conversation
+                selectConversation(newConversation.id);
+            } catch (error) {
+                console.error('Error creating conversation:', error);
+                alert('Failed to create conversation');
+            }
+        }
+        
+        async function selectConversation(conversationId) {
+            try {
+                const response = await fetch(`${API_URL}/conversations/${conversationId}`, {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Failed to fetch conversation');
+                }
+                
+                const data = await response.json();
+                currentConversation = data;
+                
+                // Update UI
+                const items = conversationList.querySelectorAll('.conversation-item');
+                items.forEach(item => {
+                    if (item.dataset.id === conversationId) {
+                        item.classList.add('active');
+                    } else {
+                        item.classList.remove('active');
+                    }
+                });
+                
+                // Load messages
+                await loadMessages(conversationId);
+                
+                // Connect to conversation events
+                connectToSSE('conversation', conversationId);
+            } catch (error) {
+                console.error('Error selecting conversation:', error);
+            }
+        }
+        
+        async function loadMessages(conversationId) {
+            try {
+                const response = await fetch(`${API_URL}/conversations/${conversationId}/messages`, {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Failed to fetch messages');
+                }
+                
+                const data = await response.json();
+                currentConversation.messages = data.messages || [];
+                
+                // Render messages
+                renderMessages();
+            } catch (error) {
+                console.error('Error loading messages:', error);
+            }
+        }
+        
+        async function sendMessage() {
+            const content = messageInput.value.trim();
+            if (!content || !currentConversation) return;
+            
+            try {
+                // Clear input
+                messageInput.value = '';
+                
+                // Add message to UI immediately for better user experience
+                const userMessage = {
+                    id: `temp-${Date.now()}`,
+                    content: content,
+                    role: 'user',
+                    created_at_utc: new Date().toISOString()
+                };
+                
+                // Add to local messages array
+                if (!currentConversation.messages) {
+                    currentConversation.messages = [];
+                }
+                currentConversation.messages.push(userMessage);
+                
+                // Render messages
+                renderMessages();
+                
+                // Send to server
+                const response = await fetch(`${API_URL}/conversations/${currentConversation.id}/messages`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        content: content,
+                        role: 'user'
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Failed to send message');
+                }
+                
+                // Show typing indicator - will be controlled by the server via SSE
+                showTypingIndicator();
+                
+                // We no longer use the direct echo endpoint
+                // The server will handle routing through the CortexRouter
+                // Responses will come back via SSE events
+                // The typing indicator will be hidden when the response arrives
+                
+            } catch (error) {
+                console.error('Error sending message:', error);
+                alert('Failed to send message');
+                hideTypingIndicator();
+            }
+        }
+        
+        // Server-Sent Events (SSE) for real-time updates
+        function connectToSSE(type, resourceId = null) {
+            // Verify we have a valid token before connecting
+            if (!authToken) {
+                console.error(`Cannot connect to SSE: No auth token available`);
+                return null;
+            }
+            
+            // Close existing connection if any
+            if (eventSources[type]) {
+                try {
+                    eventSources[type].close();
+                } catch (e) {
+                    console.warn(`Error closing previous ${type} connection:`, e);
+                }
+                delete eventSources[type];
+            }
+            
+            // For typed connections, verify we have a valid resource ID
+            if (type !== 'global' && (!resourceId || resourceId === 'undefined' || resourceId === 'null')) {
+                console.error(`Cannot connect to ${type} events: Invalid resource ID ${resourceId}`);
+                return null;
+            }
+            
+            // Determine the URL based on the type
+            let url;
+            switch (type) {
+                case 'global':
+                    url = new URL(`${API_URL}/v1/global/global`);  // Fix: Add resource_id "global" for the global channel
+                    break;
+                case 'workspace':
+                    url = new URL(`${API_URL}/v1/workspace/${resourceId}`);
+                    break;
+                case 'conversation':
+                    url = new URL(`${API_URL}/v1/conversation/${resourceId}`);
+                    break;
+                default:
+                    console.error('Invalid SSE type:', type);
+                    return null;
+            }
+            console.log(`Connecting to SSE endpoint: ${url.toString()}`);
+            
+            // Add token to URL
+            url.searchParams.append('token', authToken);
+            
+            try {
+                // Create new EventSource connection
+                const eventSource = new EventSource(url.toString());
+                
+                // Track connection state
+                let hasConnected = false;
+                let reconnectAttempts = 0;
+                const MAX_RECONNECT_ATTEMPTS = 5;
+                
+                eventSource.onopen = () => {
+                    console.log(`Connected to ${type} events`);
+                    hasConnected = true;
+                    reconnectAttempts = 0; // Reset reconnect counter after successful connection
+                };
+                
+                eventSource.onerror = (error) => {
+                    console.error(`${type} events error:`, error);
+                    
+                    // DO NOT automatically close the connection on first error
+                    // This was causing connections to close prematurely
+                    
+                    // Note: The server has improved connection tracking that maintains
+                    // connection state across service instances, ensuring more reliable
+                    // message delivery even when connections are managed by different instances
+                    
+                    // If we never established a connection, the server may be down or rejecting
+                    if (!hasConnected && reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+                        console.error(`Failed to connect to ${type} events after ${MAX_RECONNECT_ATTEMPTS} attempts, giving up`);
+                        // Only now clean up the resource
+                        if (eventSources[type] === eventSource) {
+                            delete eventSources[type];
+                        }
+                        eventSource.close();
+                        return;
+                    }
+                    
+                    // Check if service is available or connection was rejected
+                    const isServiceUnavailable = error.target && error.target.readyState === EventSource.CONNECTING;
+                    
+                    // Reconnection logic based on type and availability
+                    const shouldReconnect = (
+                        !isServiceUnavailable && 
+                        reconnectAttempts < MAX_RECONNECT_ATTEMPTS && (
+                            (type === 'global') || 
+                            (type === 'workspace' && currentWorkspace && currentWorkspace.id === resourceId) ||
+                            (type === 'conversation' && currentConversation && currentConversation.id === resourceId)
+                        )
+                    );
+                    
+                    if (shouldReconnect) {
+                        reconnectAttempts++;
+                        const delay = Math.min(1000 * reconnectAttempts, 5000); // Exponential backoff up to 5 seconds
+                        console.log(`Reconnecting to ${type} events in ${delay/1000} seconds... (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
+                        // Only close current connection right before creating a new one
+                        setTimeout(() => {
+                            if (eventSources[type] === eventSource) {
+                                eventSource.close();
+                            }
+                            connectToSSE(type, resourceId);
+                        }, delay);
+                    }
+                };
+            
+            // Common events
+            eventSource.addEventListener('connect', (event) => {
+                console.log(`${type} connection established:`, JSON.parse(event.data));
+            });
+            
+            eventSource.addEventListener('heartbeat', (event) => {
+                console.log(`${type} heartbeat:`, event.data ? JSON.parse(event.data) : {});
+            });
+            
+            // Type-specific events
+            if (type === 'conversation') {
+                setupConversationEvents(eventSource, resourceId);
+            } else if (type === 'workspace') {
+                setupWorkspaceEvents(eventSource, resourceId);
+            } else if (type === 'global') {
+                setupGlobalEvents(eventSource);
+            }
+            
+                // Store connection
+                eventSources[type] = eventSource;
+                
+                return eventSource;
+            } catch (error) {
+                console.error(`Error creating SSE connection to ${type}:`, error);
+                return null;
+            }
+        }
+        
+        function setupGlobalEvents(eventSource) {
+            eventSource.addEventListener('notification', (event) => {
+                const data = JSON.parse(event.data);
+                console.log('Global notification:', data);
+                // Handle notifications here
+            });
+        }
+        
+        function setupWorkspaceEvents(eventSource, workspaceId) {
+            eventSource.addEventListener('conversation_created', (event) => {
+                const newConversation = JSON.parse(event.data);
+                console.log('New conversation created:', newConversation);
+                
+                // Add to conversations list if not already present
+                if (!conversations.some(c => c.id === newConversation.id)) {
+                    conversations.push(newConversation);
+                    renderConversations();
+                }
+            });
+            
+            eventSource.addEventListener('conversation_deleted', (event) => {
+                const data = JSON.parse(event.data);
+                console.log('Conversation deleted:', data);
+                
+                // Remove from conversations list
+                conversations = conversations.filter(c => c.id !== data.id);
+                renderConversations();
+                
+                // If current conversation was deleted, clear it
+                if (currentConversation && currentConversation.id === data.id) {
+                    currentConversation = null;
+                    renderMessages();
+                }
+            });
+        }
+        
+        function setupConversationEvents(eventSource, conversationId) {
+            // Add a listener for the test event
+            eventSource.addEventListener('test_event', (event) => {
+                console.log('SSE TEST EVENT RECEIVED:', event);
+            });
+            
+            eventSource.addEventListener('message_received', (event) => {
+                console.log('Raw message_received event:', event);
+                try {
+                    const message = JSON.parse(event.data);
+                    console.log('New message received:', message);
+                
+                // Only process if this is the current conversation
+                if (currentConversation && currentConversation.id === conversationId) {
+                    // Check if we already have this exact message by ID
+                    const existingIndex = currentConversation.messages.findIndex(m => m.id === message.id);
+                    if (existingIndex !== -1) {
+                        return;
+                    }
+                    
+                    // For user messages, check if we have a temporary message to replace
+                    if (message.role === 'user') {
+                        // Find optimistically added message with temp ID and matching content
+                        const tempIndex = currentConversation.messages.findIndex(m => 
+                            m.role === 'user' && 
+                            m.content === message.content &&
+                            m.id && m.id.startsWith('temp-')
+                        );
+                        
+                        if (tempIndex !== -1) {
+                            // Replace our temp message with the server version
+                            currentConversation.messages[tempIndex] = message;
+                            renderMessages();
+                            return;
+                        }
+                    }
+                    
+                    // Add the message
+                    currentConversation.messages.push(message);
+                    renderMessages();
+                    
+                    // Hide typing indicator if this is an assistant message
+                    if (message.role === 'assistant') {
+                        hideTypingIndicator();
+                    }
+                }
+                } catch (e) {
+                    console.error('Error parsing message:', e, event.data);
+                }
+            });
+            
+            eventSource.addEventListener('typing_indicator', (event) => {
+                const data = JSON.parse(event.data);
+                console.log('Typing indicator:', data);
+                
+                // Only process if this is the current conversation
+                if (currentConversation && currentConversation.id === conversationId) {
+                    if (data.isTyping) {
+                        showTypingIndicator();
+                    } else {
+                        hideTypingIndicator();
+                    }
+                }
+            });
+            
+            eventSource.addEventListener('status_update', (event) => {
+                const data = JSON.parse(event.data);
+                console.log('Conversation status update:', data);
+                
+                if (currentConversation && currentConversation.id === conversationId) {
+                    // Update relevant fields
+                    Object.assign(currentConversation, data);
+                    renderConversations();
+                }
+            });
+        }
+        
+        function showTypingIndicator() {
+            typingIndicator.style.display = 'block';
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+        
+        function hideTypingIndicator() {
+            typingIndicator.style.display = 'none';
+        }
+        
+        function renderWorkspaces() {
+            // Clear options except the first one
+            while (workspaceSelect.options.length > 1) {
+                workspaceSelect.remove(1);
+            }
+            
+            // Add workspace options
+            workspaces.forEach(workspace => {
+                const option = document.createElement('option');
+                option.value = workspace.id;
+                option.textContent = workspace.name;
+                workspaceSelect.appendChild(option);
+            });
+        }
+        
+        function renderConversations() {
+            // Clear list
+            conversationList.innerHTML = '';
+            
+            // Add conversation items
+            conversations.forEach(conversation => {
+                const li = document.createElement('li');
+                li.className = 'conversation-item';
+                li.dataset.id = conversation.id;
+                li.textContent = conversation.title;
+                li.addEventListener('click', () => selectConversation(conversation.id));
+                
+                if (currentConversation && conversation.id === currentConversation.id) {
+                    li.classList.add('active');
+                }
+                
+                conversationList.appendChild(li);
+            });
+        }
+        
+        function renderMessages() {
+            // Clear messages
+            messagesContainer.innerHTML = '';
+            
+            if (!currentConversation || !currentConversation.messages) {
+                const div = document.createElement('div');
+                div.className = 'message system-message';
+                div.textContent = 'Select or create a conversation to start chatting!';
+                messagesContainer.appendChild(div);
+                return;
+            }
+            
+            // Add messages
+            currentConversation.messages.forEach(message => {
+                const div = document.createElement('div');
+                div.className = `message ${message.role}-message`;
+                
+                // Format timestamp
+                let formattedTime;
+                
+                if (message.id && message.id.startsWith('temp-')) {
+                    // For newly added messages, use current local time
+                    formattedTime = new Date().toLocaleTimeString([], { 
+                        hour: '2-digit', 
+                        minute: '2-digit',
+                        hour12: true
+                    });
+                }
+                else if (message.created_at_utc) {
+                    // Convert UTC to local time
+                    formattedTime = formatUTCToLocalTime(message.created_at_utc);
+                }
+                else {
+                    formattedTime = new Date().toLocaleTimeString([], { 
+                        hour: '2-digit', 
+                        minute: '2-digit',
+                        hour12: true
+                    });
+                }
+                
+                // Add message content
+                div.innerHTML = `
+                    <div class="message-content">${formatMessageContent(message.content)}</div>
+                    <div class="message-time">${formattedTime}</div>
+                `;
+                
+                messagesContainer.appendChild(div);
+            });
+            
+            // Scroll to bottom
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+        
+        function formatMessageContent(content) {
+            if (typeof content !== 'string') {
+                return JSON.stringify(content, null, 2);
+            }
+            
+            // Convert markdown code blocks to HTML
+            const formattedContent = content
+                .replace(/```([^`]+)```/g, '<pre><code>$1</code></pre>');
+            
+            return formattedContent;
+        }
+        
+        function formatUTCToLocalTime(utcTimestamp) {
+            const date = new Date(utcTimestamp);
+            return date.toLocaleTimeString([], {
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: true
+            });
+        }
+        
+        function showLogin() {
+            loginSection.classList.remove('hidden');
+            appSection.classList.add('hidden');
+            userInfo.classList.add('hidden');
+        }
+        
+        function showApp() {
+            loginSection.classList.add('hidden');
+            appSection.classList.remove('hidden');
+            userInfo.classList.remove('hidden');
+            
+            // Set username
+            if (currentUser) {
+                usernameEl.textContent = currentUser.email;
+            }
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cortex Core Test Client</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .panel {
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+        h2 {
+            margin-top: 0;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+        }
+        input, select, textarea {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 5px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        #messages {
+            height: 300px;
+            overflow-y: scroll;
+            border: 1px solid #ddd;
+            padding: 10px;
+            margin-bottom: 10px;
+        }
+        .message {
+            padding: 8px;
+            margin-bottom: 8px;
+            border-radius: 4px;
+        }
+        .input-message {
+            background-color: #e3f2fd;
+        }
+        .output-message {
+            background-color: #f1f8e9;
+        }
+        .system-message {
+            background-color: #f5f5f5;
+            font-style: italic;
+            color: #666;
+        }
+        .error {
+            color: red;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Cortex Core Test Client</h1>
+        
+        <div class="panel" id="auth-panel">
+            <h2>Authentication</h2>
+            <div>
+                <label for="email">Email:</label>
+                <input type="email" id="email" value="user@example.com">
+            </div>
+            <div>
+                <label for="password">Password:</label>
+                <input type="password" id="password" value="password123">
+            </div>
+            <button id="login-btn">Login</button>
+            <div id="auth-status" class="error"></div>
+        </div>
+        
+        <div class="panel" id="workspace-panel" style="display: none;">
+            <h2>Workspaces</h2>
+            <div>
+                <button id="create-workspace-btn">Create New Workspace</button>
+                <div id="create-workspace-form" style="display: none;">
+                    <label for="workspace-name">Name:</label>
+                    <input type="text" id="workspace-name">
+                    <label for="workspace-description">Description:</label>
+                    <textarea id="workspace-description"></textarea>
+                    <button id="save-workspace-btn">Save Workspace</button>
+                    <button id="cancel-workspace-btn">Cancel</button>
+                </div>
+            </div>
+            <div>
+                <label for="workspace-select">Select Workspace:</label>
+                <select id="workspace-select">
+                    <option value="">-- Select Workspace --</option>
+                </select>
+                <button id="refresh-workspaces-btn">Refresh</button>
+            </div>
+        </div>
+        
+        <div class="panel" id="conversation-panel" style="display: none;">
+            <h2>Conversations</h2>
+            <div>
+                <button id="create-conversation-btn">Create New Conversation</button>
+                <div id="create-conversation-form" style="display: none;">
+                    <label for="conversation-topic">Topic:</label>
+                    <input type="text" id="conversation-topic">
+                    <button id="save-conversation-btn">Save Conversation</button>
+                    <button id="cancel-conversation-btn">Cancel</button>
+                </div>
+            </div>
+            <div>
+                <label for="conversation-select">Select Conversation:</label>
+                <select id="conversation-select">
+                    <option value="">-- Select Conversation --</option>
+                </select>
+                <button id="refresh-conversations-btn">Refresh</button>
+            </div>
+        </div>
+        
+        <div class="panel" id="chat-panel" style="display: none;">
+            <h2>Chat</h2>
+            <div id="messages"></div>
+            <div>
+                <label for="message-input">Message:</label>
+                <textarea id="message-input"></textarea>
+                <button id="send-btn">Send</button>
+            </div>
+            <div>
+                <p>Communication Mode:</p>
+                <button id="polling-btn">Start Polling</button>
+                <button id="sse-btn">Try SSE (Auth Issues)</button>
+                <button id="stop-comm-btn">Stop</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global variables
+        let token = null;
+        let user = null;
+        let selectedWorkspaceId = null;
+        let selectedConversationId = null;
+
+        // Base API URL
+        const API_URL = 'http://localhost:8000';
+
+        // Add event listeners after DOM is fully loaded
+        document.addEventListener('DOMContentLoaded', function() {
+            // Auth panel
+            document.getElementById('login-btn').addEventListener('click', login);
+            
+            // Workspace panel
+            document.getElementById('create-workspace-btn').addEventListener('click', showWorkspaceForm);
+            document.getElementById('cancel-workspace-btn').addEventListener('click', hideWorkspaceForm);
+            document.getElementById('save-workspace-btn').addEventListener('click', createWorkspace);
+            document.getElementById('workspace-select').addEventListener('change', handleWorkspaceSelect);
+            document.getElementById('refresh-workspaces-btn').addEventListener('click', loadWorkspaces);
+            
+            // Conversation panel
+            document.getElementById('create-conversation-btn').addEventListener('click', showConversationForm);
+            document.getElementById('cancel-conversation-btn').addEventListener('click', hideConversationForm);
+            document.getElementById('save-conversation-btn').addEventListener('click', createConversation);
+            document.getElementById('conversation-select').addEventListener('change', handleConversationSelect);
+            document.getElementById('refresh-conversations-btn').addEventListener('click', function() {
+                if (selectedWorkspaceId) {
+                    loadConversations(selectedWorkspaceId);
+                }
+            });
+            
+            // Chat panel
+            document.getElementById('send-btn').addEventListener('click', sendMessage);
+            document.getElementById('polling-btn').addEventListener('click', startPolling);
+            document.getElementById('sse-btn').addEventListener('click', connectToSSE);
+            document.getElementById('stop-comm-btn').addEventListener('click', stopCommunication);
+        });
+
+        // Show/hide forms
+        function showWorkspaceForm() {
+            document.getElementById('create-workspace-form').style.display = 'block';
+            document.getElementById('create-workspace-btn').style.display = 'none';
+        }
+        
+        function hideWorkspaceForm() {
+            document.getElementById('create-workspace-form').style.display = 'none';
+            document.getElementById('create-workspace-btn').style.display = 'block';
+        }
+        
+        function showConversationForm() {
+            document.getElementById('create-conversation-form').style.display = 'block';
+            document.getElementById('create-conversation-btn').style.display = 'none';
+        }
+        
+        function hideConversationForm() {
+            document.getElementById('create-conversation-form').style.display = 'none';
+            document.getElementById('create-conversation-btn').style.display = 'block';
+        }
+
+        // Authentication
+        async function login() {
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const authStatus = document.getElementById('auth-status');
+            
+            // Validation
+            if (!email || !password) {
+                authStatus.textContent = 'Please enter email and password';
+                return;
+            }
+            
+            try {
+                // FastAPI OAuth2 expects form urlencoded data
+                const formData = new URLSearchParams();
+                formData.append('username', email);
+                formData.append('password', password);
+                
+                const response = await fetch(`${API_URL}/auth/login`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    },
+                    body: formData
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`Authentication failed: ${response.status} ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                
+                // Store token and user data
+                token = data.access_token;
+                user = data.claims;
+                
+                // Show success message
+                authStatus.textContent = 'Authentication successful!';
+                authStatus.style.color = 'green';
+                
+                // Show workspace panel
+                document.getElementById('workspace-panel').style.display = 'block';
+                
+                // Load workspaces
+                loadWorkspaces();
+                
+                // Add to log
+                addMessage('system', `Logged in as ${user.name} (${user.email})`);
+                
+            } catch (error) {
+                authStatus.textContent = error.message;
+                console.error('Login error:', error);
+            }
+        }
+
+        // Load workspaces
+        async function loadWorkspaces() {
+            if (!token) {
+                addMessage('system', 'Not authenticated. Please login first.');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_URL}/config/workspace`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`Failed to load workspaces: ${response.status} ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                
+                // Clear and populate dropdown
+                const workspaceSelect = document.getElementById('workspace-select');
+                workspaceSelect.innerHTML = '<option value="">-- Select Workspace --</option>';
+                
+                if (data.workspaces && data.workspaces.length > 0) {
+                    data.workspaces.forEach(workspace => {
+                        const option = document.createElement('option');
+                        option.value = workspace.id;
+                        option.textContent = workspace.name;
+                        workspaceSelect.appendChild(option);
+                    });
+                    
+                    addMessage('system', `Loaded ${data.workspaces.length} workspaces`);
+                } else {
+                    addMessage('system', 'No workspaces found. Create one to get started.');
+                }
+                
+            } catch (error) {
+                addMessage('system', error.message);
+                console.error('Load workspaces error:', error);
+            }
+        }
+
+        // Create workspace
+        async function createWorkspace() {
+            if (!token) {
+                addMessage('system', 'Not authenticated. Please login first.');
+                return;
+            }
+            
+            const name = document.getElementById('workspace-name').value;
+            const description = document.getElementById('workspace-description').value;
+            
+            // Validation
+            if (!name || !description) {
+                addMessage('system', 'Please provide both name and description for the workspace.');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_URL}/config/workspace`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        name,
+                        description,
+                        metadata: {
+                            created_from: 'web-client',
+                            client_version: '1.0.0'
+                        }
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`Failed to create workspace: ${response.status} ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                
+                // Success message
+                addMessage('system', `Workspace "${data.workspace.name}" created successfully!`);
+                
+                // Clear form and hide it
+                document.getElementById('workspace-name').value = '';
+                document.getElementById('workspace-description').value = '';
+                hideWorkspaceForm();
+                
+                // Reload workspaces
+                loadWorkspaces();
+                
+            } catch (error) {
+                addMessage('system', error.message);
+                console.error('Create workspace error:', error);
+            }
+        }
+
+        // Handle workspace selection
+        function handleWorkspaceSelect() {
+            const workspaceSelect = document.getElementById('workspace-select');
+            selectedWorkspaceId = workspaceSelect.value;
+            
+            if (selectedWorkspaceId) {
+                // Show conversation panel
+                document.getElementById('conversation-panel').style.display = 'block';
+                
+                // Load conversations for this workspace
+                loadConversations(selectedWorkspaceId);
+                
+                // Log
+                const workspaceName = workspaceSelect.options[workspaceSelect.selectedIndex].text;
+                addMessage('system', `Selected workspace: ${workspaceName}`);
+            } else {
+                // Hide conversation and chat panels if no workspace selected
+                document.getElementById('conversation-panel').style.display = 'none';
+                document.getElementById('chat-panel').style.display = 'none';
+            }
+        }
+
+        // Load conversations
+        async function loadConversations(workspaceId) {
+            if (!token) {
+                addMessage('system', 'Not authenticated. Please login first.');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_URL}/config/conversation?workspace_id=${workspaceId}`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`Failed to load conversations: ${response.status} ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                
+                // Clear and populate dropdown
+                const conversationSelect = document.getElementById('conversation-select');
+                conversationSelect.innerHTML = '<option value="">-- Select Conversation --</option>';
+                
+                if (data.conversations && data.conversations.length > 0) {
+                    data.conversations.forEach(conversation => {
+                        const option = document.createElement('option');
+                        option.value = conversation.id;
+                        option.textContent = conversation.topic;
+                        conversationSelect.appendChild(option);
+                    });
+                    
+                    addMessage('system', `Loaded ${data.conversations.length} conversations`);
+                } else {
+                    addMessage('system', 'No conversations found in this workspace. Create one to get started.');
+                }
+                
+            } catch (error) {
+                addMessage('system', error.message);
+                console.error('Load conversations error:', error);
+            }
+        }
+
+        // Create conversation
+        async function createConversation() {
+            if (!token) {
+                addMessage('system', 'Not authenticated. Please login first.');
+                return;
+            }
+            
+            if (!selectedWorkspaceId) {
+                addMessage('system', 'No workspace selected. Please select a workspace first.');
+                return;
+            }
+            
+            const topic = document.getElementById('conversation-topic').value;
+            
+            // Validation
+            if (!topic) {
+                addMessage('system', 'Please provide a topic for the conversation.');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_URL}/config/conversation`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        workspace_id: selectedWorkspaceId,
+                        topic,
+                        participant_ids: [],
+                        metadata: {
+                            created_from: 'web-client',
+                            client_version: '1.0.0'
+                        }
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`Failed to create conversation: ${response.status} ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                
+                // Success message
+                addMessage('system', `Conversation "${data.conversation.topic}" created successfully!`);
+                
+                // Clear form and hide it
+                document.getElementById('conversation-topic').value = '';
+                hideConversationForm();
+                
+                // Reload conversations
+                loadConversations(selectedWorkspaceId);
+                
+            } catch (error) {
+                addMessage('system', error.message);
+                console.error('Create conversation error:', error);
+            }
+        }
+
+        // Handle conversation selection
+        function handleConversationSelect() {
+            const conversationSelect = document.getElementById('conversation-select');
+            selectedConversationId = conversationSelect.value;
+            
+            if (selectedConversationId) {
+                // Show chat panel
+                document.getElementById('chat-panel').style.display = 'block';
+                
+                // Clear messages
+                document.getElementById('messages').innerHTML = '';
+                
+                // Log
+                const conversationTopic = conversationSelect.options[conversationSelect.selectedIndex].text;
+                addMessage('system', `Selected conversation: ${conversationTopic}`);
+                addMessage('system', 'Ready to send messages. Choose communication mode below.');
+            } else {
+                // Hide chat panel if no conversation selected
+                document.getElementById('chat-panel').style.display = 'none';
+            }
+        }
+
+        // Send message
+        async function sendMessage() {
+            if (!token) {
+                addMessage('system', 'Not authenticated. Please login first.');
+                return;
+            }
+            
+            if (!selectedConversationId) {
+                addMessage('system', 'No conversation selected. Please select a conversation first.');
+                return;
+            }
+            
+            const messageInput = document.getElementById('message-input');
+            const content = messageInput.value.trim();
+            
+            if (!content) {
+                addMessage('system', 'Please enter a message to send.');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_URL}/input`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        content,
+                        conversation_id: selectedConversationId,
+                        metadata: {
+                            client_id: 'web-client',
+                            client_version: '1.0.0'
+                        }
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`Failed to send message: ${response.status} ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                
+                // Display sent message
+                addMessage('input', content);
+                
+                // Clear input
+                messageInput.value = '';
+                
+                console.log('Message sent successfully:', data);
+                
+            } catch (error) {
+                addMessage('system', error.message);
+                console.error('Send message error:', error);
+            }
+        }
+
+        // Connect to SSE (with limitations)
+        function connectToSSE() {
+            // Stop any existing communication
+            stopCommunication();
+            
+            if (!token) {
+                addMessage('system', 'Not authenticated. Please login first.');
+                return;
+            }
+            
+            addMessage('system', 'Connecting to SSE...');
+            addMessage('system', 'Note: Basic EventSource cannot set auth headers, so this may fail.');
+            
+            try {
+                // Create EventSource - NOTE: This will fail with auth since EventSource doesn't support custom headers
+                window.eventSource = new EventSource(`${API_URL}/output/stream`);
+                
+                window.eventSource.onopen = function() {
+                    addMessage('system', 'SSE connection opened');
+                    addMessage('system', 'Authentication will likely fail - this is expected');
+                    addMessage('system', 'In a real app, use EventSource-polyfill or similar');
+                };
+                
+                window.eventSource.onmessage = function(event) {
+                    try {
+                        const data = JSON.parse(event.data);
+                        console.log('SSE event received:', data);
+                        
+                        switch (data.type) {
+                            case 'connection_established':
+                                addMessage('system', 'SSE Connection established');
+                                break;
+                            case 'input':
+                                // Handle input event
+                                if (data.data && data.data.conversation_id === selectedConversationId) {
+                                    addMessage('input', data.data.content);
+                                }
+                                break;
+                            case 'output':
+                                // Handle output event
+                                if (data.data && data.data.conversation_id === selectedConversationId) {
+                                    addMessage('output', data.data.content);
+                                }
+                                break;
+                            case 'heartbeat':
+                                // Silent heartbeat
+                                break;
+                            default:
+                                console.log('Unknown event type:', data.type);
+                        }
+                    } catch (error) {
+                        console.error('Error processing SSE event:', error);
+                    }
+                };
+                
+                window.eventSource.onerror = function(error) {
+                    addMessage('system', 'SSE Error (expected due to auth limitations)');
+                    console.error('SSE error:', error);
+                };
+            } catch (error) {
+                addMessage('system', `SSE connection error: ${error.message}`);
+                console.error('SSE connection error:', error);
+            }
+        }
+
+        // Start polling for messages
+        function startPolling() {
+            // Stop any existing communication
+            stopCommunication();
+            
+            if (!token) {
+                addMessage('system', 'Not authenticated. Please login first.');
+                return;
+            }
+            
+            addMessage('system', 'Started polling for messages (every 3 seconds)');
+            
+            // Set up polling interval
+            window.pollingInterval = setInterval(async () => {
+                if (!token || !selectedConversationId) {
+                    return;
+                }
+                
+                try {
+                    // For this test client, we'll verify auth is working
+                    console.log('Polling for new messages...');
+                    
+                    const response = await fetch(`${API_URL}/auth/verify`, {
+                        headers: {
+                            'Authorization': `Bearer ${token}`
+                        }
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error('Authentication failed during polling');
+                    }
+                    
+                    // In a real app, you'd process new messages here
+                    // For this test client, we'll just simulate receiving a system message occasionally
+                    if (Math.random() < 0.3) { // 30% chance of getting a simulated message
+                        addMessage('system', 'Polling active - auth verified');
+                    }
+                    
+                } catch (error) {
+                    console.error('Polling error:', error);
+                    addMessage('system', `Polling error: ${error.message}`);
+                }
+            }, 3000); // Poll every 3 seconds
+        }
+
+        // Stop all communication methods
+        function stopCommunication() {
+            // Stop polling if active
+            if (window.pollingInterval) {
+                clearInterval(window.pollingInterval);
+                window.pollingInterval = null;
+                addMessage('system', 'Polling stopped');
+            }
+            
+            // Close SSE connection if active
+            if (window.eventSource) {
+                window.eventSource.close();
+                window.eventSource = null;
+                addMessage('system', 'SSE connection closed');
+            }
+        }
+
+        // Add message to the messages container
+        function addMessage(type, content) {
+            const messagesContainer = document.getElementById('messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${type}-message`;
+            
+            // Format message based on type
+            if (type === 'input') {
+                messageDiv.textContent = `You: ${content}`;
+            } else if (type === 'output') {
+                messageDiv.textContent = `Server: ${content}`;
+            } else { // system
+                messageDiv.textContent = `System: ${content}`;
+            }
+            
+            // Add message to container
+            messagesContainer.appendChild(messageDiv);
+            
+            // Scroll to bottom
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+    </script>
+</body>
+</html>
