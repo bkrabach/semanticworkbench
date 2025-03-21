@@ -1,569 +1,275 @@
-# Network MCP Client Implementation Guide
+# Network MCP Client
 
 ## Overview
 
-The Network MCP Client is a critical component for Phase 4 of the Cortex Core. It enables communication between the core application and distributed MCP services over the network. This document provides comprehensive implementation details for transforming the in-process MCP client from Phase 3 into a network-capable client that reliably communicates with standalone services.
+This document provides a comprehensive guide to the Network MCP Client, which is the core component for enabling network-based communication between distributed services in Phase 4 of the Cortex Core system. The NetworkMcpClient is responsible for making tool calls and streaming resources from remote MCP servers over HTTP and Server-Sent Events (SSE) connections.
 
-The Network MCP Client maintains the same interface as the Phase 3 client but adds robust handling for network communication, connection management, retry logic, and error recovery. This allows the core application to interact with distributed services while maintaining backward compatibility with existing code.
+Unlike the in-process MCP client from Phase 3, the NetworkMcpClient adds robust handling for network conditions including connection management, retries, circuit breaking, and error recovery—all while maintaining the same clean interface for calling tools and accessing resources.
 
-## Core Objectives
+## Core Responsibilities
 
-1. **Maintain Interface Compatibility**: Keep the same interface as Phase 3's MCP client
-2. **Enable Network Communication**: Use HTTP/SSE for tool calls and resource streaming
-3. **Add Connection Management**: Implement connection pooling and health checks
-4. **Implement Error Handling**: Add robust recovery for network failures
-5. **Support Service Discovery**: Integrate with the service discovery mechanism
-6. **Enable Distributed Operation**: Support communication with multiple services
+The NetworkMcpClient has several key responsibilities:
+
+1. **Service Communication**: Make HTTP and SSE requests to remote MCP services
+2. **Connection Management**: Create, reuse, and close network connections efficiently
+3. **Error Handling**: Detect and recover from network failures and service errors
+4. **Circuit Breaking**: Prevent cascading failures when services are unavailable
+5. **Retry Logic**: Automatically retry transient failures with exponential backoff
+6. **Serialization**: Handle serialization and deserialization of requests and responses
+7. **Service Discovery Integration**: Resolve service endpoints through the service discovery system
 
 ## Architecture
 
+The NetworkMcpClient architecture consists of several key components:
+
 ```mermaid
-graph TD
-    A[Core Application] --> B[Network MCP Client]
-    B --> C[Connection Pool]
-    B --> D[Circuit Breaker]
-    B --> E[Retry Logic]
+classDiagram
+    class NetworkMcpClient {
+        -ServiceDiscovery serviceDiscovery
+        -Dict~string, ConnectionPool~ connectionPools
+        -Dict~string, CircuitBreaker~ circuitBreakers
+        +connect(serviceName)
+        +callTool(serviceName, toolName, arguments)
+        +getResource(serviceName, resourcePath)
+        +close()
+    }
 
-    B -->|HTTP| F[Service Discovery]
-    F --> G[Memory Service]
-    F --> H[Cognition Service]
+    class ConnectionPool {
+        -string endpoint
+        -int maxSize
+        -int minSize
+        -List~AsyncClient~ connections
+        -Semaphore semaphore
+        +getConnection()
+        +releaseConnection(connection)
+        +closeAll()
+    }
 
-    B -->|SSE| G
-    B -->|SSE| H
+    class CircuitBreaker {
+        -CircuitState state
+        -int failureCount
+        -int failureThreshold
+        -int recoveryTime
+        -float lastFailureTime
+        +recordSuccess()
+        +recordFailure()
+        +isOpen()
+    }
 
-    subgraph "Client Components"
-        B
-        C
-        D
-        E
-    end
+    class ServiceDiscovery {
+        +resolve(serviceName)
+        +register(serviceName, endpoint)
+        +deregister(serviceName)
+    }
 
-    subgraph "Network Communication"
-        F
-        B -- HTTP --> G
-        B -- HTTP --> H
-    end
+    NetworkMcpClient --> ConnectionPool : manages
+    NetworkMcpClient --> CircuitBreaker : uses
+    NetworkMcpClient --> ServiceDiscovery : uses
 ```
 
-## Interface Definition
+## Complete Implementation
 
-### NetworkMcpClient Class
-
-```python
-class NetworkMcpClient:
-    """
-    Network-capable MCP client for communicating with remote MCP services.
-    Maintains the same interface as the Phase 3 MCP client but handles
-    network communication, retries, circuit breaking, and error recovery.
-    """
-
-    def __init__(self, service_discovery):
-        """
-        Initialize the Network MCP client.
-
-        Args:
-            service_discovery: The service discovery instance for resolving service endpoints
-        """
-
-    async def connect(self, service_name: str) -> None:
-        """
-        Connect to a specific MCP service.
-
-        Args:
-            service_name: Name of the service to connect to
-
-        Raises:
-            ServiceNotFoundError: If the service cannot be found
-            ConnectionError: If the connection cannot be established
-        """
-
-    async def call_tool(self, service_name: str, tool_name: str, arguments: dict) -> dict:
-        """
-        Call a tool on a specific MCP service.
-
-        Args:
-            service_name: Name of the service to call
-            tool_name: Name of the tool to call
-            arguments: Arguments to pass to the tool
-
-        Returns:
-            The tool's response
-
-        Raises:
-            ServiceNotFoundError: If the service cannot be found
-            ToolNotFoundError: If the tool cannot be found
-            ServiceCallError: If the call fails
-            CircuitOpenError: If the circuit breaker is open
-        """
-
-    async def read_resource(self, service_name: str, resource_uri: str) -> Tuple[Any, Optional[str]]:
-        """
-        Read a resource from a specific MCP service.
-
-        Args:
-            service_name: Name of the service to read from
-            resource_uri: URI of the resource to read
-
-        Returns:
-            Tuple of (resource content, mime type)
-
-        Raises:
-            ServiceNotFoundError: If the service cannot be found
-            ResourceNotFoundError: If the resource cannot be found
-            ResourceReadError: If the resource read fails
-            CircuitOpenError: If the circuit breaker is open
-        """
-
-    async def stream_resource(self, service_name: str, resource_uri: str) -> AsyncIterable:
-        """
-        Stream a resource from a specific MCP service using SSE.
-
-        Args:
-            service_name: Name of the service to stream from
-            resource_uri: URI of the resource to stream
-
-        Returns:
-            An async iterable of resource events
-
-        Raises:
-            ServiceNotFoundError: If the service cannot be found
-            ResourceNotFoundError: If the resource cannot be found
-            ResourceStreamError: If the resource stream fails
-            CircuitOpenError: If the circuit breaker is open
-        """
-
-    async def close(self) -> None:
-        """
-        Close all connections and clean up resources.
-        """
-```
-
-## Implementation Details
-
-### Connection Management
-
-Connection management is a critical aspect of the network client, handling the establishment, pooling, and reuse of HTTP connections to services.
-
-#### Connection Pool
-
-The connection pool maintains reusable connections to each service to avoid the overhead of creating new connections for each request.
+Below is the complete implementation of the NetworkMcpClient. We'll break this down into sections afterwards:
 
 ```python
-class ConnectionPool:
-    """
-    Manages a pool of connections to MCP services.
-    """
+import asyncio
+import json
+import time
+import logging
+from enum import Enum
+from typing import Dict, Any, Optional, AsyncIterable, List, Set, Tuple
+import httpx
 
-    def __init__(self, max_connections: int = 10, idle_timeout: int = 60):
-        """
-        Initialize the connection pool.
+logger = logging.getLogger(__name__)
 
-        Args:
-            max_connections: Maximum connections per service
-            idle_timeout: Maximum idle time in seconds before closing
-        """
-        self.pools: Dict[str, List[Tuple[httpx.AsyncClient, float]]] = {}
-        self.max_connections = max_connections
-        self.idle_timeout = idle_timeout
-        self.lock = asyncio.Lock()
+class CircuitState(Enum):
+    """Circuit breaker states."""
+    CLOSED = "CLOSED"        # Normal operation
+    OPEN = "OPEN"            # Service is failing, not accepting requests
+    HALF_OPEN = "HALF_OPEN"  # Testing if service is back online
 
-    async def get_connection(self, service_url: str) -> httpx.AsyncClient:
-        """
-        Get a connection from the pool or create a new one.
-
-        Args:
-            service_url: URL of the service
-
-        Returns:
-            An HTTP client for the service
-        """
-        async with self.lock:
-            # Create pool for service if it doesn't exist
-            if service_url not in self.pools:
-                self.pools[service_url] = []
-
-            # Clean expired connections
-            now = time.time()
-            self.pools[service_url] = [
-                (client, timestamp)
-                for client, timestamp in self.pools[service_url]
-                if now - timestamp < self.idle_timeout
-            ]
-
-            # Check for available connection
-            if self.pools[service_url]:
-                client, _ = self.pools[service_url].pop(0)
-                return client
-
-            # Create new connection if pool not full
-            if len(self.pools[service_url]) < self.max_connections:
-                return self._create_new_connection(service_url)
-
-            # Wait for a connection to become available
-            while not self.pools[service_url]:
-                await asyncio.sleep(0.1)
-
-            client, _ = self.pools[service_url].pop(0)
-            return client
-
-    def release_connection(self, service_url: str, client: httpx.AsyncClient):
-        """
-        Release a connection back to the pool.
-
-        Args:
-            service_url: URL of the service
-            client: The HTTP client to release
-        """
-        if service_url in self.pools and len(self.pools[service_url]) < self.max_connections:
-            self.pools[service_url].append((client, time.time()))
-        else:
-            # Close connection if pool is full or doesn't exist
-            asyncio.create_task(client.aclose())
-
-    def _create_new_connection(self, service_url: str) -> httpx.AsyncClient:
-        """
-        Create a new HTTP client for the service.
-
-        Args:
-            service_url: URL of the service
-
-        Returns:
-            A new HTTP client
-        """
-        return httpx.AsyncClient(
-            base_url=service_url,
-            timeout=httpx.Timeout(30.0),  # 30 second timeout
-            follow_redirects=True
-        )
-
-    async def close(self):
-        """
-        Close all connections in the pool.
-        """
-        for service_url, connections in self.pools.items():
-            for client, _ in connections:
-                await client.aclose()
-        self.pools.clear()
-```
-
-### Circuit Breaker
-
-The circuit breaker prevents repeated attempts to call a failing service, allowing it time to recover and preventing cascading failures.
-
-```python
 class CircuitBreaker:
     """
-    Circuit breaker to prevent repeated calls to failing services.
+    Circuit breaker for service call protection.
+
+    Implements the circuit breaker pattern to prevent cascading failures when a
+    service is experiencing issues. When too many failures occur, the circuit
+    "opens" and prevents further calls for a set recovery period.
     """
 
-    # Circuit states
-    CLOSED = "CLOSED"      # Normal operation, requests go through
-    OPEN = "OPEN"          # Service is down, reject requests immediately
-    HALF_OPEN = "HALF_OPEN"  # Testing if service is back up
-
-    def __init__(
-        self,
-        failure_threshold: int = 5,
-        reset_timeout: int = 30,
-        half_open_max_calls: int = 1
-    ):
+    def __init__(self, failure_threshold: int = 5, recovery_time: int = 30):
         """
         Initialize the circuit breaker.
 
         Args:
-            failure_threshold: Number of failures before opening circuit
-            reset_timeout: Seconds before trying half-open state
-            half_open_max_calls: Max calls allowed in half-open state
+            failure_threshold: Number of failures before opening the circuit
+            recovery_time: Time in seconds before checking if service is back online
         """
+        self.failure_count = 0
         self.failure_threshold = failure_threshold
-        self.reset_timeout = reset_timeout
-        self.half_open_max_calls = half_open_max_calls
+        self.recovery_time = recovery_time
+        self.state = CircuitState.CLOSED
+        self.last_failure_time = None
 
-        self.services = {}  # Track state for each service
-        self.lock = asyncio.Lock()
+    def record_success(self):
+        """Record a successful call."""
+        if self.state == CircuitState.HALF_OPEN:
+            # Reset on success in half-open state
+            self.failure_count = 0
+            self.state = CircuitState.CLOSED
+            logger.info("Circuit half-open call succeeded, circuit closed")
 
-    async def get_service_state(self, service_name: str) -> dict:
+    def record_failure(self):
+        """Record a failed call."""
+        self.failure_count += 1
+        self.last_failure_time = time.time()
+
+        if self.state == CircuitState.CLOSED and self.failure_count >= self.failure_threshold:
+            # Open the circuit
+            self.state = CircuitState.OPEN
+            logger.warning(f"Circuit opened after {self.failure_count} failures")
+
+    def is_open(self) -> bool:
         """
-        Get or create state tracking for a service.
-
-        Args:
-            service_name: The service to get state for
+        Check if circuit is open.
 
         Returns:
-            Service state dictionary
+            True if circuit is open and calls should be prevented, False otherwise
         """
-        async with self.lock:
-            if service_name not in self.services:
-                self.services[service_name] = {
-                    "state": self.CLOSED,
-                    "failures": 0,
-                    "last_failure_time": 0,
-                    "half_open_calls": 0
-                }
-            return self.services[service_name]
-
-    async def should_allow_request(self, service_name: str) -> bool:
-        """
-        Check if a request should be allowed through.
-
-        Args:
-            service_name: The service to check
-
-        Returns:
-            True if request should be allowed, False otherwise
-        """
-        service = await self.get_service_state(service_name)
-
-        # If circuit is CLOSED, always allow
-        if service["state"] == self.CLOSED:
+        if self.state == CircuitState.OPEN:
+            # Check if recovery time has elapsed
+            if self.last_failure_time and time.time() - self.last_failure_time >= self.recovery_time:
+                # Move to half-open state
+                self.state = CircuitState.HALF_OPEN
+                logger.info(f"Circuit moved to half-open state after {self.recovery_time}s")
+                return False
             return True
-
-        # If circuit is OPEN, check if reset timeout has elapsed
-        if service["state"] == self.OPEN:
-            if time.time() - service["last_failure_time"] > self.reset_timeout:
-                # Transition to HALF_OPEN
-                async with self.lock:
-                    service["state"] = self.HALF_OPEN
-                    service["half_open_calls"] = 0
-                return True
-            return False
-
-        # If HALF_OPEN, allow limited calls
-        if service["state"] == self.HALF_OPEN:
-            async with self.lock:
-                if service["half_open_calls"] < self.half_open_max_calls:
-                    service["half_open_calls"] += 1
-                    return True
-            return False
-
-    async def record_success(self, service_name: str):
-        """
-        Record a successful call to the service.
-
-        Args:
-            service_name: The service that was called
-        """
-        async with self.lock:
-            service = await self.get_service_state(service_name)
-
-            # Reset failures on success
-            service["failures"] = 0
-
-            # If HALF_OPEN and successful, transition to CLOSED
-            if service["state"] == self.HALF_OPEN:
-                service["state"] = self.CLOSED
-                service["half_open_calls"] = 0
-
-    async def record_failure(self, service_name: str):
-        """
-        Record a failed call to the service.
-
-        Args:
-            service_name: The service that failed
-        """
-        async with self.lock:
-            service = await self.get_service_state(service_name)
-
-            # Record failure
-            service["failures"] += 1
-            service["last_failure_time"] = time.time()
-
-            # If threshold reached, open circuit
-            if service["state"] == self.CLOSED and service["failures"] >= self.failure_threshold:
-                service["state"] = self.OPEN
-
-            # If HALF_OPEN and failed, go back to OPEN
-            if service["state"] == self.HALF_OPEN:
-                service["state"] = self.OPEN
-                service["half_open_calls"] = 0
-```
-
-### Retry Strategy
-
-The retry strategy handles transient failures by automatically retrying failed requests.
-
-```python
-class RetryStrategy:
-    """
-    Strategy for retrying failed network requests.
-    """
-
-    def __init__(
-        self,
-        max_retries: int = 3,
-        initial_backoff: float = 0.1,
-        backoff_factor: float = 2.0,
-        max_backoff: float = 10.0,
-        retryable_status_codes: List[int] = None,
-        retryable_exceptions: List[Type[Exception]] = None
-    ):
-        """
-        Initialize the retry strategy.
-
-        Args:
-            max_retries: Maximum number of retry attempts
-            initial_backoff: Initial backoff time in seconds
-            backoff_factor: Multiplier for backoff on each retry
-            max_backoff: Maximum backoff time in seconds
-            retryable_status_codes: HTTP status codes to retry
-            retryable_exceptions: Exception types to retry
-        """
-        self.max_retries = max_retries
-        self.initial_backoff = initial_backoff
-        self.backoff_factor = backoff_factor
-        self.max_backoff = max_backoff
-
-        self.retryable_status_codes = retryable_status_codes or [
-            408,  # Request Timeout
-            429,  # Too Many Requests
-            500,  # Internal Server Error
-            502,  # Bad Gateway
-            503,  # Service Unavailable
-            504   # Gateway Timeout
-        ]
-
-        self.retryable_exceptions = retryable_exceptions or [
-            httpx.ConnectError,
-            httpx.ReadError,
-            httpx.WriteError,
-            httpx.PoolTimeout,
-            httpx.ReadTimeout,
-            httpx.WriteTimeout,
-            httpx.ConnectTimeout,
-            asyncio.TimeoutError
-        ]
-
-    def should_retry(self, attempt: int, exception: Exception = None, status_code: int = None) -> bool:
-        """
-        Determine if a request should be retried.
-
-        Args:
-            attempt: The current attempt number (0-based)
-            exception: The exception that occurred, if any
-            status_code: The HTTP status code, if any
-
-        Returns:
-            True if the request should be retried, False otherwise
-        """
-        # Check if we've exceeded max retries
-        if attempt >= self.max_retries:
-            return False
-
-        # Check if the exception is retryable
-        if exception is not None:
-            return any(isinstance(exception, exc_type) for exc_type in self.retryable_exceptions)
-
-        # Check if the status code is retryable
-        if status_code is not None:
-            return status_code in self.retryable_status_codes
 
         return False
 
-    def get_backoff_time(self, attempt: int) -> float:
+class ConnectionPool:
+    """
+    Pool of HTTP connections for a service.
+
+    Manages a pool of httpx.AsyncClient instances for efficient connection reuse.
+    Implements connection limiting and automatic cleanup.
+    """
+
+    def __init__(self, endpoint: str, max_size: int = 10, min_size: int = 2):
         """
-        Calculate the backoff time for a retry attempt.
+        Initialize the connection pool.
 
         Args:
-            attempt: The current attempt number (0-based)
+            endpoint: Service endpoint URL
+            max_size: Maximum number of connections in the pool
+            min_size: Minimum number of connections to maintain
+        """
+        self.endpoint = endpoint
+        self.max_size = max_size
+        self.min_size = min_size
+        self.connections: List[httpx.AsyncClient] = []
+        self.semaphore = asyncio.Semaphore(max_size)
+        self._closed = False
+
+    async def initialize(self):
+        """Initialize the connection pool with min_size connections."""
+        # Create initial connections
+        for _ in range(self.min_size):
+            client = httpx.AsyncClient(base_url=self.endpoint, timeout=10.0)
+            self.connections.append(client)
+
+        logger.debug(f"Initialized connection pool for {self.endpoint} with {self.min_size} connections")
+
+    async def get_connection(self) -> httpx.AsyncClient:
+        """
+        Get a connection from the pool.
 
         Returns:
-            The backoff time in seconds
+            An httpx.AsyncClient connection
+
+        Raises:
+            RuntimeError: If the pool is closed
         """
-        backoff = self.initial_backoff * (self.backoff_factor ** attempt)
-        return min(backoff, self.max_backoff)
-```
+        if self._closed:
+            raise RuntimeError("Connection pool is closed")
 
-### Complete Network MCP Client Implementation
+        await self.semaphore.acquire()
 
-Here's the complete implementation of the Network MCP Client:
+        try:
+            # Get existing connection or create new one
+            if self.connections:
+                return self.connections.pop()
+            else:
+                logger.debug(f"Creating new connection to {self.endpoint}")
+                return httpx.AsyncClient(base_url=self.endpoint, timeout=10.0)
+        except Exception as e:
+            # Release semaphore on error
+            self.semaphore.release()
+            raise e
 
-```python
-import asyncio
-import httpx
-import json
-import logging
-import time
-from typing import Dict, List, Any, AsyncIterable, Optional, Tuple, Type
+    def release_connection(self, connection: httpx.AsyncClient):
+        """
+        Return a connection to the pool.
 
-logger = logging.getLogger(__name__)
+        Args:
+            connection: The connection to return
+        """
+        if self._closed:
+            # Close the connection if pool is closed
+            asyncio.create_task(connection.aclose())
+            return
 
-class ServiceNotFoundError(Exception):
-    """Raised when a service cannot be found."""
-    pass
+        # Add back to pool if we're under max_size
+        if len(self.connections) < self.max_size:
+            self.connections.append(connection)
+        else:
+            # Close the connection if pool is full
+            asyncio.create_task(connection.aclose())
 
-class ToolNotFoundError(Exception):
-    """Raised when a tool cannot be found."""
-    pass
+        # Release semaphore
+        self.semaphore.release()
 
-class ResourceNotFoundError(Exception):
-    """Raised when a resource cannot be found."""
-    pass
+    async def close_all(self):
+        """Close all connections in the pool."""
+        self._closed = True
+
+        for connection in self.connections:
+            await connection.aclose()
+
+        self.connections.clear()
+        logger.debug(f"Closed all connections in pool for {self.endpoint}")
 
 class ServiceCallError(Exception):
-    """Raised when a service call fails."""
+    """Error calling a service."""
     pass
 
-class ResourceReadError(Exception):
-    """Raised when a resource read fails."""
+class CircuitOpenError(ServiceCallError):
+    """Error due to circuit breaker being open."""
     pass
 
-class ResourceStreamError(Exception):
-    """Raised when a resource stream fails."""
-    pass
-
-class CircuitOpenError(Exception):
-    """Raised when the circuit breaker is open."""
+class ResourceStreamError(ServiceCallError):
+    """Error streaming a resource."""
     pass
 
 class NetworkMcpClient:
     """
-    Network-capable MCP client for communicating with remote MCP services.
-    Maintains the same interface as the Phase 3 MCP client but handles
-    network communication, retries, circuit breaking, and error recovery.
+    Client for communicating with distributed MCP services over the network.
+
+    Implements the Model Context Protocol client interface for making tool calls
+    and streaming resources from remote MCP servers over HTTP and SSE.
     """
 
-    def __init__(self, service_discovery, config: Dict[str, Any] = None):
+    def __init__(self, service_discovery):
         """
-        Initialize the Network MCP client.
+        Initialize the client.
 
         Args:
-            service_discovery: The service discovery instance for resolving service endpoints
-            config: Optional configuration dictionary
+            service_discovery: Service discovery interface for resolving service endpoints
         """
         self.service_discovery = service_discovery
-        self.config = config or {}
-
-        # Initialize connection pool
-        max_connections = self.config.get("max_connections", 10)
-        idle_timeout = self.config.get("idle_timeout", 60)
-        self.connection_pool = ConnectionPool(max_connections, idle_timeout)
-
-        # Initialize circuit breaker
-        failure_threshold = self.config.get("failure_threshold", 5)
-        reset_timeout = self.config.get("reset_timeout", 30)
-        half_open_max_calls = self.config.get("half_open_max_calls", 1)
-        self.circuit_breaker = CircuitBreaker(
-            failure_threshold,
-            reset_timeout,
-            half_open_max_calls
-        )
-
-        # Initialize retry strategy
-        max_retries = self.config.get("max_retries", 3)
-        initial_backoff = self.config.get("initial_backoff", 0.1)
-        backoff_factor = self.config.get("backoff_factor", 2.0)
-        max_backoff = self.config.get("max_backoff", 10.0)
-        self.retry_strategy = RetryStrategy(
-            max_retries,
-            initial_backoff,
-            backoff_factor,
-            max_backoff
-        )
-
-        # Track service connections
-        self.services = {}
-
-        logger.info(f"Initialized Network MCP Client with service discovery: {service_discovery}")
+        self.connection_pools: Dict[str, ConnectionPool] = {}
+        self.circuit_breakers: Dict[str, CircuitBreaker] = {}
+        self._active_tasks: Set[asyncio.Task] = set()
 
     async def connect(self, service_name: str) -> None:
         """
@@ -573,1274 +279,1539 @@ class NetworkMcpClient:
             service_name: Name of the service to connect to
 
         Raises:
-            ServiceNotFoundError: If the service cannot be found
-            ConnectionError: If the connection cannot be established
+            ServiceCallError: If the service cannot be found or connected to
         """
-        # Skip if already connected
-        if service_name in self.services:
-            return
+        if service_name in self.connection_pools:
+            return  # Already connected
 
-        # Resolve service endpoint
+        # Get service endpoint from discovery
         endpoint = await self.service_discovery.resolve(service_name)
         if not endpoint:
-            raise ServiceNotFoundError(f"Service '{service_name}' not found")
+            raise ServiceCallError(f"Service {service_name} not found")
 
-        # Create connection (just store the endpoint URL)
-        self.services[service_name] = {
-            "endpoint": endpoint,
-            "connected": True
-        }
+        # Initialize connection pool for this service
+        pool = ConnectionPool(endpoint)
+        await pool.initialize()
+        self.connection_pools[service_name] = pool
 
-        logger.info(f"Connected to MCP service: {service_name} at {endpoint}")
+        # Initialize circuit breaker for this service
+        self.circuit_breakers[service_name] = CircuitBreaker()
 
-    async def call_tool(self, service_name: str, tool_name: str, arguments: dict) -> dict:
+        logger.info(f"Connected to MCP service {service_name} at {endpoint}")
+
+    async def call_tool(
+        self,
+        service_name: str,
+        tool_name: str,
+        arguments: Dict[str, Any],
+        timeout: float = 30.0,
+        max_retries: int = 3
+    ) -> Dict[str, Any]:
         """
         Call a tool on a specific MCP service.
 
+        Makes an HTTP POST request to the tool endpoint on the specified service.
+        Handles retries, circuit breaking, and error recovery.
+
         Args:
-            service_name: Name of the service to call
+            service_name: Name of the service
             tool_name: Name of the tool to call
-            arguments: Arguments to pass to the tool
+            arguments: Tool arguments
+            timeout: Request timeout in seconds
+            max_retries: Maximum number of retries
 
         Returns:
-            The tool's response
+            Tool result
 
         Raises:
-            ServiceNotFoundError: If the service cannot be found
-            ToolNotFoundError: If the tool cannot be found
             ServiceCallError: If the call fails
-            CircuitOpenError: If the circuit breaker is open
+            CircuitOpenError: If circuit breaker is open
         """
-        # Ensure we're connected to the service
         await self.connect(service_name)
 
         # Check circuit breaker
-        if not await self.circuit_breaker.should_allow_request(service_name):
-            raise CircuitOpenError(f"Circuit breaker open for service '{service_name}'")
+        circuit = self.circuit_breakers.get(service_name)
+        if circuit and circuit.is_open():
+            raise CircuitOpenError(f"Circuit open for {service_name}")
 
-        service = self.services[service_name]
-        endpoint = service["endpoint"]
+        retries = 0
+        last_error = None
 
-        # Prepare for retries
-        attempt = 0
-        last_exception = None
-
-        while True:
-            client = None
+        while retries <= max_retries:
+            connection = None
             try:
                 # Get connection from pool
-                client = await self.connection_pool.get_connection(endpoint)
+                connection = await self._get_connection(service_name)
 
-                # Make request
-                response = await client.post(
+                # Make HTTP request to tool endpoint
+                response = await connection.post(
                     f"/tool/{tool_name}",
                     json=arguments,
-                    headers={"Content-Type": "application/json"}
+                    timeout=timeout
                 )
 
-                # Handle success
+                # Return connection to pool
+                if connection:
+                    self.connection_pools[service_name].release_connection(connection)
+                    connection = None
+
+                # Handle response
                 if response.status_code == 200:
-                    result = response.json()
-                    await self.circuit_breaker.record_success(service_name)
-                    return result
+                    # Record success for circuit breaker
+                    if circuit:
+                        circuit.record_success()
 
-                # Handle error responses
-                if response.status_code == 404:
-                    raise ToolNotFoundError(f"Tool '{tool_name}' not found on service '{service_name}'")
+                    # Return result
+                    return response.json()
+                else:
+                    # Handle error response
+                    error_message = self._handle_error(service_name, response)
+                    last_error = ServiceCallError(error_message)
 
-                # Consider retrying based on status code
-                if self.retry_strategy.should_retry(attempt, status_code=response.status_code):
-                    attempt += 1
-                    backoff_time = self.retry_strategy.get_backoff_time(attempt)
-                    logger.warning(f"Retrying tool call '{service_name}.{tool_name}' (attempt {attempt+1}) after {backoff_time}s - received status {response.status_code}")
-                    await asyncio.sleep(backoff_time)
-                    continue
-
-                # Non-retryable error
-                error_detail = f"Status: {response.status_code}"
-                try:
-                    error_json = response.json()
-                    if isinstance(error_json, dict) and "error" in error_json:
-                        error_detail = f"{error_detail}, Error: {error_json['error']}"
-                except:
-                    # Failed to parse error JSON
-                    error_detail = f"{error_detail}, Body: {response.text[:100]}"
-
-                raise ServiceCallError(f"Failed to call tool '{service_name}.{tool_name}': {error_detail}")
-
-            except (ServiceNotFoundError, ToolNotFoundError, CircuitOpenError):
-                # Don't retry these specific exceptions
-                raise
+            except (httpx.ConnectError, httpx.ReadTimeout, httpx.WriteTimeout) as e:
+                # Network or timeout error - retry
+                last_error = ServiceCallError(f"Network error calling {service_name}.{tool_name}: {str(e)}")
+                logger.warning(f"Retryable error in call to {service_name}.{tool_name}: {e}")
 
             except Exception as e:
-                last_exception = e
+                # Other exception
+                last_error = ServiceCallError(f"Error calling {service_name}.{tool_name}: {str(e)}")
+                logger.error(f"Error in call to {service_name}.{tool_name}: {e}", exc_info=True)
 
-                # Consider retrying based on exception type
-                if self.retry_strategy.should_retry(attempt, exception=e):
-                    attempt += 1
-                    backoff_time = self.retry_strategy.get_backoff_time(attempt)
-                    logger.warning(f"Retrying resource stream '{service_name}/{resource_uri}' (attempt {attempt+1}) after {backoff_time}s due to {type(e).__name__}: {str(e)}")
-                    await asyncio.sleep(backoff_time)
-                    continue
+            finally:
+                # Return connection to pool if not already done
+                if connection:
+                    self.connection_pools[service_name].release_connection(connection)
 
-                # Record failure if we're not retrying
-                await self.circuit_breaker.record_failure(service_name)
-                raise ResourceStreamError(f"Failed to stream resource '{service_name}/{resource_uri}': {str(e)}") from e
+            # Record failure for circuit breaker
+            if circuit:
+                circuit.record_failure()
 
-    async def close(self) -> None:
+            # Should we retry?
+            retries += 1
+            if retries <= max_retries:
+                # Exponential backoff
+                wait_time = 0.1 * (2 ** retries)
+                logger.info(f"Retrying {service_name}.{tool_name} in {wait_time:.2f}s (attempt {retries}/{max_retries})")
+                await asyncio.sleep(wait_time)
+            else:
+                break
+
+        # All retries failed
+        raise last_error or ServiceCallError(f"Unknown error calling {service_name}.{tool_name}")
+
+    async def get_resource(
+        self,
+        service_name: str,
+        resource_path: str,
+        timeout: float = 60.0
+    ) -> AsyncIterable[Dict[str, Any]]:
         """
-        Close all connections and clean up resources.
+        Get a streaming resource from a specific MCP service.
+
+        Creates an SSE connection to the resource endpoint on the specified service.
+        Yields items from the SSE stream as they arrive.
+
+        Args:
+            service_name: Name of the service
+            resource_path: Path to the resource
+            timeout: Connection timeout in seconds
+
+        Returns:
+            AsyncIterable of resource data
+
+        Raises:
+            ServiceCallError: If the resource access fails
+            CircuitOpenError: If circuit breaker is open
         """
-        # Close connection pool
-        await self.connection_pool.close()
+        await self.connect(service_name)
 
-        # Clear service registry
-        self.services.clear()
+        # Check circuit breaker
+        circuit = self.circuit_breakers.get(service_name)
+        if circuit and circuit.is_open():
+            raise CircuitOpenError(f"Circuit open for {service_name}")
 
-        logger.info("Network MCP Client closed")
+        connection = None
+        stream = None
+
+        try:
+            # Get connection from pool
+            connection = await self._get_connection(service_name)
+
+            # Create SSE connection to resource endpoint
+            stream = await connection.stream(
+                "GET",
+                f"/resource/{resource_path}",
+                timeout=timeout,
+                headers={"Accept": "text/event-stream"}
+            )
+
+            # Never return connection to pool while streaming
+            # We'll close it manually when done
+
+            # Stream data from SSE connection
+            async with stream:
+                async for line in stream.aiter_lines():
+                    if line.startswith("data: "):
+                        try:
+                            data = json.loads(line[6:])
+                            yield data
+                        except json.JSONDecodeError:
+                            logger.warning(f"Invalid JSON in SSE stream: {line[6:]}")
+
+        except (httpx.ConnectError, httpx.ReadTimeout, httpx.WriteTimeout) as e:
+            # Network or timeout error
+            if circuit:
+                circuit.record_failure()
+            raise ResourceStreamError(f"Network error accessing {service_name}/{resource_path}: {str(e)}")
+
+        except Exception as e:
+            # Other exception
+            if circuit:
+                circuit.record_failure()
+            logger.error(f"Error streaming resource {service_name}/{resource_path}: {e}", exc_info=True)
+            raise ResourceStreamError(f"Error streaming {service_name}/{resource_path}: {str(e)}")
+
+        finally:
+            # Clean up resources
+            if stream:
+                # Nothing to do, the context manager handles it
+                pass
+
+            if connection:
+                # Return connection to pool when streaming is done or failed
+                self.connection_pools[service_name].release_connection(connection)
+
+        # Record success for circuit breaker
+        if circuit:
+            circuit.record_success()
+
+    async def call_tool_batch(
+        self,
+        calls: List[Tuple[str, str, Dict[str, Any]]],
+        timeout: float = 30.0,
+        max_retries: int = 3
+    ) -> List[Dict[str, Any]]:
+        """
+        Call multiple tools in parallel.
+
+        Args:
+            calls: List of (service_name, tool_name, arguments) tuples
+            timeout: Request timeout in seconds
+            max_retries: Maximum number of retries
+
+        Returns:
+            List of tool results in the same order as the calls
+        """
+        # Create tasks for each call
+        tasks = []
+        for service_name, tool_name, arguments in calls:
+            task = self.create_background_task(
+                self.call_tool(
+                    service_name=service_name,
+                    tool_name=tool_name,
+                    arguments=arguments,
+                    timeout=timeout,
+                    max_retries=max_retries
+                )
+            )
+            tasks.append(task)
+
+        # Wait for all tasks to complete
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Process results
+        processed_results = []
+        for result in results:
+            if isinstance(result, Exception):
+                # Return error as dict
+                processed_results.append({
+                    "status": "error",
+                    "error": str(result)
+                })
+            else:
+                processed_results.append(result)
+
+        return processed_results
+
+    def create_background_task(self, coroutine) -> asyncio.Task:
+        """
+        Create a tracked background task.
+
+        Args:
+            coroutine: Coroutine to run as a task
+
+        Returns:
+            The created task
+        """
+        task = asyncio.create_task(coroutine)
+        self._active_tasks.add(task)
+        task.add_done_callback(self._remove_task)
+        return task
+
+    def _remove_task(self, task):
+        """Remove a task from the active tasks set."""
+        self._active_tasks.discard(task)
+
+    async def close(self):
+        """
+        Close all connections.
+
+        Closes all connection pools and cancels any active tasks.
+        """
+        # Cancel all active tasks
+        for task in self._active_tasks:
+            if not task.done():
+                task.cancel()
+
+        # Wait for all tasks to complete
+        if self._active_tasks:
+            await asyncio.gather(*self._active_tasks, return_exceptions=True)
+
+        # Close all connection pools
+        for service_name, pool in list(self.connection_pools.items()):
+            logger.info(f"Closing connections to {service_name}")
+            await pool.close_all()
+
+        self.connection_pools.clear()
+        self.circuit_breakers.clear()
+        logger.info("NetworkMcpClient closed")
+
+    async def _get_connection(self, service_name: str) -> httpx.AsyncClient:
+        """
+        Get a connection from the pool for a service.
+
+        Args:
+            service_name: Name of the service
+
+        Returns:
+            An httpx.AsyncClient connection
+
+        Raises:
+            ServiceCallError: If not connected to the service
+        """
+        pool = self.connection_pools.get(service_name)
+        if not pool:
+            raise ServiceCallError(f"Not connected to service {service_name}")
+
+        return await pool.get_connection()
+
+    def _handle_error(self, service_name: str, response) -> str:
+        """
+        Handle error response from service.
+
+        Args:
+            service_name: Name of the service
+            response: HTTP response
+
+        Returns:
+            Error message
+        """
+        status = response.status_code
+        try:
+            error_data = response.json()
+            error_message = error_data.get("detail", error_data.get("message", "Unknown error"))
+        except Exception:
+            error_message = response.text or f"HTTP {status}"
+
+        logger.error(f"Error from {service_name}: HTTP {status} - {error_message}")
+        return f"Service error ({status}): {error_message}"
 ```
 
-## Resource Streaming Pattern
+## Key Components
 
-Resource streaming uses Server-Sent Events (SSE) to receive continuous events from MCP services.
+### CircuitBreaker
 
-### SSE Event Format
-
-Server-Sent Events follow this format:
-
-```
-data: {"key": "value"}
-
-data: {"another": "event"}
-```
-
-Each event is a line starting with `data: ` followed by the event payload (usually JSON), and events are separated by double newlines.
-
-### Consuming SSE Streams
-
-Here's an example of consuming a resource stream:
+The CircuitBreaker implements the [circuit breaker pattern](https://martinfowler.com/bliki/CircuitBreaker.html) to prevent cascading failures when a service is experiencing issues:
 
 ```python
-async def process_history_stream(client, user_id):
-    """Process a stream of history events for a user."""
-    try:
-        async for event in client.stream_resource("memory", f"history/{user_id}/stream"):
-            # Process each event as it arrives
-            print(f"Received history event: {event}")
-
-            # Perform actions based on event type
-            if "message" in event:
-                # Process message event
-                await handle_message(event["message"])
-
-    except ResourceStreamError as e:
-        logger.error(f"Error streaming history: {e}")
-        # Implement fallback strategy
+class CircuitBreaker:
+    def __init__(self, failure_threshold: int = 5, recovery_time: int = 30):
+        self.failure_count = 0
+        self.failure_threshold = failure_threshold
+        self.recovery_time = recovery_time
+        self.state = CircuitState.CLOSED
+        self.last_failure_time = None
 ```
 
-## Error Handling Strategies
+**States:**
 
-### Error Types
+- **CLOSED**: Normal operation; requests flow through
+- **OPEN**: Service is failing; requests are blocked
+- **HALF-OPEN**: Recovery testing; allowing one request to check if service is back online
 
-The Network MCP Client defines several error types:
+**Configuration Options:**
 
-1. **ServiceNotFoundError**: The requested service is not registered
-2. **ToolNotFoundError**: The requested tool does not exist
-3. **ResourceNotFoundError**: The requested resource does not exist
-4. **ServiceCallError**: The service call failed for other reasons
-5. **ResourceReadError**: The resource read failed
-6. **ResourceStreamError**: The resource stream failed
-7. **CircuitOpenError**: The circuit breaker is open, preventing the call
+- `failure_threshold`: Number of failures before opening the circuit (default: 5)
+- `recovery_time`: Time in seconds before checking if service is back online (default: 30)
 
-### Error Handling Patterns
+### ConnectionPool
 
-Here are recommended patterns for handling errors:
+The ConnectionPool manages a pool of HTTP connections for efficient connection reuse:
 
 ```python
-# Pattern 1: Handle specific error types
+class ConnectionPool:
+    def __init__(self, endpoint: str, max_size: int = 10, min_size: int = 2):
+        self.endpoint = endpoint
+        self.max_size = max_size
+        self.min_size = min_size
+        self.connections: List[httpx.AsyncClient] = []
+        self.semaphore = asyncio.Semaphore(max_size)
+```
+
+**Key Features:**
+
+- Maintains a pool of `httpx.AsyncClient` instances
+- Limits concurrent connections with a semaphore
+- Lazy initialization of connections
+- Proper cleanup of connections when no longer needed
+
+**Configuration Options:**
+
+- `max_size`: Maximum number of connections in the pool (default: 10)
+- `min_size`: Minimum number of connections to maintain (default: 2)
+
+### NetworkMcpClient
+
+The NetworkMcpClient is the main class that provides the MCP client interface:
+
+```python
+class NetworkMcpClient:
+    def __init__(self, service_discovery):
+        self.service_discovery = service_discovery
+        self.connection_pools: Dict[str, ConnectionPool] = {}
+        self.circuit_breakers: Dict[str, CircuitBreaker] = {}
+        self._active_tasks: Set[asyncio.Task] = set()
+```
+
+**Key Methods:**
+
+- `connect`: Connects to a specific MCP service
+- `call_tool`: Calls a tool on a specific MCP service
+- `get_resource`: Gets a streaming resource from a specific MCP service
+- `call_tool_batch`: Calls multiple tools in parallel
+- `close`: Closes all connections
+
+## Usage Patterns
+
+### Basic Usage
+
+```python
+# Create service discovery
+service_discovery = SimpleServiceDiscovery()
+
+# Create client
+client = NetworkMcpClient(service_discovery)
+
+# Call a tool
 try:
-    result = await mcp_client.call_tool("memory", "store_input", {"user_id": user_id, "data": data})
-except ServiceNotFoundError:
-    # Service discovery issue
-    logger.error("Memory service not found")
-    # Fallback: Store locally until service is available
-except ToolNotFoundError:
-    # Service exists but tool doesn't
-    logger.error("store_input tool not found on memory service")
-    # Report configuration issue
-except CircuitOpenError:
-    # Service is temporarily unavailable
-    logger.warning("Memory service circuit open")
-    # Queue for later processing
+    result = await client.call_tool(
+        service_name="memory",
+        tool_name="store_input",
+        arguments={
+            "user_id": "user-123",
+            "input_data": {"message": "Hello, world!"}
+        }
+    )
+    print(f"Tool result: {result}")
 except ServiceCallError as e:
-    # Other service call failure
-    logger.error(f"Failed to store input: {e}")
-    # Attempt alternate storage or notify user
+    print(f"Error calling tool: {e}")
 
-# Pattern 2: Simplified error handling
+# Stream a resource
 try:
-    result = await mcp_client.call_tool("memory", "store_input", {"user_id": user_id, "data": data})
-except (ServiceNotFoundError, CircuitOpenError):
-    # Service unavailable, queue for later
-    await queue_for_later("memory", "store_input", {"user_id": user_id, "data": data})
-except Exception as e:
-    # Any other error
-    logger.error(f"Unexpected error storing input: {e}")
-    # Notify monitoring system
+    async for item in client.get_resource("memory", "history/user-123"):
+        print(f"Resource item: {item}")
+except ResourceStreamError as e:
+    print(f"Error streaming resource: {e}")
+
+# Clean up
+await client.close()
 ```
 
-## Integration with Service Discovery
-
-The Network MCP Client integrates with the service discovery mechanism to locate and connect to services.
-
-### Service Discovery Interface
+### Service Integration Pattern
 
 ```python
-class ServiceDiscovery:
-    """Interface for service discovery."""
+class MemoryServiceClient:
+    """High-level client for the Memory Service."""
 
-    async def resolve(self, service_name: str) -> Optional[str]:
-        """
-        Resolve a service name to an endpoint URL.
+    def __init__(self, mcp_client: NetworkMcpClient):
+        self.mcp_client = mcp_client
 
-        Args:
-            service_name: Name of the service to resolve
+    async def store_input(self, user_id: str, input_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Store input data in the Memory Service."""
+        return await self.mcp_client.call_tool(
+            service_name="memory",
+            tool_name="store_input",
+            arguments={
+                "user_id": user_id,
+                "input_data": input_data
+            }
+        )
 
-        Returns:
-            URL of the service or None if not found
-        """
-        pass
+    async def get_history(self, user_id: str) -> List[Dict[str, Any]]:
+        """Get history from the Memory Service."""
+        history = []
+        async for item in self.mcp_client.get_resource(
+            service_name="memory",
+            resource_path=f"history/{user_id}"
+        ):
+            history.append(item)
+        return history
 
-    async def is_healthy(self, service_name: str) -> bool:
-        """
-        Check if a service is healthy.
-
-        Args:
-            service_name: Name of the service to check
-
-        Returns:
-            True if the service is healthy, False otherwise
-        """
-        pass
+# Usage
+memory_client = MemoryServiceClient(mcp_client)
+result = await memory_client.store_input("user-123", {"message": "Hello"})
+history = await memory_client.get_history("user-123")
 ```
 
-### Usage with Network MCP Client
+### Batch Processing Pattern
 
 ```python
-# Initialize service discovery
-service_discovery = ServiceDiscovery()
-await service_discovery.initialize()
+# Define multiple calls
+calls = [
+    ("memory", "store_input", {"user_id": "user-1", "input_data": {"message": "Hello"}}),
+    ("memory", "store_input", {"user_id": "user-2", "input_data": {"message": "World"}}),
+    ("cognition", "get_context", {"user_id": "user-1"})
+]
 
-# Create network MCP client with service discovery
-mcp_client = NetworkMcpClient(service_discovery)
+# Call in parallel
+results = await client.call_tool_batch(calls)
 
-# Use client to call services
-result = await mcp_client.call_tool("memory", "store_input", {...})
+# Process results
+for i, result in enumerate(results):
+    service_name, tool_name, _ = calls[i]
+    if "error" in result:
+        print(f"Error calling {service_name}.{tool_name}: {result['error']}")
+    else:
+        print(f"Result from {service_name}.{tool_name}: {result}")
+```
+
+### Error Handling Pattern
+
+```python
+try:
+    result = await client.call_tool("memory", "store_input", {
+        "user_id": "user-123",
+        "input_data": {"message": "Hello"}
+    })
+    print(f"Success: {result}")
+except CircuitOpenError:
+    # Circuit is open, service is failing
+    print("Service is currently unavailable (circuit open)")
+    # Use fallback strategy
+    fallback_result = get_fallback_data()
+except ServiceCallError as e:
+    # Other service error
+    print(f"Service error: {e}")
+    # Log error and handle gracefully
+    log_error(e)
+```
+
+## Advanced Features
+
+### Connection Pooling
+
+The NetworkMcpClient includes a sophisticated connection pooling system that:
+
+1. Reuses existing connections to reduce latency
+2. Limits the number of concurrent connections to prevent resource exhaustion
+3. Creates connections on-demand to avoid unnecessary resource usage
+4. Properly closes connections when they're no longer needed
+
+Connection pooling configuration:
+
+```python
+# Configure connection pool sizes
+pool = ConnectionPool(
+    endpoint="http://memory-service:9000",
+    max_size=20,  # Max 20 concurrent connections
+    min_size=5    # Keep 5 connections ready
+)
+```
+
+### Circuit Breaking
+
+The circuit breaker pattern prevents cascading failures by temporarily stopping calls to a failing service:
+
+1. **CLOSED state**: Normal operation; all requests go through
+2. **OPEN state**: Service is failing; all requests are immediately rejected
+3. **HALF-OPEN state**: After a recovery period, one test request is allowed to see if the service is back online
+
+Circuit breaker configuration:
+
+```python
+# Configure circuit breaker
+circuit = CircuitBreaker(
+    failure_threshold=10,  # Open after 10 failures
+    recovery_time=60       # Try again after 60 seconds
+)
+```
+
+### Batch Processing
+
+The `call_tool_batch` method allows calling multiple tools in parallel:
+
+```python
+# Call multiple tools in parallel
+results = await client.call_tool_batch([
+    ("memory", "store_input", {"user_id": "user-1", "data": {"message": "Hello"}}),
+    ("cognition", "get_context", {"user_id": "user-1"})
+])
+```
+
+This is more efficient than making sequential calls, especially when the tools are independent of each other.
+
+### Background Tasks
+
+The NetworkMcpClient includes a task tracking system that:
+
+1. Creates and tracks background tasks
+2. Ensures proper cancellation when closing the client
+3. Prevents task leaks by monitoring task completion
+
+```python
+# Create a background task
+task = client.create_background_task(
+    some_coroutine()
+)
+
+# All tasks are properly cancelled when closing the client
+await client.close()
 ```
 
 ## Configuration Options
 
-The Network MCP Client supports the following configuration options:
+### Timeout Configuration
 
-| Option                | Description                           | Default | Recommended Range |
-| --------------------- | ------------------------------------- | ------- | ----------------- |
-| `max_connections`     | Maximum connections per service       | 10      | 5-20              |
-| `idle_timeout`        | Connection idle timeout (seconds)     | 60      | 30-120            |
-| `failure_threshold`   | Failures before circuit opens         | 5       | 3-10              |
-| `reset_timeout`       | Time before testing circuit (seconds) | 30      | 10-60             |
-| `half_open_max_calls` | Max calls in half-open state          | 1       | 1-3               |
-| `max_retries`         | Maximum retry attempts                | 3       | 2-5               |
-| `initial_backoff`     | Initial retry backoff (seconds)       | 0.1     | 0.1-1.0           |
-| `backoff_factor`      | Backoff multiplier for retries        | 2.0     | 1.5-3.0           |
-| `max_backoff`         | Maximum backoff time (seconds)        | 10.0    | 5.0-30.0          |
-
-Example configuration:
+Adjust timeouts based on expected operation duration:
 
 ```python
-config = {
-    "max_connections": 10,
-    "idle_timeout": 60,
-    "failure_threshold": 5,
-    "reset_timeout": 30,
-    "half_open_max_calls": 1,
-    "max_retries": 3,
-    "initial_backoff": 0.1,
-    "backoff_factor": 2.0,
-    "max_backoff": 10.0
-}
+# Quick operation (default: 30s)
+result = await client.call_tool(
+    service_name="memory",
+    tool_name="get_status",
+    arguments={},
+    timeout=5.0  # 5 second timeout
+)
 
-# Create client with custom config
-mcp_client = NetworkMcpClient(service_discovery, config)
-```
+# Long-running operation
+result = await client.call_tool(
+    service_name="cognition",
+    tool_name="generate_summary",
+    arguments={"text": long_text},
+    timeout=120.0  # 2 minute timeout
+)
 
-## Integration Examples
-
-### Core Application Integration
-
-```python
-# In app/main.py or similar
-from app.core.service_discovery import ServiceDiscovery
-from app.core.network_mcp_client import NetworkMcpClient
-
-# Setup function
-async def setup_mcp_client():
-    # Initialize service discovery
-    service_discovery = ServiceDiscovery()
-    await service_discovery.initialize()
-
-    # Create network MCP client
-    mcp_client = NetworkMcpClient(service_discovery)
-
-    return mcp_client
-
-# Startup event
-@app.on_event("startup")
-async def startup():
-    # Initialize MCP client
-    app.state.mcp_client = await setup_mcp_client()
-
-# Shutdown event
-@app.on_event("shutdown")
-async def shutdown():
-    # Close MCP client
-    if hasattr(app.state, "mcp_client"):
-        await app.state.mcp_client.close()
-```
-
-### Memory Service Integration
-
-```python
-# In app/services/memory.py
-class MemoryServiceClient:
-    """Client for the Memory Service."""
-
-    def __init__(self, mcp_client: NetworkMcpClient):
-        self.mcp_client = mcp_client
-        self.service_name = "memory"
-
-    async def store_input(self, user_id: str, input_data: dict) -> dict:
-        """Store input data for a user."""
-        return await self.mcp_client.call_tool(
-            self.service_name,
-            "store_input",
-            {
-                "user_id": user_id,
-                "input_data": input_data
-            }
-        )
-
-    async def get_history(self, user_id: str) -> list:
-        """Get history for a user."""
-        history, _ = await self.mcp_client.read_resource(
-            self.service_name,
-            f"history/{user_id}"
-        )
-        return history
-
-    async def stream_history(self, user_id: str) -> AsyncIterable:
-        """Stream history events for a user."""
-        return self.mcp_client.stream_resource(
-            self.service_name,
-            f"history/{user_id}/stream"
-        )
-```
-
-### Endpoint Integration
-
-```python
-# In app/api/input.py
-from fastapi import APIRouter, Depends, HTTPException
-from app.services.memory import MemoryServiceClient
-from app.dependencies import get_memory_service, get_current_user
-
-router = APIRouter()
-
-@router.post("/input")
-async def receive_input(
-    input_data: dict,
-    user: dict = Depends(get_current_user),
-    memory_service: MemoryServiceClient = Depends(get_memory_service)
+# Streaming resource (default: 60s for connection establishment)
+async for item in client.get_resource(
+    service_name="memory",
+    resource_path="stream_data",
+    timeout=300.0  # 5 minute connection timeout
 ):
-    """Receive input from client."""
-    try:
-        # Store input using memory service
-        result = await memory_service.store_input(user["user_id"], input_data)
-        return {"status": "success", "result": result}
-    except Exception as e:
-        # Handle errors
-        raise HTTPException(status_code=500, detail=f"Failed to process input: {str(e)}")
+    process_item(item)
 ```
 
-## Complete Usage Example
+### Retry Configuration
 
-Here's a complete example showing how to use the Network MCP Client:
+Adjust retry settings based on service reliability:
 
 ```python
-import asyncio
-import logging
-from app.core.service_discovery import ServiceDiscovery
-from app.core.network_mcp_client import NetworkMcpClient
+# More retries for unreliable service
+result = await client.call_tool(
+    service_name="unreliable_service",
+    tool_name="flaky_operation",
+    arguments={},
+    max_retries=5  # Try up to 5 times (default: 3)
+)
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-async def main():
-    # Initialize service discovery
-    service_discovery = ServiceDiscovery()
-    await service_discovery.initialize()
-
-    # Create network MCP client
-    mcp_client = NetworkMcpClient(service_discovery)
-
-    try:
-        # Call a tool
-        user_id = "user-123"
-        input_data = {
-            "message": "Hello, world!",
-            "timestamp": "2025-03-20T12:34:56Z"
-        }
-
-        result = await mcp_client.call_tool(
-            "memory",
-            "store_input",
-            {
-                "user_id": user_id,
-                "input_data": input_data
-            }
-        )
-
-        logger.info(f"Store result: {result}")
-
-        # Read a resource
-        history, _ = await mcp_client.read_resource(
-            "memory",
-            f"history/{user_id}"
-        )
-
-        logger.info(f"History: {history}")
-
-        # Stream a resource
-        logger.info("Starting history stream...")
-        count = 0
-        async for event in mcp_client.stream_resource(
-            "memory",
-            f"history/{user_id}/stream"
-        ):
-            logger.info(f"Stream event: {event}")
-            count += 1
-            if count >= 5:
-                break
-
-    except Exception as e:
-        logger.error(f"Error: {e}")
-    finally:
-        # Clean up
-        await mcp_client.close()
-
-if __name__ == "__main__":
-    asyncio.run(main())
+# No retries for idempotent operation
+result = await client.call_tool(
+    service_name="critical_service",
+    tool_name="non_idempotent_operation",
+    arguments={},
+    max_retries=0  # No retries
+)
 ```
 
-## Testing the Network MCP Client
+### Circuit Breaker Configuration
+
+```python
+# Custom circuit breaker for each service
+client.circuit_breakers["memory"] = CircuitBreaker(
+    failure_threshold=5,   # Open after 5 failures
+    recovery_time=30       # Try again after 30 seconds
+)
+
+client.circuit_breakers["cognition"] = CircuitBreaker(
+    failure_threshold=10,  # More tolerant of failures
+    recovery_time=60       # Longer recovery time
+)
+```
+
+## Error Handling Strategies
+
+### Retry-able vs. Non-retry-able Errors
+
+The client automatically distinguishes between errors that should be retried and those that should not:
+
+**Retry-able Errors:**
+
+- Network connection failures
+- Read/write timeouts
+- Temporary service unavailability (HTTP 503)
+
+**Non-retry-able Errors:**
+
+- Authentication errors (HTTP 401)
+- Authorization errors (HTTP 403)
+- Not found errors (HTTP 404)
+- Client errors (HTTP 4xx except 429)
+- Invalid arguments
+
+### Fallback Strategies
+
+Implement fallback strategies for when services are unavailable:
+
+```python
+try:
+    result = await client.call_tool("memory", "get_data", {"id": "123"})
+except (ServiceCallError, CircuitOpenError):
+    # Service is unavailable or failing
+    # Use cached data as fallback
+    result = cache.get("data_123")
+    if not result:
+        # No cached data, use default
+        result = {"status": "default", "data": []}
+```
+
+### Graceful Degradation
+
+Design your system to continue functioning with reduced capabilities when services are unavailable:
+
+```python
+try:
+    # Try to get enhanced data from cognition service
+    context = await client.call_tool("cognition", "get_context", {"user_id": "123"})
+    enriched_data = process_with_context(data, context)
+    return enriched_data
+except (ServiceCallError, CircuitOpenError):
+    # Cognition service unavailable, return basic data
+    logger.warning("Cognition service unavailable, returning basic data")
+    return data
+```
+
+## Testing
 
 ### Unit Testing
 
 ```python
 import pytest
 import asyncio
-from unittest.mock import AsyncMock, patch
-from app.core.network_mcp_client import NetworkMcpClient, ServiceNotFoundError
+from unittest.mock import AsyncMock, MagicMock, patch
+import httpx
+from network_mcp_client import NetworkMcpClient, ServiceCallError, CircuitOpenError
 
 @pytest.fixture
 def mock_service_discovery():
-    """Create a mock service discovery."""
-    mock = AsyncMock()
-    mock.resolve.return_value = "http://localhost:9000"
-    mock.is_healthy.return_value = True
-    return mock
+    """Mock service discovery."""
+    discovery = AsyncMock()
+    discovery.resolve.return_value = "http://test-service:8000"
+    return discovery
 
 @pytest.fixture
-async def mcp_client(mock_service_discovery):
-    """Create a test MCP client."""
+async def client(mock_service_discovery):
+    """Create a client with mock service discovery."""
     client = NetworkMcpClient(mock_service_discovery)
     yield client
     await client.close()
 
 @pytest.mark.asyncio
-async def test_connect(mcp_client, mock_service_discovery):
-    """Test connecting to a service."""
-    # Connect to service
-    await mcp_client.connect("memory")
-
-    # Verify service discovery was called
-    mock_service_discovery.resolve.assert_called_once_with("memory")
-
-    # Verify service was stored
-    assert "memory" in mcp_client.services
-    assert mcp_client.services["memory"]["endpoint"] == "http://localhost:9000"
-
-@pytest.mark.asyncio
-async def test_connect_service_not_found(mcp_client, mock_service_discovery):
-    """Test connecting to a non-existent service."""
-    # Configure mock to return None
-    mock_service_discovery.resolve.return_value = None
-
-    # Attempt to connect
-    with pytest.raises(ServiceNotFoundError):
-        await mcp_client.connect("non-existent")
-
-@pytest.mark.asyncio
-async def test_call_tool(mcp_client):
-    """Test calling a tool."""
+async def test_call_tool_success(client, monkeypatch):
+    """Test successful tool call."""
     # Mock httpx.AsyncClient
-    with patch("httpx.AsyncClient") as mock_client:
-        # Configure mock client
-        mock_instance = AsyncMock()
-        mock_client.return_value = mock_instance
+    mock_client = AsyncMock()
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {"result": "success"}
+    mock_client.post.return_value = mock_response
 
-        # Configure post response
-        mock_response = AsyncMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {"result": "success"}
-        mock_instance.post.return_value = mock_response
+    # Mock connection pool
+    mock_pool = AsyncMock()
+    mock_pool.get_connection.return_value = mock_client
+    mock_pool.release_connection = AsyncMock()
 
-        # Call tool
-        result = await mcp_client.call_tool(
-            "memory",
-            "store_input",
-            {"user_id": "test", "data": "test"}
-        )
+    # Replace connection pool
+    client.connection_pools["test-service"] = mock_pool
 
-        # Verify result
-        assert result == {"result": "success"}
+    # Call tool
+    result = await client.call_tool("test-service", "test-tool", {"arg": "value"})
 
-        # Verify post was called
-        mock_instance.post.assert_called_once()
+    # Check result
+    assert result == {"result": "success"}
 
-        # Verify URL
-        call_args = mock_instance.post.call_args[0]
-        assert call_args[0] == "/tool/store_input"
+    # Check that the request was made correctly
+    mock_client.post.assert_called_once_with(
+        "/tool/test-tool",
+        json={"arg": "value"},
+        timeout=30.0
+    )
+
+@pytest.mark.asyncio
+async def test_call_tool_network_error(client, monkeypatch):
+    """Test tool call with network error."""
+    # Mock httpx.AsyncClient
+    mock_client = AsyncMock()
+    mock_client.post.side_effect = httpx.ConnectError("Connection error")
+
+    # Mock connection pool
+    mock_pool = AsyncMock()
+    mock_pool.get_connection.return_value = mock_client
+    mock_pool.release_connection = AsyncMock()
+
+    # Replace connection pool
+    client.connection_pools["test-service"] = mock_pool
+
+    # Mock asyncio.sleep to avoid waiting
+    monkeypatch.setattr(asyncio, "sleep", AsyncMock())
+
+    # Call tool - should retry and eventually fail
+    with pytest.raises(ServiceCallError) as exc_info:
+        await client.call_tool("test-service", "test-tool", {"arg": "value"}, max_retries=2)
+
+    # Check error message
+    assert "Connection error" in str(exc_info.value)
+
+    # Check that post was called multiple times (initial + retries)
+    assert mock_client.post.call_count == 3
+
+    # Check that the connection was released
+    assert mock_pool.release_connection.call_count == 3
+
+@pytest.mark.asyncio
+async def test_circuit_breaker(client):
+    """Test circuit breaker functionality."""
+    # Create a circuit breaker
+    from network_mcp_client import CircuitBreaker
+    circuit = CircuitBreaker(failure_threshold=2, recovery_time=1)
+
+    # Replace circuit breaker
+    client.circuit_breakers["test-service"] = circuit
+
+    # Mock connection pool
+    mock_pool = AsyncMock()
+    mock_client = AsyncMock()
+    mock_response = MagicMock()
+    mock_response.status_code = 500
+    mock_response.json.side_effect = Exception("Not JSON")
+    mock_response.text = "Internal Server Error"
+    mock_client.post.return_value = mock_response
+    mock_pool.get_connection.return_value = mock_client
+    mock_pool.release_connection = AsyncMock()
+
+    # Replace connection pool
+    client.connection_pools["test-service"] = mock_pool
+
+    # Call tool - should fail
+    with pytest.raises(ServiceCallError):
+        await client.call_tool("test-service", "test-tool", {}, max_retries=0)
+
+    # Call tool again - should fail
+    with pytest.raises(ServiceCallError):
+        await client.call_tool("test-service", "test-tool", {}, max_retries=0)
+
+    # Call tool a third time - circuit should be open
+    with pytest.raises(CircuitOpenError):
+        await client.call_tool("test-service", "test-tool", {}, max_retries=0)
+
+    # Wait for recovery time
+    import time
+    time.sleep(1.1)
+
+    # Next call should be allowed (half-open state)
+    # But will still fail due to our mock
+    with pytest.raises(ServiceCallError):
+        await client.call_tool("test-service", "test-tool", {}, max_retries=0)
 ```
 
 ### Integration Testing
 
-```python
-import pytest
-import asyncio
-import httpx
-from app.core.network_mcp_client import NetworkMcpClient
-from app.core.service_discovery import ServiceDiscovery
+For integration testing, use real services in a controlled environment:
 
+```python
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_network_mcp_client_integration():
-    """Integration test for Network MCP Client."""
-    # This test requires actual services to be running
+async def test_memory_service_integration():
+    """Integration test with real Memory Service."""
+    # Create real service discovery
+    from service_discovery import SimpleServiceDiscovery
+    discovery = SimpleServiceDiscovery()
 
-    # Initialize service discovery
-    service_discovery = ServiceDiscovery()
-    await service_discovery.initialize()
+    # Register Memory Service
+    await discovery.register("memory", "http://localhost:9000")
 
-    # Create network MCP client
-    mcp_client = NetworkMcpClient(service_discovery)
+    # Create client
+    from network_mcp_client import NetworkMcpClient
+    client = NetworkMcpClient(discovery)
 
     try:
-        # Test connecting to memory service
-        await mcp_client.connect("memory")
-
-        # Test calling a tool
-        result = await mcp_client.call_tool(
+        # Store some test data
+        result = await client.call_tool(
             "memory",
             "store_input",
             {
                 "user_id": "test-user",
-                "input_data": {
-                    "message": "Test message",
-                    "timestamp": "2025-03-20T12:34:56Z"
-                }
+                "input_data": {"message": "Integration test"}
             }
         )
 
-        assert "status" in result
         assert result["status"] == "stored"
 
-        # Test reading a resource
-        history, content_type = await mcp_client.read_resource(
-            "memory",
-            "history/test-user"
+        # Get history
+        history = []
+        async for item in client.get_resource("memory", "history/test-user"):
+            history.append(item)
+
+        # Verify our test message is in the history
+        assert any(
+            item.get("message") == "Integration test"
+            for item in history
         )
-
-        assert isinstance(history, list)
-        assert content_type == "application/json"
-
-        # Verify message is in history
-        found = False
-        for item in history:
-            if isinstance(item, dict) and item.get("message") == "Test message":
-                found = True
-                break
-
-        assert found, "Test message not found in history"
 
     finally:
         # Clean up
-        await mcp_client.close()
+        await client.close()
 ```
 
-## Common Issues and Solutions
+## Security Considerations
 
-### Connection Failures
+### Transport Security
 
-**Issue**: The client fails to connect to services with network errors.
-
-**Solution**:
-
-1. Check service discovery configuration
-2. Verify service is running and accessible
-3. Check network connectivity (firewalls, routing)
-4. Increase connection timeout
-5. Add more detailed logging
+Always use HTTPS in production environments:
 
 ```python
-# Enhanced connect method with better error reporting
-async def connect(self, service_name: str) -> None:
-    """Connect to a specific MCP service with detailed error reporting."""
-    # Skip if already connected
-    if service_name in self.services:
-        return
-
-    # Resolve service endpoint
-    endpoint = await self.service_discovery.resolve(service_name)
-    if not endpoint:
-        logger.error(f"Service discovery failed to resolve '{service_name}'")
-        raise ServiceNotFoundError(f"Service '{service_name}' not found")
-
-    try:
-        # Test connection
-        async with httpx.AsyncClient() as client:
-            response = await client.get(f"{endpoint}/health", timeout=5.0)
-            if response.status_code != 200:
-                logger.error(f"Health check failed for '{service_name}': {response.status_code}")
-                raise ConnectionError(f"Service '{service_name}' health check failed")
-    except Exception as e:
-        logger.error(f"Connection test failed for '{service_name}' at {endpoint}: {str(e)}")
-        raise ConnectionError(f"Failed to connect to service '{service_name}': {str(e)}")
-
-    # Create connection
-    self.services[service_name] = {
-        "endpoint": endpoint,
-        "connected": True
-    }
-
-    logger.info(f"Connected to MCP service: {service_name} at {endpoint}")
+# Service discovery should return HTTPS URLs in production
+await service_discovery.register("memory", "https://memory-service.example.com")
 ```
 
-### Circuit Breaker Triggering
-
-**Issue**: The circuit breaker trips frequently, preventing service calls.
-
-**Solution**:
-
-1. Increase failure threshold (higher tolerance for failures)
-2. Decrease reset timeout (faster recovery)
-3. Improve error handling in services
-4. Address underlying service stability issues
-5. Add monitoring for circuit breaker state changes
+To configure TLS certificate verification:
 
 ```python
-# Monitor circuit breaker state changes
-async def record_failure(self, service_name: str):
-    """Record a failed call to the service with monitoring."""
-    async with self.lock:
-        service = await self.get_service_state(service_name)
+import ssl
+import httpx
 
-        # Current state
-        current_state = service["state"]
+class SecureConnectionPool(ConnectionPool):
+    """Connection pool with enhanced security settings."""
 
-        # Record failure
-        service["failures"] += 1
-        service["last_failure_time"] = time.time()
+    def __init__(self, endpoint: str, ca_cert_path: str = None, **kwargs):
+        super().__init__(endpoint, **kwargs)
+        self.ca_cert_path = ca_cert_path
 
-        # If threshold reached, open circuit
-        if service["state"] == self.CLOSED and service["failures"] >= self.failure_threshold:
-            service["state"] = self.OPEN
-            # Log state change
-            logger.warning(f"Circuit breaker opened for service '{service_name}' after {service['failures']} failures")
-            # Send alert or metric
-            await self._notify_circuit_open(service_name)
+    async def get_connection(self) -> httpx.AsyncClient:
+        """Get a connection with security settings."""
+        await self.semaphore.acquire()
 
-        # If HALF_OPEN and failed, go back to OPEN
-        if service["state"] == self.HALF_OPEN:
-            service["state"] = self.OPEN
-            service["half_open_calls"] = 0
-            # Log state change
-            logger.warning(f"Circuit breaker reopened for service '{service_name}' after test failure")
-```
-
-### Memory Leaks
-
-**Issue**: The client doesn't properly clean up resources, leading to memory leaks.
-
-**Solution**:
-
-1. Ensure connections are always returned to the pool
-2. Add timeouts for idle connections
-3. Use try/finally blocks for resource cleanup
-4. Implement proper shutdown procedure
-5. Add periodic resource cleanup
-
-```python
-# Periodic connection pool cleanup
-async def _cleanup_connections(self):
-    """Periodically clean up idle connections."""
-    while True:
         try:
-            # Wait for cleanup interval
-            await asyncio.sleep(60)  # Every minute
-
-            # Current time
-            now = time.time()
-
-            # Check each service
-            for service_url, connections in list(self.pools.items()):
-                # Find expired connections
-                expired = []
-                for i, (client, timestamp) in enumerate(connections):
-                    if now - timestamp > self.idle_timeout:
-                        expired.append(i)
-
-                # Close expired connections (in reverse order)
-                for i in sorted(expired, reverse=True):
-                    client, _ = connections.pop(i)
-                    await client.aclose()
-
-                logger.debug(f"Closed {len(expired)} idle connections for {service_url}")
-
-        except asyncio.CancelledError:
-            # Task cancelled, exit
-            break
+            # Create client with verify=ca_cert_path
+            if self.connections:
+                return self.connections.pop()
+            else:
+                verify = self.ca_cert_path or True
+                return httpx.AsyncClient(
+                    base_url=self.endpoint,
+                    timeout=10.0,
+                    verify=verify
+                )
         except Exception as e:
-            # Log error but continue cleanup loop
-            logger.error(f"Error in connection cleanup: {e}")
+            self.semaphore.release()
+            raise e
 ```
 
-### Long-Running Streams
+### Authentication
 
-**Issue**: SSE streams disconnect or timeout after a period.
-
-**Solution**:
-
-1. Implement automatic reconnection for streams
-2. Use longer timeouts for stream connections
-3. Add heartbeat mechanism
-4. Handle disconnections gracefully
-5. Implement backoff for reconnection attempts
+To add service-to-service authentication:
 
 ```python
-# Stream with automatic reconnection
-async def stream_with_reconnect(self, service_name: str, resource_uri: str) -> AsyncIterable:
-    """Stream a resource with automatic reconnection on failures."""
-    # Retry counter
-    retries = 0
-    max_retries = 10
+class AuthenticatedMcpClient(NetworkMcpClient):
+    """MCP client with service-to-service authentication."""
 
-    # Last event ID for resuming
-    last_event_id = None
+    def __init__(self, service_discovery, auth_token: str):
+        super().__init__(service_discovery)
+        self.auth_token = auth_token
 
-    while retries < max_retries:
-        try:
-            # Connect to stream
-            async for event in self.stream_resource(service_name, resource_uri):
-                # Reset retry counter on successful events
-                retries = 0
+    async def call_tool(self, service_name: str, tool_name: str, arguments: Dict[str, Any], **kwargs):
+        """Call a tool with authentication."""
+        await self.connect(service_name)
 
-                # Store event ID if available
-                if "id" in event:
-                    last_event_id = event["id"]
+        # Rest of implementation...
 
-                # Yield event to consumer
-                yield event
+        # Get connection from pool
+        connection = await self._get_connection(service_name)
 
-            # Stream ended normally
-            break
+        # Make HTTP request with authentication header
+        response = await connection.post(
+            f"/tool/{tool_name}",
+            json=arguments,
+            headers={"Authorization": f"Bearer {self.auth_token}"},
+            timeout=kwargs.get("timeout", 30.0)
+        )
 
-        except ResourceStreamError as e:
-            # Increment retry counter
-            retries += 1
-
-            # Calculate backoff time
-            backoff_time = min(2 ** retries, 60)  # Max 60 seconds
-
-            logger.warning(f"Stream disconnected, reconnecting in {backoff_time}s (attempt {retries}/{max_retries}): {e}")
-
-            # Wait before reconnecting
-            await asyncio.sleep(backoff_time)
-
-    if retries >= max_retries:
-        logger.error(f"Stream reconnection failed after {max_retries} attempts")
-        raise ResourceStreamError(f"Failed to maintain stream to '{service_name}/{resource_uri}' after {max_retries} attempts")
+        # Rest of implementation...
 ```
 
-## Monitoring and Observability
+### Security Checklist
 
-Add monitoring to track client health and performance:
+1. **Use HTTPS** for all service communication in production
+2. **Implement authentication** between services
+3. **Validate input** before sending to services
+4. **Limit connection timeouts** to prevent resource exhaustion
+5. **Implement rate limiting** to prevent DoS attacks
+6. **Use secure connection pools** with proper certificate validation
+7. **Log security events** for audit trails
+8. **Sanitize error messages** to prevent information leakage
+
+## Performance Tuning
+
+### Connection Pooling
+
+Optimize connection pool settings based on workload:
 
 ```python
-# Instrumentation for monitoring
-class InstrumentedNetworkMcpClient(NetworkMcpClient):
-    """
-    Network MCP client with added instrumentation for monitoring.
-    """
+# High throughput service
+client.connection_pools["high-traffic"] = ConnectionPool(
+    endpoint="http://high-traffic-service:8000",
+    max_size=50,  # Higher concurrency
+    min_size=10   # More connections ready
+)
 
-    def __init__(self, service_discovery, config=None, metrics=None):
-        super().__init__(service_discovery, config)
-        self.metrics = metrics or {}
-        self.call_counters = {}
-        self.error_counters = {}
-
-    async def call_tool(self, service_name, tool_name, arguments):
-        """Call a tool with instrumentation."""
-        start_time = time.time()
-        error = None
-
-        try:
-            # Call the tool
-            result = await super().call_tool(service_name, tool_name, arguments)
-
-            # Update call counter
-            key = f"{service_name}.{tool_name}"
-            self.call_counters[key] = self.call_counters.get(key, 0) + 1
-
-            return result
-
-        except Exception as e:
-            # Record error
-            error = e
-            error_key = f"{service_name}.{tool_name}.{type(e).__name__}"
-            self.error_counters[error_key] = self.error_counters.get(error_key, 0) + 1
-            raise
-
-        finally:
-            # Record duration
-            duration = time.time() - start_time
-
-            # Update metrics
-            if "call_durations" not in self.metrics:
-                self.metrics["call_durations"] = []
-
-            self.metrics["call_durations"].append({
-                "service": service_name,
-                "tool": tool_name,
-                "duration": duration,
-                "success": error is None,
-                "error_type": type(error).__name__ if error else None,
-                "timestamp": time.time()
-            })
-
-            # Log metrics periodically
-            if len(self.metrics["call_durations"]) % 100 == 0:
-                self._log_metrics()
-
-    def _log_metrics(self):
-        """Log accumulated metrics."""
-        if not self.metrics.get("call_durations"):
-            return
-
-        # Calculate statistics
-        durations = [m["duration"] for m in self.metrics["call_durations"]]
-        success_count = sum(1 for m in self.metrics["call_durations"] if m["success"])
-        error_count = len(self.metrics["call_durations"]) - success_count
-
-        logger.info(f"MCP Client Metrics: calls={len(durations)}, "
-                   f"success_rate={success_count/len(durations)*100:.1f}%, "
-                   f"avg_duration={sum(durations)/len(durations)*1000:.1f}ms, "
-                   f"errors={error_count}")
+# Low throughput service
+client.connection_pools["low-traffic"] = ConnectionPool(
+    endpoint="http://low-traffic-service:8000",
+    max_size=5,   # Lower concurrency
+    min_size=1    # Fewer idle connections
+)
 ```
 
-## Performance Optimization
+### Timeout Optimization
 
-For optimal performance, consider these optimization strategies:
-
-### Connection Pooling Optimization
+Set timeouts based on expected response times:
 
 ```python
-# Optimized connection pool configuration
-optimized_config = {
-    "max_connections": 20,       # Increased for higher concurrency
-    "idle_timeout": 30,          # Shorter idle timeout
-    "connection_keepalive": True, # Enable keepalive
-    "tcp_nodelay": True          # Disable Nagle's algorithm
-}
+# Quick operation
+result = await client.call_tool(
+    service_name="memory",
+    tool_name="get_status",
+    arguments={},
+    timeout=1.0  # 1 second timeout for quick operations
+)
 
-# Create client with optimized config
-mcp_client = NetworkMcpClient(service_discovery, optimized_config)
+# Long-running operation
+result = await client.call_tool(
+    service_name="cognition",
+    tool_name="analyze_document",
+    arguments={"document": large_document},
+    timeout=300.0  # 5 minute timeout for long operations
+)
 ```
 
 ### Batch Processing
 
+Use batch processing to reduce overhead:
+
 ```python
-# Batch process multiple requests
-async def batch_process(client, service_name, tool_name, items):
-    """Process multiple items in parallel batches."""
-    # Process in batches of 10
-    batch_size = 10
-    results = []
+# Instead of this (3 separate HTTP requests):
+result1 = await client.call_tool("memory", "get_item", {"id": "1"})
+result2 = await client.call_tool("memory", "get_item", {"id": "2"})
+result3 = await client.call_tool("memory", "get_item", {"id": "3"})
 
-    for i in range(0, len(items), batch_size):
-        batch = items[i:i+batch_size]
-
-        # Process batch in parallel
-        tasks = [
-            client.call_tool(service_name, tool_name, item)
-            for item in batch
-        ]
-
-        # Wait for all tasks to complete
-        batch_results = await asyncio.gather(*tasks, return_exceptions=True)
-
-        # Process results
-        for result in batch_results:
-            if isinstance(result, Exception):
-                # Handle error
-                logger.error(f"Batch item failed: {result}")
-                results.append({"status": "error", "error": str(result)})
-            else:
-                # Handle success
-                results.append(result)
-
-    return results
+# Do this (parallel processing):
+results = await client.call_tool_batch([
+    ("memory", "get_item", {"id": "1"}),
+    ("memory", "get_item", {"id": "2"}),
+    ("memory", "get_item", {"id": "3"})
+])
 ```
 
-## Migration from Phase 3
+### Performance Monitoring
 
-When migrating from Phase 3's in-process MCP client to the network-based client, follow these steps:
+Monitor key performance metrics:
 
-### 1. Update Service References
+1. **Response Time**: Time taken for tool calls and resource streaming
+2. **Retry Rate**: Percentage of requests that need retries
+3. **Circuit Breaker Status**: Open/closed state of circuit breakers
+4. **Connection Pool Utilization**: Number of active connections
+5. **Resource Consumption**: Memory and CPU usage
+
+## Monitoring and Debugging
+
+### Logging Strategy
+
+Configure detailed logging to aid debugging:
 
 ```python
-# Phase 3: In-process service references
-from app.services.memory_service import MemoryService
-memory_service = MemoryService()
+import logging
 
-# Phase 4: Network service references
-from app.services.memory_client import MemoryServiceClient
-from app.core.network_mcp_client import NetworkMcpClient
-from app.core.service_discovery import ServiceDiscovery
+# Configure basic logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
 
-service_discovery = ServiceDiscovery()
-mcp_client = NetworkMcpClient(service_discovery)
-memory_client = MemoryServiceClient(mcp_client)
+# Get logger for MCP client
+logger = logging.getLogger("network_mcp_client")
+
+# Set more detailed logging for development
+logger.setLevel(logging.DEBUG)
 ```
 
-### 2. Update Service Interface Classes
+Add context to logs for traceability:
 
 ```python
-# Phase 3: Direct service implementation
-class MemoryService:
-    def store_input(self, user_id, input_data):
-        # Direct implementation
-        ...
+# Create trace ID for request
+trace_id = str(uuid.uuid4())
 
-# Phase 4: Network client wrapper
-class MemoryServiceClient:
-    def __init__(self, mcp_client):
+# Add context to log messages
+logger.info(
+    "Calling MCP service",
+    extra={
+        "trace_id": trace_id,
+        "service": service_name,
+        "tool": tool_name,
+        "user_id": arguments.get("user_id")
+    }
+)
+```
+
+### Structured Logging
+
+Use structured logging for better analysis:
+
+```python
+import json
+import logging
+import traceback
+from datetime import datetime
+
+class JsonFormatter(logging.Formatter):
+    """Format logs as JSON."""
+
+    def format(self, record):
+        log_record = {
+            "timestamp": datetime.utcnow().isoformat(),
+            "level": record.levelname,
+            "message": record.getMessage(),
+            "logger": record.name
+        }
+
+        # Add extra fields
+        for key, value in record.__dict__.items():
+            if key not in ("args", "asctime", "created", "exc_info", "exc_text", "filename",
+                         "funcName", "id", "levelname", "levelno", "lineno", "module",
+                         "msecs", "message", "msg", "name", "pathname", "process",
+                         "processName", "relativeCreated", "stack_info", "thread", "threadName"):
+                log_record[key] = value
+
+        # Add exception info if available
+        if record.exc_info:
+            log_record["exception"] = {
+                "type": record.exc_info[0].__name__,
+                "message": str(record.exc_info[1]),
+                "traceback": traceback.format_exception(*record.exc_info)
+            }
+
+        return json.dumps(log_record)
+```
+
+### Client Diagnostics
+
+Add diagnostic information to the client:
+
+```python
+class DiagnosticMcpClient(NetworkMcpClient):
+    """MCP client with diagnostic capabilities."""
+
+    def __init__(self, service_discovery):
+        super().__init__(service_discovery)
+        self.call_stats = {}
+
+    async def call_tool(self, service_name: str, tool_name: str, arguments: Dict[str, Any], **kwargs):
+        """Call a tool with diagnostics."""
+        start_time = time.time()
+        success = False
+
+        try:
+            result = await super().call_tool(service_name, tool_name, arguments, **kwargs)
+            success = True
+            return result
+        finally:
+            end_time = time.time()
+            duration = end_time - start_time
+
+            # Update stats
+            key = f"{service_name}.{tool_name}"
+            if key not in self.call_stats:
+                self.call_stats[key] = {
+                    "calls": 0,
+                    "successes": 0,
+                    "failures": 0,
+                    "total_duration": 0,
+                    "max_duration": 0,
+                    "min_duration": float("inf")
+                }
+
+            stats = self.call_stats[key]
+            stats["calls"] += 1
+            stats["successes"] += 1 if success else 0
+            stats["failures"] += 0 if success else 1
+            stats["total_duration"] += duration
+            stats["max_duration"] = max(stats["max_duration"], duration)
+            stats["min_duration"] = min(stats["min_duration"], duration)
+
+    def get_diagnostics(self):
+        """Get diagnostic information."""
+        diagnostics = {
+            "call_stats": self.call_stats,
+            "connections": {
+                service: len(pool.connections)
+                for service, pool in self.connection_pools.items()
+            },
+            "circuit_breakers": {
+                service: {"state": breaker.state.value, "failure_count": breaker.failure_count}
+                for service, breaker in self.circuit_breakers.items()
+            }
+        }
+        return diagnostics
+```
+
+## Best Practices
+
+### Client Initialization
+
+```python
+async def create_client():
+    """Create and initialize the MCP client."""
+    # Create service discovery
+    service_discovery = SimpleServiceDiscovery()
+
+    # Register known services
+    await service_discovery.register("memory", "http://memory-service:9000")
+    await service_discovery.register("cognition", "http://cognition-service:9100")
+
+    # Create client
+    client = NetworkMcpClient(service_discovery)
+
+    # Pre-connect to services
+    await client.connect("memory")
+    await client.connect("cognition")
+
+    return client
+```
+
+### Client Lifecycle Management
+
+```python
+# In application startup
+async def startup():
+    app.mcp_client = await create_client()
+
+# In application shutdown
+async def shutdown():
+    if hasattr(app, "mcp_client"):
+        await app.mcp_client.close()
+```
+
+### Error Handling
+
+```python
+async def call_service_safely(service_name, tool_name, arguments):
+    """Call a service with comprehensive error handling."""
+    try:
+        return await client.call_tool(service_name, tool_name, arguments)
+    except CircuitOpenError:
+        logger.warning(f"Circuit open for {service_name}, using fallback")
+        return get_fallback_data()
+    except ServiceCallError as e:
+        logger.error(f"Service call error: {e}")
+        # Implement appropriate error handling
+        raise ApiError(f"Service unavailable: {service_name}")
+```
+
+### Resource Cleanup
+
+```python
+async def use_client():
+    """Use the client with proper resource cleanup."""
+    client = await create_client()
+    try:
+        # Use the client
+        result = await client.call_tool("memory", "get_data", {"id": "123"})
+        return result
+    finally:
+        # Always close the client
+        await client.close()
+```
+
+### Testing Patterns
+
+```python
+@pytest.fixture
+async def mcp_client():
+    """Fixture for MCP client testing."""
+    # Create mock or real service discovery
+    discovery = create_test_discovery()
+
+    # Create client
+    client = NetworkMcpClient(discovery)
+
+    # Yield for test use
+    yield client
+
+    # Clean up
+    await client.close()
+```
+
+## Integration with Core Application
+
+### Core Integration
+
+```python
+from fastapi import FastAPI, Depends
+from network_mcp_client import NetworkMcpClient, ServiceCallError
+
+app = FastAPI()
+
+# Store client in app state
+app.mcp_client = None
+
+@app.on_event("startup")
+async def startup():
+    # Create service discovery
+    from service_discovery import SimpleServiceDiscovery
+    discovery = SimpleServiceDiscovery()
+
+    # Register services from configuration
+    for service_name, endpoint in app.config["SERVICES"].items():
+        await discovery.register(service_name, endpoint)
+
+    # Create client
+    app.mcp_client = NetworkMcpClient(discovery)
+
+@app.on_event("shutdown")
+async def shutdown():
+    if app.mcp_client:
+        await app.mcp_client.close()
+
+# Dependency to get MCP client
+async def get_mcp_client():
+    return app.mcp_client
+
+# API endpoint using MCP client
+@app.post("/api/store-input")
+async def store_input(
+    user_id: str,
+    input_data: dict,
+    mcp_client: NetworkMcpClient = Depends(get_mcp_client)
+):
+    try:
+        result = await mcp_client.call_tool(
+            service_name="memory",
+            tool_name="store_input",
+            arguments={
+                "user_id": user_id,
+                "input_data": input_data
+            }
+        )
+        return result
+    except ServiceCallError as e:
+        # Handle service error
+        return {"status": "error", "message": str(e)}
+```
+
+### Service-to-Service Integration
+
+```python
+# In Cognition Service
+class MemoryClient:
+    """Client for the Memory Service."""
+
+    def __init__(self, mcp_client: NetworkMcpClient):
         self.mcp_client = mcp_client
-        self.service_name = "memory"
 
-    async def store_input(self, user_id, input_data):
-        # Call remote service via MCP client
+    async def get_history(self, user_id: str) -> list:
+        """Get history from Memory Service."""
+        try:
+            # Stream history items
+            history = []
+            async for item in self.mcp_client.get_resource(
+                service_name="memory",
+                resource_path=f"history/{user_id}"
+            ):
+                history.append(item)
+            return history
+        except ServiceCallError as e:
+            logger.error(f"Error getting history: {e}")
+            return []
+
+    async def store_data(self, user_id: str, data: dict) -> dict:
+        """Store data in Memory Service."""
         return await self.mcp_client.call_tool(
-            self.service_name,
-            "store_input",
-            {"user_id": user_id, "input_data": input_data}
+            service_name="memory",
+            tool_name="store_input",
+            arguments={
+                "user_id": user_id,
+                "input_data": data
+            }
         )
 ```
 
-### 3. Update Error Handling
+## Common Pitfalls and Solutions
+
+### 1. Not Closing Connections
+
+**Pitfall**: Failing to close connections can lead to resource leaks.
+
+**Solution**: Always use `await client.close()` in a `finally` block or application shutdown hook:
 
 ```python
-# Phase 3: Local errors
 try:
-    result = memory_service.store_input(user_id, input_data)
-except ValueError as e:
-    # Handle value error
-    ...
-
-# Phase 4: Network errors
-try:
-    result = await memory_client.store_input(user_id, input_data)
-except ServiceNotFoundError:
-    # Service discovery issue
-    ...
-except CircuitOpenError:
-    # Service temporarily unavailable
-    ...
-except ServiceCallError as e:
-    # Service call failed
-    ...
+    # Use client
+    result = await client.call_tool(...)
+finally:
+    # Always close client
+    await client.close()
 ```
 
-### 4. Update Dependency Injection
+### 2. Improper Error Handling
+
+**Pitfall**: Not handling service errors properly can lead to poor user experience.
+
+**Solution**: Use comprehensive error handling with fallbacks:
 
 ```python
-# Phase 3: Direct service injection
-def get_memory_service():
-    return MemoryService()
+try:
+    result = await client.call_tool(...)
+except CircuitOpenError:
+    # Service is unavailable, use fallback
+    result = get_fallback_data()
+except ServiceCallError as e:
+    # Log error and handle gracefully
+    logger.error(f"Service error: {e}")
+    result = {"status": "error", "message": "Service temporarily unavailable"}
+```
 
-@app.post("/input")
-async def receive_input(
-    input_data: dict,
-    memory_service: MemoryService = Depends(get_memory_service)
-):
-    ...
+### 3. Excessive Retries
 
-# Phase 4: Client injection
-def get_memory_client():
-    return MemoryServiceClient(app.state.mcp_client)
+**Pitfall**: Retrying too many times can waste resources and delay failure recognition.
 
-@app.post("/input")
-async def receive_input(
-    input_data: dict,
-    memory_client: MemoryServiceClient = Depends(get_memory_client)
-):
-    ...
+**Solution**: Configure appropriate retry limits based on operation criticality:
+
+```python
+# Critical operation with limited retries
+result = await client.call_tool(
+    service_name="critical_service",
+    tool_name="important_operation",
+    arguments={},
+    max_retries=2  # Limit retries
+)
+```
+
+### 4. Ignoring Circuit Breaker
+
+**Pitfall**: Ignoring circuit breaker state and continuing to make calls.
+
+**Solution**: Check circuit breaker state before making calls in critical paths:
+
+```python
+if client.circuit_breakers.get(service_name).is_open():
+    # Circuit is open, use fallback immediately
+    return get_fallback_data()
+else:
+    # Circuit is closed, try the call
+    try:
+        return await client.call_tool(service_name, tool_name, arguments)
+    except Exception as e:
+        # Handle error
+        return {"status": "error", "message": str(e)}
+```
+
+### 5. Not Setting Appropriate Timeouts
+
+**Pitfall**: Using default timeouts for all operations can lead to unnecessary waiting or premature cancellation.
+
+**Solution**: Set appropriate timeouts based on expected operation duration:
+
+```python
+# Quick status check
+status = await client.call_tool(
+    service_name="monitoring",
+    tool_name="get_status",
+    arguments={},
+    timeout=2.0  # Short timeout
+)
+
+# Processing large document
+result = await client.call_tool(
+    service_name="processor",
+    tool_name="process_document",
+    arguments={"document": large_document},
+    timeout=300.0  # Long timeout
+)
+```
+
+### 6. Not Handling Resource Streaming Properly
+
+**Pitfall**: Improper handling of resource streaming can lead to memory issues or lost data.
+
+**Solution**: Process stream items as they arrive:
+
+```python
+# Process stream items one at a time
+async for item in client.get_resource("memory", "history/user-123"):
+    # Process each item individually
+    process_item(item)
+
+    # Optionally yield to event loop
+    await asyncio.sleep(0)
+```
+
+### 7. Ignoring Service Discovery Changes
+
+**Pitfall**: Not handling service discovery changes can lead to using outdated endpoints.
+
+**Solution**: Periodically refresh service endpoints:
+
+```python
+async def refresh_service_endpoints():
+    """Periodically refresh service endpoints."""
+    while True:
+        # Wait for refresh interval
+        await asyncio.sleep(60)  # Refresh every minute
+
+        try:
+            # Update endpoints
+            for service_name in client.connection_pools:
+                endpoint = await service_discovery.resolve(service_name)
+                if endpoint:
+                    # Close old connections
+                    await client.connection_pools[service_name].close_all()
+
+                    # Create new connection pool
+                    pool = ConnectionPool(endpoint)
+                    await pool.initialize()
+                    client.connection_pools[service_name] = pool
+        except Exception as e:
+            logger.error(f"Error refreshing endpoints: {e}")
 ```
 
 ## Conclusion
 
-The Network MCP Client enables the Cortex Core to communicate with distributed MCP services while maintaining the same interface from Phase 3. It provides robust connection management, retry logic, circuit breaking, and error handling for network communication.
+The NetworkMcpClient is a critical component in the distributed MCP architecture, enabling reliable communication between services in Phase 4 of the Cortex Core system. By implementing robust connection management, retry logic, circuit breaking, and error handling, it provides a solid foundation for building resilient distributed systems.
 
 Key takeaways:
 
-1. **Same Interface**: The client maintains the same interface as Phase 3 for seamless migration
-2. **Network Communication**: Uses HTTP for tool calls and SSE for resource streaming
-3. **Connection Management**: Implements connection pooling for efficiency
-4. **Error Handling**: Includes retry logic and circuit breaking for resilience
-5. **Monitoring**: Provides instrumentation for observability
-6. **Performance**: Includes optimization strategies for high throughput
+1. **Connection Management**: Efficient connection pooling for optimal resource usage
+2. **Error Handling**: Comprehensive error detection and recovery
+3. **Circuit Breaking**: Prevention of cascading failures during service outages
+4. **Retry Logic**: Automatic retry of transient failures with exponential backoff
+5. **Service Discovery Integration**: Dynamic resolution of service endpoints
 
-By following the implementation and usage patterns in this document, you can successfully implement the Network MCP Client for Phase 4 of the Cortex Core project.
-
-## Further Reading
-
-- [DISTRIBUTED_MCP_ARCHITECTURE.md](DISTRIBUTED_MCP_ARCHITECTURE.md) - Details on the overall distributed MCP architecture
-- [SERVICE_DISCOVERY.md](SERVICE_DISCOVERY.md) - Information about the service discovery mechanism
-- [STANDALONE_MEMORY_SERVICE.md](STANDALONE_MEMORY_SERVICE.md) - Implementation of the standalone Memory Service
-- [STANDALONE_COGNITION_SERVICE.md](STANDALONE_COGNITION_SERVICE.md) - Implementation of the standalone Cognition Service
-- [DISTRIBUTED_ERROR_HANDLING.md](DISTRIBUTED_ERROR_HANDLING.md) - More details on error handling in a distributed environment
-  should_retry(attempt, exception=e):
-  attempt += 1
-  backoff_time = self.retry_strategy.get_backoff_time(attempt)
-  logger.warning(f"Retrying tool call '{service_name}.{tool_name}' (attempt {attempt+1}) after {backoff_time}s due to {type(e).**name**}: {str(e)}")
-  await asyncio.sleep(backoff_time)
-  continue
-
-                  # Record failure if we're not retrying
-                  await self.circuit_breaker.record_failure(service_name)
-                  raise ServiceCallError(f"Failed to call tool '{service_name}.{tool_name}': {str(e)}") from e
-
-              finally:
-                  # Return connection to pool
-                  if client:
-                      self.connection_pool.release_connection(endpoint, client)
-
-      async def read_resource(self, service_name: str, resource_uri: str) -> Tuple[Any, Optional[str]]:
-          """
-          Read a resource from a specific MCP service.
-
-          Args:
-              service_name: Name of the service to read from
-              resource_uri: URI of the resource to read
-
-          Returns:
-              Tuple of (resource content, mime type)
-
-          Raises:
-              ServiceNotFoundError: If the service cannot be found
-              ResourceNotFoundError: If the resource cannot be found
-              ResourceReadError: If the resource read fails
-              CircuitOpenError: If the circuit breaker is open
-          """
-          # Ensure we're connected to the service
-          await self.connect(service_name)
-
-          # Check circuit breaker
-          if not await self.circuit_breaker.should_allow_request(service_name):
-              raise CircuitOpenError(f"Circuit breaker open for service '{service_name}'")
-
-          service = self.services[service_name]
-          endpoint = service["endpoint"]
-
-          # Prepare for retries
-          attempt = 0
-          last_exception = None
-
-          while True:
-              client = None
-              try:
-                  # Get connection from pool
-                  client = await self.connection_pool.get_connection(endpoint)
-
-                  # Make request
-                  response = await client.get(f"/resource/{resource_uri}")
-
-                  # Handle success
-                  if response.status_code == 200:
-                      # Get content type
-                      content_type = response.headers.get("Content-Type")
-
-                      # Try to parse JSON if appropriate
-                      if content_type and "application/json" in content_type:
-                          content = response.json()
-                      else:
-                          content = response.content
-
-                      await self.circuit_breaker.record_success(service_name)
-                      return content, content_type
-
-                  # Handle 404
-                  if response.status_code == 404:
-                      raise ResourceNotFoundError(f"Resource '{resource_uri}' not found on service '{service_name}'")
-
-                  # Consider retrying based on status code
-                  if self.retry_strategy.should_retry(attempt, status_code=response.status_code):
-                      attempt += 1
-                      backoff_time = self.retry_strategy.get_backoff_time(attempt)
-                      logger.warning(f"Retrying resource read '{service_name}/{resource_uri}' (attempt {attempt+1}) after {backoff_time}s - received status {response.status_code}")
-                      await asyncio.sleep(backoff_time)
-                      continue
-
-                  # Non-retryable error
-                  error_detail = f"Status: {response.status_code}"
-                  try:
-                      error_json = response.json()
-                      if isinstance(error_json, dict) and "error" in error_json:
-                          error_detail = f"{error_detail}, Error: {error_json['error']}"
-                  except:
-                      # Failed to parse error JSON
-                      error_detail = f"{error_detail}, Body: {response.text[:100]}"
-
-                  raise ResourceReadError(f"Failed to read resource '{service_name}/{resource_uri}': {error_detail}")
-
-              except (ServiceNotFoundError, ResourceNotFoundError, CircuitOpenError):
-                  # Don't retry these specific exceptions
-                  raise
-
-              except Exception as e:
-                  last_exception = e
-
-                  # Consider retrying based on exception type
-                  if self.retry_strategy.should_retry(attempt, exception=e):
-                      attempt += 1
-                      backoff_time = self.retry_strategy.get_backoff_time(attempt)
-                      logger.warning(f"Retrying resource read '{service_name}/{resource_uri}' (attempt {attempt+1}) after {backoff_time}s due to {type(e).__name__}: {str(e)}")
-                      await asyncio.sleep(backoff_time)
-                      continue
-
-                  # Record failure if we're not retrying
-                  await self.circuit_breaker.record_failure(service_name)
-                  raise ResourceReadError(f"Failed to read resource '{service_name}/{resource_uri}': {str(e)}") from e
-
-              finally:
-                  # Return connection to pool
-                  if client:
-                      self.connection_pool.release_connection(endpoint, client)
-
-      async def stream_resource(self, service_name: str, resource_uri: str) -> AsyncIterable:
-          """
-          Stream a resource from a specific MCP service using SSE.
-
-          Args:
-              service_name: Name of the service to stream from
-              resource_uri: URI of the resource to stream
-
-          Returns:
-              An async iterable yielding events from the stream
-
-          Raises:
-              ServiceNotFoundError: If the service cannot be found
-              ResourceNotFoundError: If the resource cannot be found
-              ResourceStreamError: If the resource stream fails
-              CircuitOpenError: If the circuit breaker is open
-          """
-          # Ensure we're connected to the service
-          await self.connect(service_name)
-
-          # Check circuit breaker
-          if not await self.circuit_breaker.should_allow_request(service_name):
-              raise CircuitOpenError(f"Circuit breaker open for service '{service_name}'")
-
-          service = self.services[service_name]
-          endpoint = service["endpoint"]
-
-          # Prepare for retries
-          attempt = 0
-          last_exception = None
-
-          while True:
-              client = None
-              try:
-                  # Get connection from pool (don't release this one until stream completes)
-                  client = await self.connection_pool.get_connection(endpoint)
-
-                  # Start SSE stream
-                  async with client.stream(
-                      "GET",
-                      f"/resource/{resource_uri}",
-                      headers={"Accept": "text/event-stream"}
-                  ) as response:
-                      # Check response status
-                      if response.status_code == 404:
-                          raise ResourceNotFoundError(f"Resource '{resource_uri}' not found on service '{service_name}'")
-
-                      if response.status_code != 200:
-                          error_detail = f"Status: {response.status_code}"
-                          raise ResourceStreamError(f"Failed to stream resource '{service_name}/{resource_uri}': {error_detail}")
-
-                      # Record success
-                      await self.circuit_breaker.record_success(service_name)
-
-                      # Process SSE stream
-                      buffer = ""
-                      async for chunk in response.aiter_bytes():
-                          chunk_str = chunk.decode('utf-8')
-                          buffer += chunk_str
-
-                          # Process complete SSE events (delimited by double newlines)
-                          while "\n\n" in buffer:
-                              event, buffer = buffer.split("\n\n", 1)
-
-                              # Parse event data
-                              data = None
-                              for line in event.split("\n"):
-                                  if line.startswith("data: "):
-                                      data_str = line[6:]  # Remove "data: " prefix
-                                      try:
-                                          data = json.loads(data_str)
-                                      except json.JSONDecodeError:
-                                          data = data_str
-                                      break
-
-                              if data:
-                                  yield data
-
-                  # Stream completed successfully
-                  return
-
-              except (ServiceNotFoundError, ResourceNotFoundError, CircuitOpenError):
-                  # Don't retry these specific exceptions
-                  # If connection was obtained, release it back to the pool
-                  if client:
-                      self.connection_pool.release_connection(endpoint, client)
-                  raise
-
-              except Exception as e:
-                  # If connection was obtained, release it back to the pool
-                  if client:
-                      self.connection_pool.release_connection(endpoint, client)
-
-                  last_exception = e
-
-                  # Consider retrying based on exception type
-                  if self.retry_strategy.
+By following the patterns and practices outlined in this document, you can create a robust, reliable, and efficient NetworkMcpClient implementation that will enable the transition from an in-process to a distributed MCP architecture in Phase 4.
