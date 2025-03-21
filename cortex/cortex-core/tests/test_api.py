@@ -100,7 +100,10 @@ def test_input_endpoint_missing_conversation_id():
     assert response.status_code == 422
     data = response.json()
     # Check that the error is about the missing conversation_id
-    assert any("conversation_id" in str(detail) for detail in data["detail"])
+    assert "error" in data
+    assert data["error"]["code"] == "validation_error"
+    assert "validation_errors" in data["error"]["details"]
+    assert any("conversation_id" in str(error) for error in data["error"]["details"]["validation_errors"])
 
 def test_workspace_endpoints():
     """Test workspace creation and listing."""

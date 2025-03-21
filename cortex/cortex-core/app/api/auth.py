@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends
 from fastapi.security import OAuth2PasswordRequestForm
 
 from ..utils.auth import create_access_token, get_current_user, ACCESS_TOKEN_EXPIRE_HOURS
 from ..models.api.response import LoginResponse
+from ..core.exceptions import InvalidCredentialsException
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -35,10 +36,9 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
     # In production, this would authenticate via Azure B2C
     user = USERS.get(form_data.username)
     if not user or user["password"] != form_data.password:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid credentials",
-            headers={"WWW-Authenticate": "Bearer"},
+        raise InvalidCredentialsException(
+            message="Invalid email or password",
+            details={"headers": {"WWW-Authenticate": "Bearer"}}
         )
 
     # Create token with user data

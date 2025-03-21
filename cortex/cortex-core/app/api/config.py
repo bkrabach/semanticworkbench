@@ -1,5 +1,5 @@
 import logging
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends
 
 from ..utils.auth import get_current_user
 from ..models.api.request import WorkspaceCreate, ConversationCreate
@@ -9,6 +9,7 @@ from ..models.api.response import (
 )
 from ..models.domain import Workspace, Conversation
 from ..core.storage import storage
+from ..core.exceptions import ResourceNotFoundException, PermissionDeniedException
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/config", tags=["config"])
@@ -97,15 +98,20 @@ async def create_conversation(
     # Verify workspace exists and user has access
     workspace = storage.get_workspace(workspace_id)
     if not workspace:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Workspace not found"
+        raise ResourceNotFoundException(
+            message="Workspace not found",
+            resource_type="workspace",
+            resource_id=workspace_id
         )
 
     if workspace["owner_id"] != user_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied"
+        raise PermissionDeniedException(
+            message="You do not have access to this workspace",
+            details={
+                "resource_type": "workspace",
+                "resource_id": workspace_id,
+                "user_id": user_id
+            }
         )
 
     # Create conversation
@@ -151,15 +157,20 @@ async def list_conversations(
     # Verify workspace exists and user has access
     workspace = storage.get_workspace(workspace_id)
     if not workspace:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Workspace not found"
+        raise ResourceNotFoundException(
+            message="Workspace not found",
+            resource_type="workspace",
+            resource_id=workspace_id
         )
 
     if workspace["owner_id"] != user_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied"
+        raise PermissionDeniedException(
+            message="You do not have access to this workspace",
+            details={
+                "resource_type": "workspace",
+                "resource_id": workspace_id,
+                "user_id": user_id
+            }
         )
 
     # Get conversations for workspace

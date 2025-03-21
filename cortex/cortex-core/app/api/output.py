@@ -8,6 +8,7 @@ from typing import Dict, Any
 
 from ..utils.auth import get_current_user
 from ..core.event_bus import event_bus
+from ..core.exceptions import ServiceUnavailableException
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["output"])
@@ -31,7 +32,14 @@ async def output_stream(request: Request, current_user: dict = Depends(get_curre
     queue: asyncio.Queue[Dict[str, Any]] = asyncio.Queue()
 
     # Subscribe to event bus
-    event_bus.subscribe(queue)
+    try:
+        event_bus.subscribe(queue)
+    except Exception as e:
+        logger.error(f"Failed to subscribe to event bus: {e}")
+        raise ServiceUnavailableException(
+            message="Unable to establish event stream",
+            service_name="event_bus"
+        )
 
     async def event_generator():
         """Generate SSE events from the queue."""
@@ -79,11 +87,23 @@ async def output_stream(request: Request, current_user: dict = Depends(get_curre
             raise
         except Exception as e:
             logger.error(f"Error in SSE stream for user {user_id}: {e}")
-            raise
+            error_event = {
+                "type": "error",
+                "message": "Stream error occurred",
+                "timestamp": datetime.now().isoformat()
+            }
+            yield f"data: {json.dumps(error_event)}\n\n"
+            raise ServiceUnavailableException(
+                message=f"Error in event stream: {str(e)}",
+                service_name="event_stream"
+            )
         finally:
             # Always unsubscribe to prevent memory leaks
-            event_bus.unsubscribe(queue)
-            logger.info(f"Cleaned up SSE connection for user {user_id}")
+            try:
+                event_bus.unsubscribe(queue)
+                logger.info(f"Cleaned up SSE connection for user {user_id}")
+            except Exception as cleanup_error:
+                logger.error(f"Error during connection cleanup: {cleanup_error}")
 
     return StreamingResponse(
         event_generator(),

@@ -2,11 +2,13 @@ import os
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from pydantic import BaseModel
 from dotenv import load_dotenv
+
+from ..core.exceptions import InvalidCredentialsException, TokenExpiredException
 
 # Load environment variables
 load_dotenv()
@@ -55,12 +57,6 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> Dict[str, Any
     Raises:
         HTTPException: If token is invalid
     """
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Invalid authentication credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         user_id = payload.get("oid")
@@ -68,10 +64,23 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> Dict[str, Any
         email = payload.get("email", "")  # Default to empty string if not present
 
         if user_id is None:
-            raise credentials_exception
+            raise InvalidCredentialsException(
+                message="Invalid token: missing user identifier",
+                details={"headers": {"WWW-Authenticate": "Bearer"}}
+            )
+
+        # Check token expiration
+        exp = payload.get("exp")
+        if exp and datetime.fromtimestamp(exp) < datetime.utcnow():
+            raise TokenExpiredException(
+                details={"headers": {"WWW-Authenticate": "Bearer"}}
+            )
 
         token_data = TokenData(user_id=user_id, name=name, email=email)
     except JWTError:
-        raise credentials_exception
+        raise InvalidCredentialsException(
+            message="Invalid authentication token",
+            details={"headers": {"WWW-Authenticate": "Bearer"}}
+        )
 
     return {"user_id": token_data.user_id, "name": token_data.name, "email": token_data.email}
