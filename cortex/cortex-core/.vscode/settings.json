@@ -61,7 +61,8 @@
     "uv.lock",
     "logs",
     ".env",
-    "docs"
+    "docs",
+    "planning"
   ],
   "cSpell.words": [
     "abstractmethod",
