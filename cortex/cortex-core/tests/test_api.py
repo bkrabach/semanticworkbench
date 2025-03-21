@@ -1,4 +1,5 @@
-import pytest
+# We need pytest for test discovery, even if not directly used
+import pytest  # noqa: F401
 from fastapi.testclient import TestClient
 from app.main import app
 from app.utils.auth import create_access_token
@@ -51,15 +52,55 @@ def test_verify_token():
 def test_input_endpoint():
     """Test input endpoint."""
     headers = get_auth_header()
+    
+    # Create a workspace and conversation first
+    workspace_response = client.post(
+        "/config/workspace",
+        json={"name": "Test Workspace", "description": "Test Description", "metadata": {}},
+        headers=headers
+    )
+    workspace_data = workspace_response.json()
+    workspace_id = workspace_data["workspace"]["id"]
+    
+    conversation_response = client.post(
+        "/config/conversation",
+        json={
+            "workspace_id": workspace_id,
+            "topic": "Test Conversation",
+            "metadata": {}
+        },
+        headers=headers
+    )
+    conversation_data = conversation_response.json()
+    conversation_id = conversation_data["conversation"]["id"]
+    
+    # Test input endpoint with required conversation_id
     response = client.post(
         "/input",
-        json={"content": "Test message", "metadata": {}},
+        json={"content": "Test message", "conversation_id": conversation_id, "metadata": {}},
         headers=headers
     )
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "received"
     assert data["data"]["content"] == "Test message"
+    assert data["data"]["conversation_id"] == conversation_id
+
+def test_input_endpoint_missing_conversation_id():
+    """Test input endpoint with missing conversation_id."""
+    headers = get_auth_header()
+    
+    # Test input endpoint without the required conversation_id
+    response = client.post(
+        "/input",
+        json={"content": "Test message", "metadata": {}},
+        headers=headers
+    )
+    # Should return a validation error
+    assert response.status_code == 422
+    data = response.json()
+    # Check that the error is about the missing conversation_id
+    assert any("conversation_id" in str(detail) for detail in data["detail"])
 
 def test_workspace_endpoints():
     """Test workspace creation and listing."""

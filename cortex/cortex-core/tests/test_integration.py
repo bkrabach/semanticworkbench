@@ -1,6 +1,4 @@
 import pytest
-import asyncio
-import json
 from fastapi.testclient import TestClient
 from app.main import app
 from app.utils.auth import create_access_token
@@ -24,11 +22,29 @@ async def test_input_to_output_flow():
 
     # Set auth header
     headers = {"Authorization": f"Bearer {token}"}
-
-    # Send test input
+    
+    # Create a workspace first
+    workspace_response = client.post(
+        "/config/workspace",
+        json={"name": "Integration Test Workspace", "description": "For integration testing", "metadata": {}},
+        headers=headers
+    )
+    assert workspace_response.status_code == 200
+    workspace_id = workspace_response.json()["workspace"]["id"]
+    
+    # Create a conversation
+    conversation_response = client.post(
+        "/config/conversation",
+        json={"workspace_id": workspace_id, "topic": "Integration Test Conversation", "metadata": {}},
+        headers=headers
+    )
+    assert conversation_response.status_code == 200
+    conversation_id = conversation_response.json()["conversation"]["id"]
+    
+    # Send test input with the required conversation_id
     response = client.post(
         "/input",
-        json={"content": "Test message for integration", "metadata": {}},
+        json={"content": "Test message for integration", "conversation_id": conversation_id, "metadata": {}},
         headers=headers
     )
 

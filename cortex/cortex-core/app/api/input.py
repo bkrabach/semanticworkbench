@@ -44,11 +44,10 @@ async def receive_input(request: InputRequest, current_user: dict = Depends(get_
     }
 
     # Create and store message
-    conversation_id = request.conversation_id or "default"
     message = Message(
         sender_id=user_id,
         content=request.content,
-        conversation_id=conversation_id,
+        conversation_id=request.conversation_id,
         timestamp=timestamp,
         metadata=request.metadata
     )
@@ -62,7 +61,7 @@ async def receive_input(request: InputRequest, current_user: dict = Depends(get_
         status="received",
         data={
             "content": request.content,
-            "conversation_id": conversation_id,
+            "conversation_id": request.conversation_id,
             "timestamp": timestamp,
             "metadata": request.metadata
         }

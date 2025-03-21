@@ -99,7 +99,7 @@ Sends input data to the system.
 ```json
 {
   "content": "Hello, Cortex!",
-  "conversation_id": "850e8400-e29b-41d4-a716-446655440333",
+  "conversation_id": "850e8400-e29b-41d4-a716-446655440333", // Required
   "metadata": {
     "client_id": "web-chat-client",
     "client_version": "1.0.0"
@@ -367,6 +367,11 @@ Example JavaScript client:
 
 ```javascript
 async function sendInput(content, conversationId) {
+  // Ensure conversation ID is provided
+  if (!conversationId) {
+    throw new Error('Conversation ID is required');
+  }
+  
   try {
     const response = await fetch('/input', {
       method: 'POST',

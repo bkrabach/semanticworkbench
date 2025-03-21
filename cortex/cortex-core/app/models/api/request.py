@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import List
 
 from ...models.base import BaseModelWithMetadata
 
@@ -11,7 +11,7 @@ class LoginRequest(BaseModel):
 class InputRequest(BaseModelWithMetadata):
     """Input data from clients."""
     content: str = Field(..., description="Message content")
-    conversation_id: Optional[str] = Field(None, description="Conversation ID")
+    conversation_id: str = Field(..., description="Conversation ID")
 
 class WorkspaceCreate(BaseModelWithMetadata):
     """Request to create a workspace."""
