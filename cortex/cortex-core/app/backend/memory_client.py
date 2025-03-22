@@ -3,6 +3,7 @@ class MemoryClient:
     Client for the Memory Service.
     Provides methods to store and retrieve conversation state via MCP.
     """
+
     def __init__(self):
         """Initialize connection or client setup for Memory Service (placeholder)."""
         # In a real scenario, we might establish an MCP connection here.

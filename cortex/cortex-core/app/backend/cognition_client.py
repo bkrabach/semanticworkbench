@@ -3,6 +3,7 @@ class CognitionClient:
     Client for the Cognition Service (LLM and analysis).
     Provides methods to analyze input and generate responses via MCP.
     """
+
     def __init__(self):
         """Initialize connection or client setup for Cognition Service (placeholder)."""
         # In a real scenario, we might initialize an MCP client or API wrapper here.

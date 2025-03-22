@@ -9,27 +9,38 @@ This package contains all the data models for the application:
 
 __all__ = [
     # Domain models
-    "User", "Workspace", "Conversation", "Message",
+    "User",
+    "Workspace",
+    "Conversation",
+    "Message",
     # API schemas
-    "LoginRequest", "LoginResponse", 
-    "WorkspaceCreateRequest", "ConversationCreateRequest",
-    "InputMessage", "MessageAck",
-    "WorkspaceListResponse", "ConversationListResponse", 
+    "LoginRequest",
+    "LoginResponse",
+    "WorkspaceCreateRequest",
+    "ConversationCreateRequest",
+    "InputMessage",
+    "MessageAck",
+    "WorkspaceListResponse",
+    "ConversationListResponse",
     "UserProfileResponse",
     # LLM models
-    "ToolRequest", "FinalAnswer"
+    "ToolRequest",
+    "FinalAnswer",
 ]
 # Domain models
-from app.models.domain import User, Workspace, Conversation, Message
-
 # API schemas
 from app.models.api import (
-    LoginRequest, LoginResponse, 
-    WorkspaceCreateRequest, ConversationCreateRequest,
-    InputMessage, MessageAck,
-    WorkspaceListResponse, ConversationListResponse,
-    UserProfileResponse
+    ConversationCreateRequest,
+    ConversationListResponse,
+    InputMessage,
+    LoginRequest,
+    LoginResponse,
+    MessageAck,
+    UserProfileResponse,
+    WorkspaceCreateRequest,
+    WorkspaceListResponse,
 )
+from app.models.domain import Conversation, Message, User, Workspace
 
 # LLM structured output models
-from app.models.llm import ToolRequest, FinalAnswer
+from app.models.llm import FinalAnswer, ToolRequest
