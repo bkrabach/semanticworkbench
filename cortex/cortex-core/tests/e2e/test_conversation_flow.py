@@ -1,0 +1,244 @@
+"""
+End-to-end tests for conversation flows.
+"""
+
+import uuid
+
+import pytest
+from app.main import app
+from app.utils.auth import create_access_token
+from fastapi.testclient import TestClient
+
+
+@pytest.fixture
+def client():
+    """Create a test client."""
+    return TestClient(app)
+
+
+@pytest.fixture
+def auth_headers():
+    """Create authentication headers with test token."""
+    user_id = f"e2e-user-{uuid.uuid4()}"
+    token = create_access_token({
+        "sub": f"{user_id}@example.com",
+        "oid": user_id,
+        "name": "E2E Test User",
+        "email": f"{user_id}@example.com",
+    })
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture
+def test_workspace(client, auth_headers):
+    """Create a test workspace."""
+    response = client.post(
+        "/config/workspace",
+        json={
+            "name": f"E2E Test Workspace {uuid.uuid4()}",
+            "description": "Workspace for E2E testing",
+            "metadata": {"e2e_test": True},
+        },
+        headers=auth_headers,
+    )
+    assert response.status_code == 201
+    return response.json()["workspace"]
+
+
+@pytest.fixture
+def test_conversation(client, auth_headers, test_workspace):
+    """Create a test conversation."""
+    response = client.post(
+        "/config/conversation",
+        json={
+            "workspace_id": test_workspace["id"],
+            "topic": f"E2E Test Conversation {uuid.uuid4()}",
+            "metadata": {"e2e_test": True},
+        },
+        headers=auth_headers,
+    )
+    assert response.status_code == 201
+    return response.json()["conversation"]
+
+
+def test_create_workspace_and_conversation(client, auth_headers):
+    """Test creating a workspace and conversation."""
+    # Create workspace
+    workspace_response = client.post(
+        "/config/workspace",
+        json={
+            "name": f"Flow Test Workspace {uuid.uuid4()}",
+            "description": "Workspace for flow testing",
+            "metadata": {"flow_test": True},
+        },
+        headers=auth_headers,
+    )
+    assert workspace_response.status_code == 201
+    workspace = workspace_response.json()["workspace"]
+    assert workspace["name"].startswith("Flow Test Workspace")
+
+    # Create conversation
+    conversation_response = client.post(
+        "/config/conversation",
+        json={
+            "workspace_id": workspace["id"],
+            "topic": f"Flow Test Conversation {uuid.uuid4()}",
+            "metadata": {"flow_test": True},
+        },
+        headers=auth_headers,
+    )
+    assert conversation_response.status_code == 201
+    conversation = conversation_response.json()["conversation"]
+    assert conversation["topic"].startswith("Flow Test Conversation")
+    assert conversation["workspace_id"] == workspace["id"]
+
+    # Verify conversation in workspace
+    conversations_response = client.get(f"/config/conversation?workspace_id={workspace['id']}", headers=auth_headers)
+    assert conversations_response.status_code == 200
+    conversations = conversations_response.json()["conversations"]
+    assert any(c["id"] == conversation["id"] for c in conversations)
+
+
+def test_send_and_receive_message(client, auth_headers, test_conversation):
+    """Test sending a message and getting a response."""
+    # Send a message
+    input_response = client.post(
+        "/input",
+        json={
+            "content": "Hello, this is a test message",
+            "conversation_id": test_conversation["id"],
+            "metadata": {"test": True},
+        },
+        headers=auth_headers,
+    )
+    assert input_response.status_code == 200
+    assert input_response.json()["status"] == "received"
+
+    # Give some time for processing (since we're testing against the same process)
+    # In a real world scenario, we would use SSE to get the response
+    # For E2E test purposes, we'll just wait a bit and then check the conversation detail
+    import time
+
+    time.sleep(2)
+
+    # Get conversation detail to see the messages
+    conversation_detail_response = client.get(f"/config/conversation/{test_conversation['id']}", headers=auth_headers)
+    assert conversation_detail_response.status_code == 200
+    conversation_detail = conversation_detail_response.json()["conversation"]
+
+    # Verify messages
+    assert "messages" in conversation_detail
+    messages = conversation_detail["messages"]
+    assert len(messages) >= 2  # At least user message and assistant response
+
+    # Find user message
+    user_message = next(
+        (m for m in messages if m["role"] == "user" and m["content"] == "Hello, this is a test message"), None
+    )
+    assert user_message is not None
+
+    # Find assistant response
+    assistant_message = next((m for m in messages if m["role"] == "assistant" and m["content"] is not None), None)
+    assert assistant_message is not None
+
+
+def test_complex_conversation_flow(client, auth_headers, test_conversation):
+    """Test a more complex conversation flow with multiple messages."""
+    # Send several messages
+    test_messages = [
+        "Hello, I need help with testing",
+        "Can you tell me about the application?",
+        "How do I create a workspace?",
+        "How do I send a message to a conversation?",
+    ]
+
+    for message in test_messages:
+        response = client.post(
+            "/input",
+            json={"content": message, "conversation_id": test_conversation["id"], "metadata": {"test": True}},
+            headers=auth_headers,
+        )
+        assert response.status_code == 200
+        # Give time for processing
+        import time
+
+        time.sleep(2)
+
+    # Get conversation detail
+    conversation_detail_response = client.get(f"/config/conversation/{test_conversation['id']}", headers=auth_headers)
+    assert conversation_detail_response.status_code == 200
+    conversation_detail = conversation_detail_response.json()["conversation"]
+
+    # Verify all messages are there
+    messages = conversation_detail["messages"]
+    for test_message in test_messages:
+        found = any(m["content"] == test_message for m in messages)
+        assert found, f"Message '{test_message}' not found in conversation"
+
+    # Verify we have responses (at least as many as user messages)
+    assistant_messages = [m for m in messages if m["role"] == "assistant"]
+    assert len(assistant_messages) >= len(test_messages)
+
+
+def test_update_conversation(client, auth_headers, test_conversation):
+    """Test updating a conversation."""
+    # Update the conversation
+    new_topic = f"Updated Topic {uuid.uuid4()}"
+    update_response = client.put(
+        f"/config/conversation/{test_conversation['id']}",
+        json={"topic": new_topic, "metadata": {**test_conversation["metadata"], "updated": True}},
+        headers=auth_headers,
+    )
+    assert update_response.status_code == 200
+    updated_conversation = update_response.json()["conversation"]
+    assert updated_conversation["topic"] == new_topic
+    assert updated_conversation["metadata"]["updated"] is True
+
+    # Verify the update
+    get_response = client.get(f"/config/conversation/{test_conversation['id']}", headers=auth_headers)
+    assert get_response.status_code == 200
+    retrieved_conversation = get_response.json()["conversation"]
+    assert retrieved_conversation["topic"] == new_topic
+    assert retrieved_conversation["metadata"]["updated"] is True
+
+
+def test_invalid_requests(client, auth_headers, test_workspace):
+    """Test handling of invalid requests."""
+    # Try to create a conversation with missing workspace_id
+    response = client.post("/config/conversation", json={"topic": "Invalid Conversation"}, headers=auth_headers)
+    assert response.status_code == 422  # Validation error
+
+    # Try to send a message with missing conversation_id
+    response = client.post("/input", json={"content": "Invalid message"}, headers=auth_headers)
+    assert response.status_code == 422  # Validation error
+
+    # Try to access a non-existent conversation
+    response = client.get(f"/config/conversation/{uuid.uuid4()}", headers=auth_headers)
+    assert response.status_code == 404  # Not found
+
+    # Try to send a message to a non-existent conversation
+    response = client.post(
+        "/input", json={"content": "Message to nowhere", "conversation_id": str(uuid.uuid4())}, headers=auth_headers
+    )
+    assert response.status_code == 404  # Not found
+
+
+def test_unauthorized_access(client, test_conversation):
+    """Test unauthorized access attempts."""
+    # Try to access without auth header
+    response = client.get("/config/workspace")
+    assert response.status_code == 401
+
+    # Try with invalid token
+    response = client.get("/config/workspace", headers={"Authorization": "Bearer invalid-token"})
+    assert response.status_code == 401
+
+    # Try to create a workspace without auth
+    response = client.post("/config/workspace", json={"name": "Unauthorized Workspace", "description": "Should fail"})
+    assert response.status_code == 401
+
+    # Try to send a message without auth
+    response = client.post(
+        "/input", json={"content": "Unauthorized message", "conversation_id": test_conversation["id"]}
+    )
+    assert response.status_code == 401
