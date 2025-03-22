@@ -73,34 +73,50 @@ class EventBus:
     def __init__(self):
         """Initialize the event bus with an empty list of subscribers."""
         self.subscribers = []  # List of asyncio.Queue objects
+        self._active_tasks: Set[asyncio.Task[Any]] = set()
         
     def subscribe(self, queue: asyncio.Queue) -> None:
         """Register a queue to receive events."""
         self.subscribers.append(queue)
+        logger.debug(f"Subscribed new queue. Total subscribers: {len(self.subscribers)}")
         
     async def publish(self, event: Dict[str, Any]) -> None:
         """Publish an event to all subscribers."""
-        # Validate event format
-        if "type" not in event:
-            raise ValueError("Event must have a 'type' field")
-        if "user_id" not in event:
-            raise ValueError("Event must have a 'user_id' field")
-            
-        # Add timestamp if not present
-        if "timestamp" not in event:
-            event["timestamp"] = datetime.now().isoformat()
-            
         # Distribute to all subscribers
         for queue in self.subscribers:
             try:
                 await queue.put(event)
             except Exception as e:
-                logger.error(f"Failed to publish event: {e}")
+                logger.error(f"Failed to publish event to subscriber: {e}")
+        
+        logger.debug(f"Published event: {event.get('type')} to {len(self.subscribers)} subscribers")
                 
     def unsubscribe(self, queue: asyncio.Queue) -> None:
         """Unregister a queue."""
         if queue in self.subscribers:
             self.subscribers.remove(queue)
+            logger.debug(f"Unsubscribed queue. Remaining subscribers: {len(self.subscribers)}")
+            
+    def create_background_task(self, coroutine: Any) -> asyncio.Task[Any]:
+        """Create a tracked background task."""
+        task = asyncio.create_task(coroutine)
+        self._active_tasks.add(task)
+        task.add_done_callback(self._active_tasks.discard)
+        return task
+        
+    async def shutdown(self) -> None:
+        """Shutdown the event bus and cancel all active tasks."""
+        # Cancel all active tasks
+        for task in self._active_tasks:
+            task.cancel()
+
+        # Wait for all tasks to complete
+        if self._active_tasks:
+            await asyncio.gather(*self._active_tasks, return_exceptions=True)
+
+        # Clear subscribers
+        self.subscribers.clear()
+        logger.info("Event bus shut down")
 ```
 
 ### Standard Event Format

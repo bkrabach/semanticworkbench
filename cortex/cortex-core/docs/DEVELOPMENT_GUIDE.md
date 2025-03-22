@@ -107,6 +107,30 @@ The server will be available at http://localhost:8000.
   make revision MSG="describe your change"
   ```
 
+- Database operations use the Unit of Work pattern:
+  ```python
+  async with UnitOfWork.for_transaction() as uow:
+      # Get repositories
+      user_repo = uow.repositories.get_user_repository()
+      workspace_repo = uow.repositories.get_workspace_repository()
+      
+      # Work with repositories
+      user = await user_repo.get_by_id(user_id)
+      workspaces = await workspace_repo.list_by_owner(user_id)
+      
+      # Create a new workspace
+      new_workspace = Workspace(
+          name="New Workspace",
+          description="A new workspace",
+          owner_id=user_id
+      )
+      created_workspace = await workspace_repo.create(new_workspace)
+      
+      # Commit the transaction
+      await uow.commit()
+  # Session is automatically closed when exiting the context
+  ```
+
 ### Dependency Management
 
 - Install a new dependency:
@@ -150,7 +174,23 @@ cortex-core/
 │   ├── core/               # Core components
 │   │   ├── __init__.py
 │   │   ├── event_bus.py    # Event bus implementation
-│   │   └── storage.py      # In-memory storage
+│   │   ├── exceptions.py   # Core exception hierarchy
+│   │   └── storage.py      # Storage interfaces
+│   ├── database/           # Database components
+│   │   ├── __init__.py
+│   │   ├── connection.py   # Database connection management
+│   │   ├── models.py       # SQLAlchemy ORM models
+│   │   ├── dependencies.py # FastAPI dependencies for database
+│   │   ├── migration.py    # Alembic migration utilities
+│   │   ├── unit_of_work.py # Unit of Work pattern implementation
+│   │   └── repositories/   # Repository implementations
+│   │       ├── __init__.py
+│   │       ├── base.py     # Base repository class
+│   │       ├── factory.py  # Repository factory
+│   │       ├── user_repository.py
+│   │       ├── workspace_repository.py
+│   │       ├── conversation_repository.py
+│   │       └── message_repository.py
 │   ├── models/             # Data models
 │   │   ├── __init__.py
 │   │   ├── base.py         # Base models
@@ -161,13 +201,17 @@ cortex-core/
 │   │       └── response.py # Response models
 │   └── utils/              # Utilities
 │       ├── __init__.py
-│       └── auth.py         # Authentication utilities
+│       ├── auth.py         # Authentication utilities
+│       ├── db.py           # Database utilities
+│       └── validation.py   # Validation utilities
 ├── docs/                   # Documentation
 ├── tests/                  # Test suite
 │   ├── __init__.py
 │   ├── test_api.py         # API tests
 │   ├── test_event_bus.py   # Event bus tests
+│   ├── test_error_handling.py # Error handling tests 
 │   └── test_integration.py # Integration tests
+├── alembic.ini             # Alembic migration configuration
 ├── Makefile                # Build and development commands
 ├── pyproject.toml          # Project configuration
 └── requirements.txt        # Project dependencies
@@ -274,13 +318,22 @@ sequenceDiagram
 sequenceDiagram
     participant Client
     participant InputAPI as Input API
+    participant UoW as Unit of Work
+    participant Repo as Repository
+    participant DB as SQLite Database
     participant EventBus as Event Bus
-    participant Storage as In-Memory Storage
 
     Client->>InputAPI: POST /input with data
-    InputAPI->>InputAPI: Validate request
+    InputAPI->>InputAPI: Validate request and JWT
+    InputAPI->>UoW: Begin transaction
+    UoW->>Repo: Get conversation
+    Repo->>DB: Query conversation
+    DB-->>Repo: Return conversation
+    Repo-->>UoW: Return domain model
+    UoW->>Repo: Create message
+    Repo->>DB: Insert message
+    UoW->>UoW: Commit transaction
     InputAPI->>EventBus: Publish input event
-    InputAPI->>Storage: Store message
     InputAPI-->>Client: Confirmation response
 ```
 

@@ -1,6 +1,6 @@
 # Cortex Core Architecture Overview
 
-This document provides a high-level overview of the Cortex Core architecture as implemented in Phase 1. It serves as a comprehensive guide for developers working with the codebase.
+This document provides a high-level overview of the Cortex Core architecture as implemented in Phase 2. It serves as a comprehensive guide for developers working with the codebase.
 
 ## System Purpose
 
@@ -15,10 +15,11 @@ The Cortex Core architecture is built upon these fundamental principles:
 3. **Event-Driven Communication**: An event bus handles all internal communication.
 4. **User Partitioning**: All data is strictly partitioned by user ID.
 5. **Stateless API Design**: No server-side sessions; authentication via JWT.
+6. **Domain-Driven Repository Architecture**: Clear separation between database, domain, and API models.
 
-## Phase 1 Implementation
+## Phase 2 Implementation
 
-Phase 1 implements a complete, functional input/output system with in-memory storage. This enables immediate development of client applications while laying the groundwork for future enhancements.
+Phase 2 implements a complete, functional input/output system with SQLite persistence using a repository pattern. This enables immediate development of client applications while providing a robust data storage solution.
 
 ### High-Level Architecture Diagram
 
@@ -27,7 +28,9 @@ graph TD
     InputClient[Input Client] -->|HTTP POST| FastAPI[FastAPI Application]
     FastAPI -->|Validate| Auth[Auth System]
     FastAPI -->|Publish| EventBus[Event Bus]
-    EventBus -->|Store| Storage[In-Memory Storage]
+    FastAPI -->|Store| UnitOfWork[Unit of Work]
+    UnitOfWork -->|Access| Repositories[Repositories]
+    Repositories -->|Persist| Database[(SQLite Database)]
     OutputClient[Output Client] -->|SSE| FastAPI
     FastAPI -->|Filter Events| OutputClient
 
@@ -35,14 +38,16 @@ graph TD
         FastAPI
         Auth
         EventBus
-        Storage
+        UnitOfWork
+        Repositories
+        Database
     end
 
     classDef client stroke:#f9f,stroke-width:4px;
     classDef core stroke:#bbf,stroke-width:4px;
 
     class InputClient,OutputClient client;
-    class FastAPI,Auth,EventBus,Storage core;
+    class FastAPI,Auth,EventBus,UnitOfWork,Repositories,Database core;
 ```
 
 ### Core Components
@@ -186,30 +191,92 @@ async def output_stream(
     )
 ```
 
-#### 6. In-Memory Storage (`app/core/storage.py`)
+#### 6. Repository Pattern (`app/database/repositories/`)
 
-- Simple in-memory data store
+- SQLite persistence with SQLAlchemy ORM
+- Repository interface for data access abstraction
 - User-partitioned data structure
-- Storage for users, workspaces, conversations, and messages
+- Type-safe conversion between domain and database models
+
+```python
+# Example Repository
+class ConversationRepository(BaseRepository[Conversation, DbConversation]):
+    """Repository for conversation operations."""
+
+    def __init__(self, session: AsyncSession):
+        """
+        Initialize conversation repository.
+
+        Args:
+            session: SQLAlchemy async session
+        """
+        super().__init__(session, Conversation, DbConversation)
+        
+    async def list_by_workspace(self, workspace_id: str,
+                              limit: int = 100, offset: int = 0) -> List[Conversation]:
+        """
+        List conversations in a specific workspace.
+
+        Args:
+            workspace_id: Workspace ID
+            limit: Maximum number of conversations to return
+            offset: Pagination offset
+
+        Returns:
+            List of conversations
+        """
+        try:
+            result = await self.session.execute(
+                select(DbConversation)
+                .where(DbConversation.workspace_id == workspace_id)
+                .limit(limit)
+                .offset(offset)
+            )
+            db_conversations = result.scalars().all()
+            conversations = [conv for conv in [self._to_domain(db) for db in db_conversations] if conv is not None]
+            return conversations
+        except Exception as e:
+            self._handle_db_error(e, f"Error listing conversations for workspace {workspace_id}")
+            return []
+```
+
+#### 7. Unit of Work (`app/database/unit_of_work.py`)
+
+- Transaction management with proper cleanup
+- Repository factory for creating repositories with the same session
+- Context manager interface for clean transaction handling
 
 ```python
 # Basic structure
-class InMemoryStorage:
-    def __init__(self):
-        self.users = {}
-        self.workspaces = {}
-        self.conversations = {}
-        self.messages = {}
-
-    async def store_message(self, user_id: str, conversation_id: str, message: Dict[str, Any]) -> None:
-        # Store message in memory with proper user partitioning
-        if user_id not in self.messages:
-            self.messages[user_id] = {}
-
-        if conversation_id not in self.messages[user_id]:
-            self.messages[user_id][conversation_id] = []
-
-        self.messages[user_id][conversation_id].append(message)
+class UnitOfWork:
+    """
+    Unit of Work pattern implementation for managing database transactions.
+    """
+    
+    def __init__(self, session: AsyncSession):
+        """
+        Initialize Unit of Work.
+        
+        Args:
+            session: SQLAlchemy async session
+        """
+        self.session = session
+        self.repositories = RepositoryFactory(session)
+    
+    @classmethod
+    @asynccontextmanager
+    async def for_transaction(cls) -> AsyncGenerator["UnitOfWork", None]:
+        """
+        Create a Unit of Work for a transaction.
+        """
+        async with get_session() as session:
+            uow = cls(session)
+            try:
+                yield uow
+            except Exception:
+                # Rollback on exception
+                await uow.rollback()
+                raise
 ```
 
 #### 7. Configuration API (`app/api/config.py`)
@@ -251,13 +318,22 @@ sequenceDiagram
 sequenceDiagram
     participant Client
     participant InputAPI as Input API
+    participant UoW as Unit of Work
+    participant Repo as Repository
+    participant DB as SQLite Database
     participant EventBus as Event Bus
-    participant Storage as In-Memory Storage
 
     Client->>InputAPI: POST /input with data
-    InputAPI->>InputAPI: Validate request
+    InputAPI->>InputAPI: Validate request and JWT
+    InputAPI->>UoW: Begin transaction
+    UoW->>Repo: Get conversation
+    Repo->>DB: Query conversation
+    DB-->>Repo: Return conversation
+    Repo-->>UoW: Return domain model
+    UoW->>Repo: Create message
+    Repo->>DB: Insert message
+    UoW->>UoW: Commit transaction
     InputAPI->>EventBus: Publish input event
-    InputAPI->>Storage: Store message
     InputAPI-->>Client: Confirmation response
 ```
 
@@ -270,6 +346,7 @@ sequenceDiagram
     participant EventBus as Event Bus
 
     Client->>OutputAPI: GET /output/stream
+    OutputAPI->>OutputAPI: Validate JWT
     OutputAPI->>OutputAPI: Create SSE connection
     OutputAPI->>EventBus: Subscribe to events
 
@@ -316,14 +393,14 @@ The system implements these security measures:
 
 ## Future Expansion
 
-While Phase 1 implements a complete input/output system with in-memory storage, future phases will add:
+While Phase 2 implements a complete input/output system with SQLite persistence, future phases will add:
 
-1. Persistent storage (SQL database)
-2. Azure B2C integration for production authentication
-3. MCP (Model Context Protocol) client and service integrations
-4. Memory and cognition service integration
-5. More sophisticated error handling and recovery mechanisms
-6. Production deployment configuration
+1. Azure B2C integration for production authentication
+2. MCP (Model Context Protocol) client and service integrations
+3. Memory and cognition service integration
+4. More sophisticated error handling and recovery mechanisms
+5. Production deployment configuration
+6. PostgreSQL migration for production scaling
 
 ## Development Guidelines
 

@@ -1,6 +1,6 @@
 # Cortex Core API Reference
 
-This document provides detailed information about the API endpoints available in Cortex Core as implemented in Phase 1.
+This document provides detailed information about the API endpoints available in Cortex Core as implemented in Phase 2.
 
 ## Base URL
 
@@ -280,7 +280,14 @@ All error responses follow a consistent format:
 
 ```json
 {
-  "detail": "Error message describing the issue"
+  "error": {
+    "code": "error_code",
+    "message": "Human-readable error message",
+    "details": {
+      // Additional error-specific details
+    }
+  },
+  "request_id": "unique-request-identifier"
 }
 ```
 
@@ -288,19 +295,27 @@ For validation errors, the response includes more detailed information:
 
 ```json
 {
-  "detail": [
-    {
-      "loc": ["body", "conversation_id"],
-      "msg": "field required",
-      "type": "value_error.missing"
+  "error": {
+    "code": "validation_error",
+    "message": "Validation error in request data",
+    "status_code": 422,
+    "details": {
+      "validation_errors": [
+        {
+          "loc": ["body", "conversation_id"],
+          "msg": "field required",
+          "type": "value_error.missing"
+        }
+      ]
     }
-  ]
+  },
+  "request_id": "unique-request-identifier"
 }
 ```
 
 ## Rate Limiting
 
-In Phase 1, no rate limiting is implemented. Future phases will add appropriate rate limiting headers:
+In Phase 2, no rate limiting is implemented. Future phases will add appropriate rate limiting headers:
 
 ```
 X-RateLimit-Limit: 100
