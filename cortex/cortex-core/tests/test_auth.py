@@ -28,7 +28,7 @@ def test_verify_endpoint():
     response = client.get("/auth/verify", headers={"Authorization": f"Bearer {token}"})
     assert response.status_code == 200
     assert "authenticated" in response.json()
-    assert response.json()["authenticated"] == True
+    assert response.json()["authenticated"]  # Fixed boolean comparison
     assert "user" in response.json()
 
     # Test with invalid token
@@ -84,7 +84,9 @@ def test_workspace_flow():
         headers={"Authorization": f"Bearer {token}"},
     )
     assert response.status_code == 200
+    # Store conversation_id and use it in the test
     conversation_id = response.json()["conversation"]["id"]
+    assert conversation_id is not None  # Added assertion to use the variable
 
     # List conversations in the workspace
     response = client.get(

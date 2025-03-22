@@ -1,11 +1,12 @@
 import uuid
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 # Import routers from the API submodules
-from app.api import auth, config, input, output
+from app.api import auth, config, health, input, management, output
 from app.core.event_bus import event_bus
 from app.core.response_handler import create_response_handler
 from app.utils.exceptions import CortexException
@@ -13,7 +14,25 @@ from app.utils.exceptions import CortexException
 # Store response handler reference
 response_handler = None
 
-app = FastAPI(title="Cortex Core MVP")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Handle application startup and shutdown events."""
+    global response_handler
+
+    # Initialize components on application startup
+    response_handler = await create_response_handler(event_bus)
+    print("Cortex Core started and response handler initialized")
+
+    yield
+
+    # Clean up resources on application shutdown
+    if response_handler:
+        await response_handler.stop()
+    print("Cortex Core shutting down, resources cleaned up")
+
+
+app = FastAPI(title="Cortex Core MVP", lifespan=lifespan)
 
 
 @app.exception_handler(CortexException)
@@ -53,6 +72,8 @@ app.include_router(auth.router)
 app.include_router(input.router)
 app.include_router(output.router)
 app.include_router(config.router)
+app.include_router(health.router)
+app.include_router(management.router)
 
 
 @app.get("/", tags=["system"])
@@ -67,27 +88,7 @@ async def health_check():
     return {"status": "ok"}
 
 
-@app.on_event("startup")
-async def startup_event():
-    """Initialize components on application startup."""
-    global response_handler
-
-    # Create and start the response handler with our global event bus
-    response_handler = await create_response_handler(event_bus)
-
-    print("Cortex Core started and response handler initialized")
-
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Clean up resources on application shutdown."""
-    global response_handler
-
-    # Stop the response handler if it's running
-    if response_handler:
-        await response_handler.stop()
-
-    print("Cortex Core shutting down, resources cleaned up")
+# These event handlers have been replaced by the lifespan context manager above
 
 
 if __name__ == "__main__":
