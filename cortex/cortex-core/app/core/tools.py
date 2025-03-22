@@ -15,12 +15,22 @@ from pydantic import BaseModel, Field
 from ..database.unit_of_work import UnitOfWork
 from .response_handler import register_tool
 
+# Add Protocol and runtime_checkable
+from typing import Protocol, runtime_checkable
+
+# Define a protocol for MCP client
+@runtime_checkable
+class MCPClientProtocol(Protocol):
+    async def get_resource(
+        self, service_name: str, resource_name: str, params: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]: ...
+
 # Try to import MCP client, but don't fail if not available
 try:
     from .mcp import get_client
 except ImportError:
     # Mock client for testing without MCP
-    def get_client():
+    def get_client() -> Optional[MCPClientProtocol]:
         return None
 
 
@@ -270,6 +280,9 @@ async def get_context(user_id: str, query: Optional[str] = None, limit: int = 10
             result = await mcp_client.get_resource(
                 service_name="cognition", resource_name="context", params={"user_id": user_id, "query": query, "limit": limit}
             )
+            # Ensure result is a dictionary
+            if not isinstance(result, dict):
+                result = {"context": [], "user_id": user_id, "query": query, "count": 0, "error": "Invalid response format"}
 
             logger.info(f"Found {result.get('count', 0)} context items for user {user_id}")
             return result
@@ -343,6 +356,9 @@ async def analyze_conversation(user_id: str, conversation_id: str, analysis_type
                 resource_name="analyze_conversation",
                 params={"user_id": user_id, "conversation_id": conversation_id, "analysis_type": analysis_type},
             )
+            # Ensure result is a dictionary
+            if not isinstance(result, dict):
+                result = {"type": analysis_type, "results": {}, "conversation_id": conversation_id, "error": "Invalid response format"}
 
             logger.info(f"Completed {analysis_type} analysis for conversation {conversation_id}")
             return result
@@ -357,7 +373,7 @@ async def analyze_conversation(user_id: str, conversation_id: str, analysis_type
 
                 if analysis_type == "summary":
                     # Simple count-based summary
-                    participant_counts = {}
+                    participant_counts: Dict[str, int] = {}
                     for msg in messages:
                         participant_counts[msg.sender_id] = participant_counts.get(msg.sender_id, 0) + 1
 
@@ -437,6 +453,9 @@ async def search_history(
                     "include_conversations": include_conversations,
                 },
             )
+            # Ensure result is a dictionary
+            if not isinstance(result, dict):
+                result = {"results": [], "count": 0, "query": query, "error": "Invalid response format"}
 
             logger.info(f"Found {result.get('count', 0)} matches for query '{query}'")
             return result
@@ -475,18 +494,24 @@ async def search_history(
                     conversation_ids = {r.get("_conversation_id") for r in results if "_conversation_id" in r}
 
                     for conv_id in conversation_ids:
-                        conv_messages = await message_repo.list_by_conversation(conv_id, limit=1)
+                        # Ensure conv_id is a string
+                        if conv_id:
+                            conv_messages = await message_repo.list_by_conversation(str(conv_id), limit=1)
 
-                        # Add simple conversation data
-                        for result in results:
-                            if result.get("_conversation_id") == conv_id:
-                                result["_conversation_data"] = {
-                                    "message_count": len(conv_messages),
-                                    "first_message": conv_messages[0].content if conv_messages else "",
-                                }
+                            # Add simple conversation data
+                            for result_item in results:
+                                if result_item.get("_conversation_id") == conv_id:
+                                    first_message = conv_messages[0].content if conv_messages else ""
+                                    # Cast the dictionary to Dict[str, Any] to make mypy happy
+                                    conv_data: Dict[str, Any] = {
+                                        "message_count": len(conv_messages),
+                                        "first_message": first_message,
+                                    }
+                                    result_item["_conversation_data"] = conv_data
 
-                                # Remove the temporary field
-                                del result["_conversation_id"]
+                                    # Remove the temporary field
+                                    if "_conversation_id" in result_item:
+                                        del result_item["_conversation_id"]
 
                 return {"results": results[:limit], "count": len(results[:limit]), "query": query}
     except Exception as e:

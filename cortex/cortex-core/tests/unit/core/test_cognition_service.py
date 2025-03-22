@@ -105,7 +105,7 @@ async def test_get_context_empty_user_id(cognition_service):
     await cognition_service.initialize()
     
     # Call with empty user ID
-    result = await cognition_service.get_context("")
+    result = await cognition_service.get_context(user_id="")
     
     # Should return error
     assert result["context"] == []
@@ -128,7 +128,7 @@ async def test_get_context_no_history(cognition_service):
     cognition_service.memory_service.get_limited_history.return_value = []
     
     # Call with valid user ID
-    result = await cognition_service.get_context("user1")
+    result = await cognition_service.get_context(user_id="user1")
     
     # Should return empty context
     assert result["context"] == []
@@ -156,7 +156,7 @@ async def test_get_context_with_history(cognition_service):
     cognition_service.memory_service.get_limited_history.return_value = history
     
     # Call with valid user ID
-    result = await cognition_service.get_context("user1", limit=2)
+    result = await cognition_service.get_context(user_id="user1", limit=2)
     
     # Should return context with limited items
     assert len(result["context"]) == 2
@@ -184,7 +184,7 @@ async def test_get_context_with_query(cognition_service):
     cognition_service.memory_service.get_limited_history.return_value = history
     
     # Call with query
-    result = await cognition_service.get_context("user1", query="python", limit=3)
+    result = await cognition_service.get_context(user_id="user1", query="python", limit=3)
     
     # Should prioritize messages containing the query term
     assert len(result["context"]) == 3
@@ -210,10 +210,10 @@ async def test_get_context_recency_weight(cognition_service):
     cognition_service.memory_service.get_limited_history.return_value = history
     
     # Call with query and recency_weight=1.0 (full recency priority)
-    result_recency = await cognition_service.get_context("user1", query="python", recency_weight=1.0, limit=3)
+    result_recency = await cognition_service.get_context(user_id="user1", query="python", recency_weight=1.0, limit=3)
     
     # Call with query and recency_weight=0.0 (full relevance priority)
-    result_relevance = await cognition_service.get_context("user1", query="python", recency_weight=0.0, limit=3)
+    result_relevance = await cognition_service.get_context(user_id="user1", query="python", recency_weight=0.0, limit=3)
     
     # With recency priority, most recent message should be first
     assert result_recency["context"][0]["id"] == "msg3"
@@ -229,12 +229,12 @@ async def test_analyze_conversation_invalid_params(cognition_service):
     await cognition_service.initialize()
     
     # Call with empty user ID
-    result1 = await cognition_service.analyze_conversation("", "conv1")
+    result1 = await cognition_service.analyze_conversation(user_id="", conversation_id="conv1")
     assert "error" in result1
     assert "User ID and conversation ID are required" in result1["error"]
     
     # Call with empty conversation ID
-    result2 = await cognition_service.analyze_conversation("user1", "")
+    result2 = await cognition_service.analyze_conversation(user_id="user1", conversation_id="")
     assert "error" in result2
     assert "User ID and conversation ID are required" in result2["error"]
 
@@ -249,7 +249,7 @@ async def test_analyze_conversation_not_found(cognition_service):
     cognition_service.memory_service.get_conversation.return_value = []
     
     # Call with valid IDs but non-existent conversation
-    result = await cognition_service.analyze_conversation("user1", "nonexistent")
+    result = await cognition_service.analyze_conversation(user_id="user1", conversation_id="nonexistent")
     
     # Should return error
     assert "error" in result
@@ -276,7 +276,7 @@ async def test_analyze_conversation_summary(cognition_service):
     cognition_service.memory_service.get_conversation.return_value = conversation
     
     # Call with summary type
-    result = await cognition_service.analyze_conversation("user1", "conv1", "summary")
+    result = await cognition_service.analyze_conversation(user_id="user1", conversation_id="conv1", analysis_type="summary")
     
     # Should return summary data
     assert result["type"] == "summary"
@@ -304,7 +304,7 @@ async def test_analyze_conversation_topics(cognition_service):
     cognition_service.memory_service.get_conversation.return_value = conversation
     
     # Call with topics type
-    result = await cognition_service.analyze_conversation("user1", "conv1", "topics")
+    result = await cognition_service.analyze_conversation(user_id="user1", conversation_id="conv1", analysis_type="topics")
     
     # Should return topic data
     assert result["type"] == "topics"
@@ -340,12 +340,12 @@ async def test_analyze_conversation_sentiment(cognition_service):
     
     # Test positive sentiment
     cognition_service.memory_service.get_conversation.return_value = positive_conversation
-    positive_result = await cognition_service.analyze_conversation("user1", "conv1", "sentiment")
+    positive_result = await cognition_service.analyze_conversation(user_id="user1", conversation_id="conv1", analysis_type="sentiment")
     
     # Reset mock for negative test
     cognition_service.memory_service.get_conversation.reset_mock()
     cognition_service.memory_service.get_conversation.return_value = negative_conversation
-    negative_result = await cognition_service.analyze_conversation("user1", "conv1", "sentiment")
+    negative_result = await cognition_service.analyze_conversation(user_id="user1", conversation_id="conv1", analysis_type="sentiment")
     
     # Check positive result
     assert positive_result["type"] == "sentiment"
@@ -368,7 +368,7 @@ async def test_analyze_conversation_unknown_type(cognition_service):
     cognition_service.memory_service.get_conversation.return_value = [create_mock_message()]
     
     # Call with unknown type
-    result = await cognition_service.analyze_conversation("user1", "conv1", "unknown_type")
+    result = await cognition_service.analyze_conversation(user_id="user1", conversation_id="conv1", analysis_type="unknown_type")
     
     # Should return error
     assert "error" in result
@@ -382,12 +382,12 @@ async def test_search_history_invalid_params(cognition_service):
     await cognition_service.initialize()
     
     # Call with empty user ID
-    result1 = await cognition_service.search_history("", "query")
+    result1 = await cognition_service.search_history(user_id="", query="query")
     assert "error" in result1
     assert "User ID and query are required" in result1["error"]
     
     # Call with empty query
-    result2 = await cognition_service.search_history("user1", "")
+    result2 = await cognition_service.search_history(user_id="user1", query="")
     assert "error" in result2
     assert "User ID and query are required" in result2["error"]
 
@@ -405,7 +405,7 @@ async def test_search_history_no_results(cognition_service):
     ]
     
     # Call with non-matching query
-    result = await cognition_service.search_history("user1", "python")
+    result = await cognition_service.search_history(user_id="user1", query="python")
     
     # Should return empty results
     assert result["results"] == []
@@ -432,7 +432,7 @@ async def test_search_history_with_results(cognition_service):
     cognition_service.memory_service.get_history.return_value = history
     
     # Call with matching query
-    result = await cognition_service.search_history("user1", "python")
+    result = await cognition_service.search_history(user_id="user1", query="python")
     
     # Should return matching results
     assert len(result["results"]) == 2
@@ -480,7 +480,7 @@ async def test_search_history_with_conversation_data(cognition_service):
     cognition_service.memory_service.get_conversation = AsyncMock(side_effect=mock_get_conversation)
     
     # Call with matching query and include_conversations=True
-    result = await cognition_service.search_history("user1", "python", include_conversations=True)
+    result = await cognition_service.search_history(user_id="user1", query="python", include_conversations=True)
     
     # Should return matching results with conversation data
     assert len(result["results"]) == 2
@@ -511,7 +511,7 @@ async def test_search_history_without_conversation_data(cognition_service):
     cognition_service.memory_service.get_history.return_value = history
     
     # Call with matching query and include_conversations=False
-    result = await cognition_service.search_history("user1", "python", include_conversations=False)
+    result = await cognition_service.search_history(user_id="user1", query="python", include_conversations=False)
     
     # Should return matching results without conversation data
     assert len(result["results"]) == 2

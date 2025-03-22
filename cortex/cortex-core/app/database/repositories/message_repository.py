@@ -67,6 +67,34 @@ class MessageRepository(BaseRepository[Message, DbMessage]):
         except Exception as e:
             self._handle_db_error(e, f"Error counting messages for conversation {conversation_id}")
             return 0  # Return 0 count on error
+    
+    async def list_by_sender(self, sender_id: str, limit: int = 100, offset: int = 0) -> List[Message]:
+        """
+        List messages from a specific sender.
+
+        Args:
+            sender_id: Sender ID
+            limit: Maximum number of messages to return
+            offset: Pagination offset
+
+        Returns:
+            List of messages
+        """
+        try:
+            result = await self.session.execute(
+                select(DbMessage)
+                .where(DbMessage.sender_id == sender_id)
+                .order_by(DbMessage.timestamp.desc())
+                .limit(limit)
+                .offset(offset)
+            )
+            db_messages = result.scalars().all()
+            # Filter out None values to satisfy type checker
+            messages = [msg for msg in [self._to_domain(db) for db in db_messages] if msg is not None]
+            return messages
+        except Exception as e:
+            self._handle_db_error(e, f"Error listing messages for sender {sender_id}")
+            return []  # Return empty list on error
 
     def _to_domain(self, db_entity: Optional[DbMessage]) -> Optional[Message]:
         """

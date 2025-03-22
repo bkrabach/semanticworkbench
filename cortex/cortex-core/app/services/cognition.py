@@ -103,6 +103,13 @@ class CognitionService:
 
             # Limit results
             context_items = ranked_items[:limit] if limit else ranked_items
+            
+            # Filter out error information from each item's metadata
+            for item in context_items:
+                if 'metadata' in item and item['metadata'] is not None:
+                    metadata = item['metadata']
+                    if isinstance(metadata.get('context'), dict) and 'error' in metadata['context']:
+                        del metadata['context']['error']
 
             return {"context": context_items, "user_id": user_id, "query": query, "count": len(context_items)}
         except Exception as e:
@@ -234,6 +241,13 @@ class CognitionService:
                     "conversation_id": conversation_id,
                     "error": "Conversation not found",
                 }
+
+            # Filter out error information from each item's metadata
+            for item in conversation_items:
+                if 'metadata' in item and item['metadata'] is not None:
+                    metadata = item['metadata']
+                    if isinstance(metadata.get('context'), dict) and 'error' in metadata['context']:
+                        del metadata['context']['error']
 
             # Perform requested analysis
             if analysis_type == "summary":
@@ -414,6 +428,13 @@ class CognitionService:
 
             # Get user history from Memory Service
             history = await self.memory_service.get_history(user_id)
+
+            # Filter out error information from each item's metadata
+            for item in history:
+                if 'metadata' in item and item['metadata'] is not None:
+                    metadata = item['metadata']
+                    if isinstance(metadata.get('context'), dict) and 'error' in metadata['context']:
+                        del metadata['context']['error']
 
             # Perform search
             results = []
