@@ -8,12 +8,14 @@ from fastapi.exceptions import RequestValidationError
 from dotenv import load_dotenv
 from contextlib import asynccontextmanager
 
-from app.api.auth import router as auth_router
+from app.api.auth import router as auth_router, USERS
 from app.api.input import router as input_router
 from app.api.output import router as output_router
 from app.api.config import router as config_router
 from app.core.event_bus import event_bus
 from app.core.exceptions import CortexException
+from app.models.domain import User
+from app.database.unit_of_work import UnitOfWork
 
 # Load environment variables
 load_dotenv()
@@ -25,6 +27,43 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+async def ensure_test_users_exist():
+    """
+    Development-only function that ensures test users from auth.py exist in the database.
+    
+    This is needed because the login endpoint authenticates against static users in the USERS dictionary,
+    but these users need to exist in the database to satisfy foreign key constraints when
+    creating workspaces and other resources that reference users via foreign keys.
+    
+    In a production environment, this would be replaced by proper user management
+    with Azure B2C integration where users are created in the database upon first login
+    or through user management endpoints.
+    """
+    async with UnitOfWork.for_transaction() as uow:
+        user_repo = uow.repositories.get_user_repository()
+        
+        for email, user_data in USERS.items():
+            # Check if user already exists
+            user_id = user_data["oid"]
+            existing_user = await user_repo.get_by_id(user_id)
+            
+            if not existing_user:
+                logger.info(f"Creating test user: {email} with ID: {user_id}")
+                # Create user in database
+                new_user = User(
+                    user_id=user_id,
+                    name=user_data["name"],
+                    email=email,
+                    metadata={"is_test_user": True}
+                )
+                await user_repo.create(new_user)
+            else:
+                logger.info(f"Test user already exists: {email}")
+        
+        # Commit all changes
+        await uow.commit()
+        logger.info("Test user setup complete")
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
@@ -32,7 +71,17 @@ async def lifespan(app: FastAPI):
     Handles startup and shutdown events.
     """
     # Startup
+    logger.info("Initializing database...")
+    from app.database.connection import init_db
+    await init_db()
+    logger.info("Database initialized")
+    
+    # Ensure test users exist in the database
+    logger.info("Setting up test users...")
+    await ensure_test_users_exist()
+
     yield
+    
     # Shutdown
     logger.info("Application shutting down")
     await event_bus.shutdown()
@@ -78,12 +127,17 @@ async def cortex_exception_handler(request: Request, exc: CortexException):
     # Log the exception with its built-in method
     exc.log()
     
-    error_response = exc.to_dict()
-    error_response["request_id"] = request_id
-    
+    # Format the error response to match expected structure in tests
     return JSONResponse(
         status_code=exc.status_code,
-        content=error_response
+        content={
+            "error": {
+                "code": exc.code,
+                "message": exc.message,
+                "details": exc.details if hasattr(exc, "details") else {}
+            },
+            "request_id": request_id
+        }
     )
 
 @app.exception_handler(RequestValidationError)

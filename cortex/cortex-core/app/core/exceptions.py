@@ -313,3 +313,109 @@ class EventBusException(ServiceException):
             status_code=500,
             details=details,
         )
+
+
+# Database Exceptions
+
+class DatabaseException(CortexException):
+    """Base class for database errors."""
+
+    def __init__(
+        self,
+        message: str,
+        code: str = "database_error",
+        status_code: int = 500,
+        details: Optional[Dict[str, Any]] = None,
+    ):
+        super().__init__(message, code, status_code, details)
+
+
+class DatabaseError(DatabaseException):
+    """Exception raised when a database operation fails."""
+
+    def __init__(
+        self,
+        message: str = "Database operation failed",
+        details: Optional[Dict[str, Any]] = None,
+    ):
+        super().__init__(
+            message,
+            code="database_error",
+            status_code=500,
+            details=details,
+        )
+
+
+class EntityNotFoundError(DatabaseException):
+    """Exception raised when an entity is not found in the database."""
+
+    def __init__(
+        self,
+        message: str = "Entity not found",
+        entity_type: Optional[str] = None,
+        entity_id: Optional[str] = None,
+    ):
+        details = {}
+        if entity_type:
+            details["entity_type"] = entity_type
+        if entity_id:
+            details["entity_id"] = entity_id
+
+        super().__init__(
+            message,
+            code="entity_not_found",
+            status_code=404,
+            details=details,
+        )
+
+
+class AccessDeniedError(DatabaseException):
+    """Exception raised when access to an entity is denied."""
+
+    def __init__(
+        self,
+        message: str = "Access denied",
+        entity_type: Optional[str] = None,
+        entity_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+    ):
+        details = {}
+        if entity_type:
+            details["entity_type"] = entity_type
+        if entity_id:
+            details["entity_id"] = entity_id
+        if user_id:
+            details["user_id"] = user_id
+
+        super().__init__(
+            message,
+            code="access_denied",
+            status_code=403,
+            details=details,
+        )
+
+
+class DuplicateEntityError(DatabaseException):
+    """Exception raised when an entity already exists."""
+
+    def __init__(
+        self,
+        message: str = "Entity already exists",
+        entity_type: Optional[str] = None,
+        field: Optional[str] = None,
+        value: Optional[str] = None,
+    ):
+        details = {}
+        if entity_type:
+            details["entity_type"] = entity_type
+        if field:
+            details["field"] = field
+        if value:
+            details["value"] = value
+
+        super().__init__(
+            message,
+            code="duplicate_entity",
+            status_code=409,
+            details=details,
+        )

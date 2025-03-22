@@ -9,6 +9,17 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 # For development, a simple in-memory user store
 # In production, this would use Azure B2C
+#
+# Authentication Flow:
+# 1. Users authenticate against this static dictionary via the login endpoint
+# 2. Once authenticated, a JWT token is generated with the user information
+# 3. This token is used for subsequent requests
+# 4. The system expects these users to exist in the database for foreign key constraints
+# 5. The ensure_test_users_exist() function in main.py synchronizes these users to the database
+#
+# This two-part approach (in-memory auth + database records) is a development
+# simplification. In production, a proper Azure B2C integration would handle
+# user authentication and database synchronization.
 USERS = {
     "user@example.com": {
         "password": "password123",

@@ -107,8 +107,10 @@ python -m scripts.migrate_to_sqlite
 The database connection can be configured with environment variables:
 
 ```
-DATABASE_URL=sqlite:///./cortex.db
+DATABASE_URL=sqlite+aiosqlite:///./cortex.db
 ```
+
+**Important**: Always use the `sqlite+aiosqlite:///` prefix for SQLite URLs to ensure the async driver is used. The application will automatically convert `sqlite:///` URLs to use the async driver, but it's recommended to specify it explicitly.
 
 ## Future Work
 

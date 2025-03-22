@@ -9,12 +9,20 @@ from typing import Dict, Any
 from ..utils.auth import get_current_user
 from ..core.event_bus import event_bus
 from ..core.exceptions import ServiceUnavailableException
+from ..models.api.response import ErrorResponse
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["output"])
 
-@router.get("/output/stream")
-async def output_stream(request: Request, current_user: dict = Depends(get_current_user)):
+@router.get("/output/stream", responses={
+    401: {"model": ErrorResponse},
+    500: {"model": ErrorResponse},
+    503: {"model": ErrorResponse}
+})
+async def output_stream(
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+):
     """
     Server-Sent Events (SSE) endpoint for streaming output to clients.
 

@@ -115,7 +115,7 @@ def test_workspace_endpoints():
         json={"name": "Test Workspace", "description": "Test Description", "metadata": {}},
         headers=headers
     )
-    assert response.status_code == 200
+    assert response.status_code == 201
     data = response.json()
     assert data["status"] == "workspace created"
     assert data["workspace"]["name"] == "Test Workspace"
@@ -138,7 +138,7 @@ def test_workspace_endpoints():
         },
         headers=headers
     )
-    assert response.status_code == 200
+    assert response.status_code == 201
     data = response.json()
     assert data["status"] == "conversation created"
     assert data["conversation"]["topic"] == "Test Conversation"

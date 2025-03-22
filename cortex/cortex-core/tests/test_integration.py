@@ -29,7 +29,7 @@ async def test_input_to_output_flow():
         json={"name": "Integration Test Workspace", "description": "For integration testing", "metadata": {}},
         headers=headers
     )
-    assert workspace_response.status_code == 200
+    assert workspace_response.status_code == 201
     workspace_id = workspace_response.json()["workspace"]["id"]
     
     # Create a conversation
@@ -38,7 +38,7 @@ async def test_input_to_output_flow():
         json={"workspace_id": workspace_id, "topic": "Integration Test Conversation", "metadata": {}},
         headers=headers
     )
-    assert conversation_response.status_code == 200
+    assert conversation_response.status_code == 201
     conversation_id = conversation_response.json()["conversation"]["id"]
     
     # Send test input with the required conversation_id
