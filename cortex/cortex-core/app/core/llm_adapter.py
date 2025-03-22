@@ -9,10 +9,17 @@ import os
 import json
 import logging
 import uuid
-from typing import Dict, List, Any, Optional, cast, Tuple, Protocol
+from typing import Dict, List, Any, Optional, cast, Protocol
+
+from .exceptions import LLMException
+from .mock_llm import mock_llm
 from ..models.domain.pydantic_ai import (
-    ChatMessage, LLMInput, LLMOutput, UserMessage, SystemMessage, AssistantMessage, ToolCall
+    ChatMessage as PydanticChatMessage, LLMInput, LLMOutput, UserMessage, 
+    SystemMessage, AssistantMessage, ToolCall
 )
+
+# For type clarity in this module
+ChatMessage = Dict[str, str]
 
 # Define a protocol for model interfaces
 class ModelProtocol(Protocol):
@@ -39,10 +46,6 @@ class AnthropicModel(PydAIBaseModel):
     def __init__(self, model_name, api_key=None):
         self.model_name = model_name
         self.api_key = api_key
-from .exceptions import LLMException
-
-# Import mock LLM for fallback
-from .mock_llm import mock_llm
 
 logger = logging.getLogger(__name__)
 
@@ -129,50 +132,31 @@ class CortexLLMAgent:
         """
         try:
             # Build the messages array for the model
-            messages = []
+            messages: List[ChatMessage] = []
             
             # Add system message if provided
             if input_data.system_message:
-                messages.append(ChatMessage(
-                    role="system",
-                    content=input_data.system_message.content
-                ))
+                messages.append({
+                    "role": "system",
+                    "content": input_data.system_message.content
+                })
             
             # Add history messages
             if input_data.history:
-                messages.extend(input_data.history)
+                for msg in input_data.history:
+                    if isinstance(msg, dict) and "role" in msg and "content" in msg:
+                        messages.append({
+                            "role": msg["role"],
+                            "content": msg["content"]
+                        })
             
             # Add the current user message
-            messages.append(ChatMessage(
-                role="user",
-                content=input_data.user_message.content
-            ))
+            messages.append({
+                "role": "user",
+                "content": input_data.user_message.content
+            })
             
             # Set up tools if provided
-            tools = input_data.tools
-            
-            # Use the actual provider SDK through OpenAI, Anthropic, etc.
-            import openai
-            from openai import AsyncOpenAI, AsyncAzureOpenAI
-            
-            # Format messages for API call
-            formatted_messages = []
-            
-            # Add system message if provided
-            if input_data.system_message:
-                formatted_messages.append({"role": "system", "content": input_data.system_message.content})
-            
-            # Add history messages
-            for msg in input_data.history:
-                formatted_messages.append({"role": msg["role"], "content": msg["content"]})
-            
-            # Add user message
-            formatted_messages.append({"role": "user", "content": input_data.user_message.content})
-            
-            # Get provider type from the model
-            provider = self.config.get("provider", "openai").lower()
-            
-            # Format tools if provided
             api_tools = None
             if input_data.tools:
                 # Convert tools to OpenAI format for function calling
@@ -183,21 +167,30 @@ class CortexLLMAgent:
                     } for tool in input_data.tools
                 ]
             
+            # Get provider type from the model
+            provider = self.config.get("provider", "openai").lower()
+            
             # Make the actual API call based on provider
             if provider == "openai":
+                # Import the necessary module
+                from openai import AsyncOpenAI
+                
                 # Create OpenAI client
                 client = AsyncOpenAI(
-                    api_key=self.model.api_key,
-                    base_url=getattr(self.model, "base_url", None)
+                    api_key=getattr(self.model, "api_key", None)
                 )
                 
-                # Make API call
+                # Handle base_url attribute access with type ignore for Pylance
+                if hasattr(self.model, "base_url") and getattr(self.model, "base_url", None):  # type: ignore
+                    client.base_url = getattr(self.model, "base_url")  # type: ignore
+                
+                # Make API call - type ignore for OpenAI API messages format
                 response = await client.chat.completions.create(
-                    model=self.model.model_name,
-                    messages=formatted_messages,
+                    model=getattr(self.model, "model_name", "gpt-3.5-turbo"),
+                    messages=messages,  # type: ignore
                     temperature=self.temperature,
                     max_tokens=self.max_tokens,
-                    tools=api_tools
+                    tools=None if not api_tools else api_tools  # type: ignore
                 )
                 
                 # Check for tool calls
@@ -207,10 +200,9 @@ class CortexLLMAgent:
                     tool_calls = []
                     
                     for tc in api_tool_calls:
-                        import json
                         try:
                             args = json.loads(tc.function.arguments)
-                        except:
+                        except Exception:
                             args = {}
                             
                         tool_calls.append(ToolCall(
@@ -225,26 +217,33 @@ class CortexLLMAgent:
                     )
                 else:
                     # Return content response
+                    content = response.choices[0].message.content or ""
                     return LLMOutput(
-                        response=AssistantMessage(content=response.choices[0].message.content),
+                        response=AssistantMessage(content=content),
                         tool_calls=None
                     )
                 
             elif provider == "azure_openai":
+                # Import the necessary module
+                from openai import AsyncAzureOpenAI
+                
                 # Create Azure OpenAI client
                 client = AsyncAzureOpenAI(
-                    api_key=self.model.api_key,
-                    api_version=self.model.api_version,
-                    azure_endpoint=self.model.base_url
+                    api_key=getattr(self.model, "api_key", None),
+                    api_version=getattr(self.model, "api_version", "2023-05-15"),
+                    azure_endpoint=getattr(self.model, "base_url", "")
                 )
                 
-                # Make API call
+                # Get deployment name
+                deployment = getattr(self.model, "azure_deployment", "gpt-35-turbo")
+                
+                # Make API call - type ignore for OpenAI API messages format
                 response = await client.chat.completions.create(
-                    model=self.model.azure_deployment,
-                    messages=formatted_messages,
+                    model=deployment,
+                    messages=messages,  # type: ignore
                     temperature=self.temperature,
                     max_tokens=self.max_tokens,
-                    tools=api_tools
+                    tools=None if not api_tools else api_tools  # type: ignore
                 )
                 
                 # Check for tool calls
@@ -254,10 +253,9 @@ class CortexLLMAgent:
                     tool_calls = []
                     
                     for tc in api_tool_calls:
-                        import json
                         try:
                             args = json.loads(tc.function.arguments)
-                        except:
+                        except Exception:
                             args = {}
                             
                         tool_calls.append(ToolCall(
@@ -272,45 +270,62 @@ class CortexLLMAgent:
                     )
                 else:
                     # Return content response
+                    content = response.choices[0].message.content or ""
                     return LLMOutput(
-                        response=AssistantMessage(content=response.choices[0].message.content),
+                        response=AssistantMessage(content=content),
                         tool_calls=None
                     )
                 
             elif provider == "anthropic":
-                import anthropic
+                # Import the necessary module
+                from anthropic import AsyncAnthropic
                 
                 # Create Anthropic client
-                client = anthropic.AsyncAnthropic(
-                    api_key=self.model.api_key
+                anthro_client = AsyncAnthropic(
+                    api_key=getattr(self.model, "api_key", None)
                 )
                 
                 # Anthropic uses a different format for messages
                 # Convert our messages to Anthropic format
                 system_prompt = None
-                anthropic_messages = []
                 
-                for msg in formatted_messages:
+                # Using Any type for API compatibility
+                anthropic_messages: List[Dict[str, Any]] = []
+                
+                # Convert from our messages to Anthropic format
+                # Type ignore for mypy since we know the structure is compatible
+                for msg in messages:  # type: ignore
                     if msg["role"] == "system":
                         system_prompt = msg["content"]
                     elif msg["role"] == "user":
-                        anthropic_messages.append({"role": "user", "content": msg["content"]})
+                        anthropic_messages.append({"role": "user", "content": msg["content"]})  # type: ignore
                     elif msg["role"] == "assistant":
-                        anthropic_messages.append({"role": "assistant", "content": msg["content"]})
+                        anthropic_messages.append({"role": "assistant", "content": msg["content"]})  # type: ignore
                 
-                # Make API call
-                response = await client.messages.create(
-                    model=self.model.model_name,
-                    messages=anthropic_messages,
-                    system=system_prompt,
+                # Make API call - type ignore for Anthropic API message format
+                response = await anthro_client.messages.create(
+                    model=getattr(self.model, "model_name", "claude-3-opus-20240229"),
+                    messages=anthropic_messages,  # type: ignore
+                    system=system_prompt,  # type: ignore
                     temperature=self.temperature,
                     max_tokens=self.max_tokens
                 )
                 
+                # Process the response content
+                content = ""
+                if hasattr(response, "content") and response.content:
+                    for block in response.content:
+                        # Generic access to text attribute with type ignore for Pylance
+                        # This handles different content block types from Anthropic API
+                        if hasattr(block, "text"):
+                            text = getattr(block, "text", "")  # type: ignore
+                            if text:
+                                content += text
+                
                 # Claude doesn't have native tool calls in the same way
                 # Just return the content
                 return LLMOutput(
-                    response=AssistantMessage(content=response.content[0].text),
+                    response=AssistantMessage(content=content),
                     tool_calls=None
                 )
                 
@@ -318,12 +333,6 @@ class CortexLLMAgent:
                 # Unknown provider or not implemented yet
                 # Fall back to mock for unsupported providers
                 logger.warning(f"Provider {provider} not fully implemented, using mock")
-                from .mock_llm import mock_llm
-                
-                # Convert input_data to messages format
-                messages = []
-                for msg in formatted_messages:
-                    messages.append(msg)
                 
                 # Call mock_llm as fallback
                 mock_result = await mock_llm.generate_mock_response(messages)
@@ -386,7 +395,7 @@ class LLMAdapter:
         if self.use_mock:
             logger.info("Using Mock LLM for responses")
 
-    async def generate(self, messages: List[Dict[str, str]]) -> Optional[Dict[str, Any]]:
+    async def generate(self, messages: List[ChatMessage]) -> Optional[Dict[str, Any]]:
         """
         Call the configured LLM provider with the given conversation messages.
         
@@ -415,7 +424,7 @@ class LLMAdapter:
         try:
             # Extract system message if present
             system_message = None
-            chat_history = []
+            chat_history: List[ChatMessage] = []
             user_message = None
             
             for msg in messages:
@@ -428,8 +437,8 @@ class LLMAdapter:
                     # Keep track of the last user message
                     user_message = UserMessage(content=content)
                 else:
-                    # Add to history
-                    chat_history.append(ChatMessage(role=role, content=content))
+                    # Add to history (Note: using our local ChatMessage type)
+                    chat_history.append({"role": role, "content": content})
             
             # If no user message was found, use the last message
             if not user_message and messages:
@@ -441,10 +450,11 @@ class LLMAdapter:
                 user_message = UserMessage(content="")
             
             # Create input for the agent
+            # Cast history to the expected type for LLMInput
             input_data = LLMInput(
                 user_message=user_message,
                 system_message=system_message,
-                history=chat_history
+                history=cast(List[PydanticChatMessage], chat_history)
             )
             
             # Log that we're calling the real LLM
