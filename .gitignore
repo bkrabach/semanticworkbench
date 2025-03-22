@@ -36,3 +36,10 @@ lerna-debug.log*
 .azure
 azure.yaml
 next-steps.md
+
+# DB files
+*.db-wal
+*.db-shm
+*.db
+*.sqlite
+*.sqlite3

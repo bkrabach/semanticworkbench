@@ -18,7 +18,7 @@
 
 3. **Data Partitioning Requirements**
 
-   - All data must be partitioned by user ID (from Azure B2C's `oid` claim)
+   - All data must be partitioned by user ID (from Auth0's `sub` claim)
    - Workspaces belong to a single owner
    - Conversations belong to a single workspace
    - All events must include user ID for filtering
@@ -113,7 +113,7 @@ async def list_conversations(workspace_id: str, user: User = Depends(get_current
 **Implementation Requirements:**
 
 - FastAPI with async endpoints
-- JWT authentication with Azure B2C claims structure
+- JWT authentication with Auth0 claims structure
 - SSE implementation with proper connection management
 - Request validation using Pydantic models
 - No server-side sessions; stateless API design
@@ -165,7 +165,7 @@ class EventBus:
 {
     "type": str,  # "input", "output", "config_change", etc.
     "data": dict,  # Event-specific payload
-    "user_id": str,  # User ID for filtering (from B2C oid claim)
+    "user_id": str,  # User ID for filtering (from Auth0 sub claim)
     "timestamp": str,  # ISO-format timestamp
     "metadata": dict  # Optional metadata
 }
@@ -258,13 +258,12 @@ class McpClient:
 ```python
 {
     "sub": str,      # Subject (user ID)
-    "oid": str,      # Object ID (from B2C)
     "name": str,     # User name
     "email": str,    # User email
     "exp": int,      # Expiration time
     "iat": int,      # Issued at time
-    "iss": str,      # Issuer
-    "aud": str       # Audience
+    "iss": str,      # Issuer (Auth0 domain)
+    "aud": str       # Audience (API identifier)
 }
 ```
 
@@ -287,7 +286,7 @@ def create_access_token(data: dict, expires_delta: timedelta = timedelta(hours=2
 async def get_current_user(token: str = Depends(oauth2_scheme)):
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        user_id = payload.get("oid")
+        user_id = payload.get("sub")
         if user_id is None:
             raise HTTPException(status_code=401, detail="Invalid authentication credentials")
         return {"user_id": user_id, "name": payload.get("name"), "email": payload.get("email")}
@@ -295,29 +294,49 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
         raise HTTPException(status_code=401, detail="Invalid authentication credentials")
 ```
 
-**Azure B2C Integration (Production):**
+**Auth0 Integration (Production):**
 
 ```python
-from azure.identity import DefaultAzureCredential
-from azure.identity.aio import AsyncCredentialChain
-import msal
+from authlib.integrations.starlette_client import OAuth
+from starlette.config import Config
+import jwt
+from jwt.jwks_client import PyJWKClient
 
-B2C_TENANT_ID = os.getenv("B2C_TENANT_ID")
-B2C_CLIENT_ID = os.getenv("B2C_CLIENT_ID")
-B2C_POLICY = os.getenv("B2C_POLICY")
-B2C_AUTHORITY = f"https://{B2C_TENANT_ID}.b2clogin.com/{B2C_TENANT_ID}.onmicrosoft.com/{B2C_POLICY}"
+# Auth0 Configuration
+AUTH0_DOMAIN = os.getenv("AUTH0_DOMAIN")
+AUTH0_CLIENT_ID = os.getenv("AUTH0_CLIENT_ID")
+AUTH0_CLIENT_SECRET = os.getenv("AUTH0_CLIENT_SECRET")
+AUTH0_API_AUDIENCE = os.getenv("AUTH0_API_AUDIENCE")
+JWKS_URL = f"https://{AUTH0_DOMAIN}/.well-known/jwks.json"
+
+# JWKS client for verifying tokens
+jwks_client = PyJWKClient(JWKS_URL)
 
 async def get_current_user(token: str = Depends(oauth2_scheme)):
     try:
-        # Validate B2C token
-        # In production, use MSAL or Azure Identity libraries
-        # This is simplified for illustration
-        payload = validate_b2c_token(token)
-        user_id = payload.get("oid")
+        # Get signing key
+        signing_key = jwks_client.get_signing_key_from_jwt(token)
+
+        # Validate Auth0 token
+        payload = jwt.decode(
+            token,
+            signing_key.key,
+            algorithms=["RS256"],
+            audience=AUTH0_API_AUDIENCE,
+            issuer=f"https://{AUTH0_DOMAIN}/"
+        )
+
+        user_id = payload.get("sub")
         if user_id is None:
             raise HTTPException(status_code=401, detail="Invalid authentication credentials")
-        return {"user_id": user_id, "name": payload.get("name"), "email": payload.get("email")}
-    except Exception:
+
+        return {
+            "user_id": user_id,
+            "name": payload.get("name", ""),
+            "email": payload.get("email", "")
+        }
+    except Exception as e:
+        logger.error(f"Token validation error: {str(e)}")
         raise HTTPException(status_code=401, detail="Invalid authentication credentials")
 ```
 
@@ -432,7 +451,7 @@ class BaseModelWithMetadata(BaseModel):
 ```python
 class User(BaseModelWithMetadata):
     """System user model"""
-    user_id: str  # UUID string, required, from B2C
+    user_id: str  # UUID string, required, from Auth0
     name: str  # Required, non-empty
     email: str  # Required, valid email format
 ```
@@ -445,7 +464,7 @@ class Workspace(BaseModelWithMetadata):
     id: str  # UUID string, auto-generated
     name: str  # Required, non-empty, max 100 chars
     description: str  # Required, max 500 chars
-    owner_id: str  # Required, valid user_id from B2C
+    owner_id: str  # Required, valid user_id from Auth0
 ```
 
 ### Conversation Model
@@ -713,13 +732,13 @@ LOG_LEVEL=INFO
 
 # Auth configuration (JWT)
 JWT_SECRET_KEY=your-secret-key
-JWT_ALGORITHM=HS256
-JWT_EXPIRATION_HOURS=24
+JWT_ALGORITHM=RS256
 
-# Auth configuration (B2C - for production)
-B2C_TENANT_ID=your-tenant-id
-B2C_CLIENT_ID=your-client-id
-B2C_POLICY=your-policy-name
+# Auth configuration (Auth0)
+AUTH0_DOMAIN=your-auth0-domain.auth0.com
+AUTH0_CLIENT_ID=your-client-id
+AUTH0_CLIENT_SECRET=your-client-secret
+AUTH0_API_AUDIENCE=your-api-audience
 
 # Service endpoints
 MEMORY_SERVICE_URL=http://localhost:9000
@@ -735,7 +754,7 @@ DATABASE_URL=sqlite:///./cortex_core.db  # Development
 1. **Phase 1: Core API Framework (Must implement first)**
 
    - FastAPI application setup with endpoint skeletons
-   - Basic authentication with JWT (no B2C integration yet)
+   - Basic authentication with JWT (no Auth0 integration yet)
    - In-memory data structures for users, workspaces, conversations
    - Simple event bus implementation
 

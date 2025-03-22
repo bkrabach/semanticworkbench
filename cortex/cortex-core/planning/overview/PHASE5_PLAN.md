@@ -7,7 +7,7 @@ A comprehensive set of documents tailored for Phase 5 implementation. This final
 The following set of documents will provide everything a mid-level engineer needs to successfully implement Phase 5:
 
 1. **PHASE5_OVERVIEW.md**: High-level architecture, goals, and production-readiness criteria
-2. **AZURE_B2C_INTEGRATION.md**: Complete Azure B2C authentication implementation
+2. **AUTH0_INTEGRATION.md**: Complete Auth0 authentication implementation
 3. **POSTGRESQL_MIGRATION.md**: Migration from SQLite to PostgreSQL for production
 4. **ERROR_HANDLING_FRAMEWORK.md**: Comprehensive error handling and reporting
 5. **LOGGING_AND_MONITORING.md**: Production-grade logging and monitoring implementation
@@ -27,16 +27,16 @@ The following set of documents will provide everything a mid-level engineer need
 - Success criteria for Phase 5 completion
 - Key principles: robustness, security, performance, maintainability
 
-### 2. AZURE_B2C_INTEGRATION.md
+### 2. AUTH0_INTEGRATION.md
 
-- Complete Azure B2C authentication implementation
-- B2C tenant configuration and setup
+- Complete Auth0 authentication implementation
+- Auth0 tenant configuration and setup
 - Integration with existing JWT authentication
 - User profile and claims mapping
 - Single sign-on implementation
-- JWT token validation with B2C keys
+- JWT token validation with Auth0 public keys
 - Role-based access control implementation
-- Testing authentication with B2C
+- Testing authentication with Auth0
 - Local development considerations
 
 ### 3. POSTGRESQL_MIGRATION.md
@@ -143,7 +143,7 @@ To ensure these documents are sufficiently comprehensive:
 
 ## Special Considerations
 
-1. **Enterprise Authentication**: Thorough implementation of Azure B2C with complete examples
+1. **Enterprise Authentication**: Thorough implementation of Auth0 with complete examples
 2. **Robust Persistence**: Detailed PostgreSQL migration with performance considerations
 3. **Graceful Error Handling**: Comprehensive error handling with clear user messages
 4. **Production Monitoring**: Complete logging and monitoring infrastructure

@@ -12,7 +12,7 @@ Cortex Core provides the foundation for the Semantic Workbench platform, enablin
 - Workspace and conversation management
 - Event-driven architecture for internal communication
 
-This implementation delivers a complete Phase 1 system with in-memory storage, allowing immediate client application development while establishing a solid foundation for future enhancements.
+This implementation delivers a complete Phase 2 system with SQLite persistence and configuration API management, allowing robust client application development while establishing a solid foundation for future enhancements.
 
 ## Key Features
 
@@ -20,7 +20,7 @@ This implementation delivers a complete Phase 1 system with in-memory storage, a
 - **JWT Authentication**: Secure token-based authentication
 - **Server-Sent Events**: Real-time streaming of output to clients
 - **Event Bus System**: Loose coupling between components with pub/sub pattern
-- **In-Memory Storage**: Ephemeral storage with proper user partitioning
+- **SQLite Persistence**: Durable storage with proper user partitioning
 - **Workspace Management**: Basic organization of conversations
 - **Conversation Management**: Grouping related messages together
 - **Type Safety**: Comprehensive type annotations throughout the codebase
@@ -39,8 +39,14 @@ This implementation delivers a complete Phase 1 system with in-memory storage, a
 ### Configuration
 - `POST /config/workspace`: Create a new workspace
 - `GET /config/workspace`: List user's workspaces
+- `GET /config/workspace/{id}`: Get a specific workspace
+- `PUT /config/workspace/{id}`: Update a workspace
+- `DELETE /config/workspace/{id}`: Delete a workspace
 - `POST /config/conversation`: Create a new conversation
 - `GET /config/conversation`: List conversations in a workspace
+- `GET /config/conversation/{id}`: Get a specific conversation
+- `PUT /config/conversation/{id}`: Update a conversation
+- `DELETE /config/conversation/{id}`: Delete a conversation
 
 ## Getting Started
 
@@ -70,6 +76,12 @@ This implementation delivers a complete Phase 1 system with in-memory storage, a
    ```bash
    cp .env.example .env
    # Edit .env with your settings
+   ```
+   
+   Key environment variables:
+   ```
+   JWT_SECRET=your-jwt-secret
+   DATABASE_URL=sqlite:///./cortex.db
    ```
 
 ### Running the Server
@@ -124,6 +136,7 @@ See [CLIENT_INTEGRATION.md](docs/CLIENT_INTEGRATION.md) for detailed examples an
 - [Client Integration](docs/CLIENT_INTEGRATION.md): Guide for client developers
 - [Event Bus](docs/EVENT_BUS.md): Detailed documentation of the event system
 - [Implementation Philosophy](docs/IMPLEMENTATION_PHILOSOPHY.md): Core design principles
+- [Phase 2 Implementation](docs/PHASE2_IMPLEMENTATION.md): Details of the Phase 2 implementation
 
 ## Testing
 
@@ -161,7 +174,23 @@ cortex-core/
 │   ├── core/               # Core components
 │   │   ├── __init__.py
 │   │   ├── event_bus.py    # Event bus implementation
-│   │   └── storage.py      # In-memory storage
+│   │   ├── exceptions.py   # Exception hierarchy
+│   │   └── storage.py      # Legacy in-memory storage
+│   ├── database/           # Database components
+│   │   ├── __init__.py
+│   │   ├── connection.py   # Database connection management
+│   │   ├── dependencies.py # FastAPI dependencies
+│   │   ├── migration.py    # Migration utility
+│   │   ├── models.py       # SQLAlchemy models
+│   │   ├── unit_of_work.py # Transaction management
+│   │   └── repositories/   # Repository implementations
+│   │       ├── __init__.py
+│   │       ├── base.py     # Base repository
+│   │       ├── factory.py  # Repository factory
+│   │       ├── user_repository.py
+│   │       ├── workspace_repository.py
+│   │       ├── conversation_repository.py
+│   │       └── message_repository.py
 │   ├── models/             # Data models
 │   │   ├── __init__.py
 │   │   ├── base.py         # Base models
@@ -172,8 +201,13 @@ cortex-core/
 │   │       └── response.py # Response models
 │   └── utils/              # Utilities
 │       ├── __init__.py
-│       └── auth.py         # Authentication utilities
+│       ├── auth.py         # Authentication utilities
+│       ├── db.py           # Database utilities
+│       └── validation.py   # Validation utilities
 ├── docs/                   # Documentation
+│   ├── PHASE2_IMPLEMENTATION.md # Phase 2 implementation details
+├── scripts/                # Utility scripts
+│   └── migrate_to_sqlite.py  # Migration script
 ├── tests/                  # Test suite
 │   ├── __init__.py
 │   ├── test_api.py         # API tests
@@ -184,14 +218,15 @@ cortex-core/
 └── requirements.txt        # Project dependencies
 ```
 
-## Future Development
+## Development Phases
 
-Phase 1 focuses on a functional input/output system with in-memory storage. Future phases will add:
+The project is implemented in phases:
 
-1. **Phase 2**: Persistent storage (SQL database) and enhanced configuration API
-2. **Phase 3**: MCP Protocol and service architecture
-3. **Phase 4**: Distributed services
-4. **Phase 5**: Production hardening
+1. ✅ **Phase 1**: Functional input/output system with in-memory storage
+2. ✅ **Phase 2**: Persistent storage (SQLite database) and enhanced configuration API
+3. 🔄 **Phase 3**: MCP Protocol and service architecture
+4. 🔄 **Phase 4**: Distributed services
+5. 🔄 **Phase 5**: Production hardening (PostgreSQL, Azure integration)
 
 ## License
 
