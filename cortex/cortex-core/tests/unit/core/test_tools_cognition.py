@@ -52,8 +52,8 @@ async def test_get_context_with_mcp(mock_get_client, mock_client):
     
     # Verify the MCP client was called correctly
     mock_client.get_resource.assert_called_once_with(
-        service="cognition",
-        name="get_context",
+        service_name="cognition",
+        resource_name="context",
         params={"user_id": "user123", "query": "test", "limit": 5}
     )
     
@@ -126,8 +126,8 @@ async def test_analyze_conversation_with_mcp(mock_get_client, mock_client):
     
     # Verify the MCP client was called correctly
     mock_client.get_resource.assert_called_once_with(
-        service="cognition",
-        name="analyze_conversation",
+        service_name="cognition",
+        resource_name="analyze_conversation",
         params={"user_id": "user123", "conversation_id": "conv123", "analysis_type": "summary"}
     )
     
@@ -191,8 +191,8 @@ async def test_search_history_with_mcp(mock_get_client, mock_client):
     
     # Verify the MCP client was called correctly
     mock_client.get_resource.assert_called_once_with(
-        service="cognition",
-        name="search_history",
+        service_name="cognition",
+        resource_name="search_history",
         params={
             "user_id": "user123", 
             "query": "test", 

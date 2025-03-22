@@ -20,15 +20,15 @@ class UserRepository(BaseRepository[User, DbUser]):
             session: SQLAlchemy async session
         """
         super().__init__(session, User, DbUser)
-        
+
     async def list_all(self, limit: int = 100, offset: int = 0):
         """
         List all users.
-        
+
         Args:
             limit: Maximum number of users to return
             offset: Pagination offset
-            
+
         Returns:
             List of users
         """

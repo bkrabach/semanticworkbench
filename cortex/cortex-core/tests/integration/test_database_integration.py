@@ -12,12 +12,8 @@ from app.database.unit_of_work import UnitOfWork
 from app.models import Conversation, Message, User, Workspace
 
 
-@pytest.fixture(scope="session")
-def event_loop():
-    """Create an event loop for tests."""
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()
+# Use the event_loop fixture from pytest-asyncio instead of redefining it
+pytestmark = pytest.mark.asyncio(scope="session")
 
 
 @pytest.fixture(scope="session")
@@ -25,7 +21,15 @@ async def db_session():
     """Create a database session for testing."""
     # Use in-memory SQLite for testing
     os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///:memory:"
-
+    
+    # Import needed for table creation
+    from app.database.models import Base
+    from app.database.connection import engine
+    
+    # Create all tables in the in-memory database
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    
     # Get session
     async with get_session() as session:
         yield session
@@ -34,7 +38,13 @@ async def db_session():
 @pytest.fixture
 async def test_user():
     """Create a test user for database tests."""
-    return User(user_id="test-user-id", name="Test User", email="test@example.com")
+    import uuid
+    unique_id = str(uuid.uuid4())
+    return User(
+        user_id=f"test-user-id-{unique_id}",
+        name="Test User",
+        email=f"test-{unique_id}@example.com"
+    )
 
 
 @pytest.fixture

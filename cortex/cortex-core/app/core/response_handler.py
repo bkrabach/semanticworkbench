@@ -292,7 +292,7 @@ class ResponseHandler:
 
             # 2. Retrieve conversation history
             history = await self._get_conversation_history(conversation_id)
-            
+
             # 2a. Try to get relevant context from Cognition Service
             try:
                 # Get tool function by name
@@ -302,9 +302,9 @@ class ResponseHandler:
                     context_result = await context_tool(
                         user_id=user_id,
                         query=message_content,
-                        limit=5  # Limit context items to avoid overwhelming the LLM
+                        limit=5,  # Limit context items to avoid overwhelming the LLM
                     )
-                    
+
                     # If we have context items, format them for inclusion
                     if context_result and "context" in context_result and context_result["context"]:
                         context_items = context_result["context"]
@@ -323,14 +323,14 @@ class ResponseHandler:
             # Add system instruction if available
             if self.system_prompt:
                 base_system_prompt = self.system_prompt
-                
+
                 # Add context to system prompt if available
                 if context_items:
                     context_text = "Here is some relevant context that might help you respond:\n\n"
                     for item in context_items:
                         if "content" in item:
                             context_text += f"- {item['content']}\n"
-                    
+
                     # Append context to system prompt
                     enhanced_system_prompt = f"{base_system_prompt}\n\n{context_text}"
                     messages.append({"role": "system", "content": enhanced_system_prompt})
@@ -342,7 +342,7 @@ class ResponseHandler:
                 for item in context_items:
                     if "content" in item:
                         context_text += f"- {item['content']}\n"
-                
+
                 messages.append({"role": "system", "content": context_text})
 
             # Add conversation history

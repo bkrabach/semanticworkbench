@@ -25,9 +25,9 @@ def user_context():
 
 
 @pytest.fixture
-def auth_headers():
+def auth_headers(test_token):
     """Create mock authentication headers."""
-    return {"Authorization": "Bearer test-token"}
+    return {"Authorization": f"Bearer {test_token}"}
 
 
 @patch("app.api.cognition.get_current_user")

@@ -1,0 +1,1332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cortex Core MCP Test Client</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+        .panel {
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+        h2 {
+            margin-top: 0;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+        }
+        input, select, textarea {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 5px;
+            margin-bottom: 5px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .red-button {
+            background-color: #f44336;
+        }
+        .red-button:hover {
+            background-color: #d32f2f;
+        }
+        .blue-button {
+            background-color: #2196F3;
+        }
+        .blue-button:hover {
+            background-color: #0b7dda;
+        }
+        .purple-button {
+            background-color: #9c27b0;
+        }
+        .purple-button:hover {
+            background-color: #7b1fa2;
+        }
+        .orange-button {
+            background-color: #ff9800;
+        }
+        .orange-button:hover {
+            background-color: #e68a00;
+        }
+        #messages {
+            height: 300px;
+            overflow-y: scroll;
+            border: 1px solid #ddd;
+            padding: 10px;
+            margin-bottom: 10px;
+        }
+        .context-panel {
+            background-color: #f0f8ff;
+            border: 1px solid #b0c4de;
+            padding: 10px;
+            margin-top: 10px;
+            border-radius: 4px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .message {
+            padding: 8px;
+            margin-bottom: 8px;
+            border-radius: 4px;
+        }
+        .input-message {
+            background-color: #e3f2fd;
+        }
+        .output-message {
+            background-color: #f1f8e9;
+        }
+        .system-message {
+            background-color: #f5f5f5;
+            font-style: italic;
+            color: #666;
+        }
+        .context-message {
+            background-color: #fff3e0;
+            border-left: 3px solid #ff9800;
+        }
+        .analysis-message {
+            background-color: #e8eaf6;
+            border-left: 3px solid #3f51b5;
+        }
+        .search-message {
+            background-color: #e0f2f1;
+            border-left: 3px solid #009688;
+        }
+        .error {
+            color: red;
+            margin-bottom: 10px;
+        }
+        .tabs {
+            display: flex;
+            border-bottom: 1px solid #ccc;
+            margin-bottom: 10px;
+        }
+        .tab {
+            padding: 10px 15px;
+            cursor: pointer;
+            background-color: #f1f1f1;
+            margin-right: 2px;
+            border-radius: 4px 4px 0 0;
+            border: 1px solid #ccc;
+            border-bottom: none;
+        }
+        .tab.active {
+            background-color: white;
+            border-bottom: 1px solid white;
+            margin-bottom: -1px;
+        }
+        .tab-content {
+            display: none;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-top: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        pre {
+            background-color: #f5f5f5;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-size: 14px;
+        }
+        .json-viewer {
+            font-family: monospace;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        .toggle-button {
+            background: none;
+            border: none;
+            color: #2196F3;
+            cursor: pointer;
+            padding: 0;
+            margin: 0;
+            font-size: 0.9em;
+        }
+        .expandable {
+            display: none;
+            margin-top: 5px;
+            padding: 5px;
+            background-color: #f9f9f9;
+            border-radius: 4px;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Cortex Core MCP Test Client</h1>
+        <p>This specialized client helps test Phase 3 MCP and Cognition Service features.</p>
+        
+        <!-- Authentication Panel -->
+        <div class="panel" id="auth-panel">
+            <h2>Authentication</h2>
+            <div>
+                <label for="email">Email:</label>
+                <input type="email" id="email" value="user@example.com">
+            </div>
+            <div>
+                <label for="password">Password:</label>
+                <input type="password" id="password" value="password123">
+            </div>
+            <button id="login-btn">Login</button>
+            <div id="auth-status" class="error"></div>
+        </div>
+        
+        <!-- Workspace and Conversation Selection -->
+        <div class="panel" id="workspace-panel" style="display: none;">
+            <h2>Workspace & Conversation</h2>
+            <div class="grid">
+                <div>
+                    <label for="workspace-select">Select Workspace:</label>
+                    <select id="workspace-select">
+                        <option value="">-- Select Workspace --</option>
+                    </select>
+                    <button id="refresh-workspaces-btn">Refresh Workspaces</button>
+                </div>
+                <div>
+                    <label for="conversation-select">Select Conversation:</label>
+                    <select id="conversation-select">
+                        <option value="">-- Select Conversation --</option>
+                    </select>
+                    <button id="refresh-conversations-btn">Refresh Conversations</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- MCP Features Panel -->
+        <div class="panel" id="mcp-panel" style="display: none;">
+            <h2>MCP Phase 3 Features</h2>
+            
+            <div class="tabs">
+                <div class="tab active" data-tab="chat">Chat</div>
+                <div class="tab" data-tab="context">Context Retrieval</div>
+                <div class="tab" data-tab="analysis">Conversation Analysis</div>
+                <div class="tab" data-tab="search">History Search</div>
+            </div>
+            
+            <!-- Chat Tab -->
+            <div class="tab-content active" id="chat-tab">
+                <h3>Chat with Context</h3>
+                <div id="messages"></div>
+                <div>
+                    <label for="message-input">Message:</label>
+                    <textarea id="message-input" rows="3"></textarea>
+                    <label for="context-toggle">
+                        <input type="checkbox" id="context-toggle" checked> Use context from Cognition Service
+                    </label>
+                    <div class="context-panel" id="context-preview">
+                        <h4>Context Preview (will be used for next message)</h4>
+                        <div id="context-items">No context retrieved yet</div>
+                    </div>
+                    <button id="send-btn">Send Message</button>
+                    <button id="clear-messages-btn" class="red-button">Clear Messages</button>
+                </div>
+                <div>
+                    <p>Communication Mode:</p>
+                    <button id="sse-btn" class="blue-button">Connect SSE</button>
+                    <button id="stop-comm-btn" class="red-button">Stop Connection</button>
+                </div>
+            </div>
+            
+            <!-- Context Retrieval Tab -->
+            <div class="tab-content" id="context-tab">
+                <h3>Context Retrieval Testing</h3>
+                <div>
+                    <label for="context-query">Query (optional):</label>
+                    <input type="text" id="context-query" placeholder="Enter query to filter context">
+                    
+                    <label for="context-limit">Result Limit:</label>
+                    <input type="number" id="context-limit" value="5" min="1" max="50">
+                    
+                    <label for="recency-weight">Recency Weight (0-1):</label>
+                    <input type="number" id="recency-weight" value="0.5" min="0" max="1" step="0.1">
+                    
+                    <button id="get-context-btn" class="blue-button">Get Context</button>
+                </div>
+                <div class="context-panel">
+                    <h4>Context Results</h4>
+                    <div id="context-results">Run a context query to see results</div>
+                </div>
+            </div>
+            
+            <!-- Conversation Analysis Tab -->
+            <div class="tab-content" id="analysis-tab">
+                <h3>Conversation Analysis Testing</h3>
+                <div>
+                    <label for="analysis-type">Analysis Type:</label>
+                    <select id="analysis-type">
+                        <option value="summary">Summary</option>
+                        <option value="topics">Topic Extraction</option>
+                        <option value="sentiment">Sentiment Analysis</option>
+                    </select>
+                    
+                    <button id="analyze-btn" class="purple-button">Analyze Conversation</button>
+                </div>
+                <div class="context-panel">
+                    <h4>Analysis Results</h4>
+                    <div id="analysis-results">Run an analysis to see results</div>
+                </div>
+            </div>
+            
+            <!-- History Search Tab -->
+            <div class="tab-content" id="search-tab">
+                <h3>History Search Testing</h3>
+                <div>
+                    <label for="search-query">Search Query:</label>
+                    <input type="text" id="search-query" placeholder="Enter search terms">
+                    
+                    <label for="search-limit">Result Limit:</label>
+                    <input type="number" id="search-limit" value="5" min="1" max="50">
+                    
+                    <label for="include-conversations">
+                        <input type="checkbox" id="include-conversations" checked> Include conversation data
+                    </label>
+                    
+                    <button id="search-btn" class="orange-button">Search History</button>
+                </div>
+                <div class="context-panel">
+                    <h4>Search Results</h4>
+                    <div id="search-results">Run a search to see results</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- MCP Debug Panel -->
+        <div class="panel" id="debug-panel" style="display: none;">
+            <h2>MCP Debug Information</h2>
+            <div class="tabs">
+                <div class="tab active" data-tab="last-response">Last Response</div>
+                <div class="tab" data-tab="api-endpoints">API Endpoints</div>
+            </div>
+            
+            <!-- Last Response Tab -->
+            <div class="tab-content active" id="last-response-tab">
+                <h3>Last API Response</h3>
+                <pre id="last-response-json" class="json-viewer">No API calls made yet</pre>
+            </div>
+            
+            <!-- API Endpoints Tab -->
+            <div class="tab-content" id="api-endpoints-tab">
+                <h3>MCP API Reference</h3>
+                <pre>
+# Cognition API Endpoints
+GET  /cognition/context      - Get relevant context for conversations
+POST /cognition/analyze      - Analyze a conversation
+POST /cognition/search       - Search through conversation history
+
+# Response Handler Integration
+POST /input                  - Send message with context from Cognition Service
+GET  /output/stream          - Receive SSE events with responses
+                </pre>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global variables
+        let token = null;
+        let user = null;
+        let selectedWorkspaceId = null;
+        let selectedConversationId = null;
+        let sseController = null;
+        let lastContextResult = null;
+        let lastApiResponse = null;
+
+        // Base API URL
+        const API_URL = 'http://localhost:8000';
+
+        // Add event listeners after DOM is fully loaded
+        document.addEventListener('DOMContentLoaded', function() {
+            // Auth panel
+            document.getElementById('login-btn').addEventListener('click', login);
+            
+            // Workspace and conversation panel
+            document.getElementById('workspace-select').addEventListener('change', handleWorkspaceSelect);
+            document.getElementById('refresh-workspaces-btn').addEventListener('click', loadWorkspaces);
+            document.getElementById('conversation-select').addEventListener('change', handleConversationSelect);
+            document.getElementById('refresh-conversations-btn').addEventListener('click', function() {
+                if (selectedWorkspaceId) {
+                    loadConversations(selectedWorkspaceId);
+                }
+            });
+            
+            // Chat tab
+            document.getElementById('send-btn').addEventListener('click', sendMessage);
+            document.getElementById('sse-btn').addEventListener('click', connectToSSE);
+            document.getElementById('stop-comm-btn').addEventListener('click', stopCommunication);
+            document.getElementById('clear-messages-btn').addEventListener('click', clearMessages);
+            document.getElementById('context-toggle').addEventListener('change', function() {
+                if (this.checked) {
+                    document.getElementById('context-preview').style.display = 'block';
+                    getContextPreview();
+                } else {
+                    document.getElementById('context-preview').style.display = 'none';
+                }
+            });
+            
+            // Context tab
+            document.getElementById('get-context-btn').addEventListener('click', getContext);
+            
+            // Analysis tab
+            document.getElementById('analyze-btn').addEventListener('click', analyzeConversation);
+            
+            // Search tab
+            document.getElementById('search-btn').addEventListener('click', searchHistory);
+            
+            // Tab navigation
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.addEventListener('click', function() {
+                    const tabName = this.getAttribute('data-tab');
+                    showTab(tabName);
+                });
+            });
+        });
+
+        // Tab navigation function
+        function showTab(tabName) {
+            // Hide all tabs and remove active class
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.remove('active');
+            });
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            
+            // Show the selected tab and add active class
+            document.getElementById(`${tabName}-tab`).classList.add('active');
+            document.querySelector(`.tab[data-tab="${tabName}"]`).classList.add('active');
+        }
+
+        // Authentication
+        async function login() {
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const authStatus = document.getElementById('auth-status');
+            
+            // Validation
+            if (!email || !password) {
+                authStatus.textContent = 'Please enter email and password';
+                return;
+            }
+            
+            try {
+                // FastAPI OAuth2 expects form urlencoded data
+                const formData = new URLSearchParams();
+                formData.append('username', email);
+                formData.append('password', password);
+                
+                const response = await fetch(`${API_URL}/auth/login`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    },
+                    body: formData
+                });
+                
+                lastApiResponse = await response.clone().json();
+                updateLastResponse();
+                
+                if (!response.ok) {
+                    throw new Error(`Authentication failed: ${response.status} ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                
+                // Store token and user data
+                token = data.access_token;
+                user = data.claims;
+                
+                // Show success message
+                authStatus.textContent = 'Authentication successful!';
+                authStatus.style.color = 'green';
+                
+                // Show panels
+                document.getElementById('workspace-panel').style.display = 'block';
+                document.getElementById('debug-panel').style.display = 'block';
+                
+                // Load workspaces
+                loadWorkspaces();
+                
+                // Add to log
+                addMessage('system', `Logged in as ${user.name} (${user.email})`);
+                
+            } catch (error) {
+                authStatus.textContent = error.message;
+                console.error('Login error:', error);
+            }
+        }
+
+        // Load workspaces
+        async function loadWorkspaces() {
+            if (!token) {
+                addMessage('system', 'Not authenticated. Please login first.');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_URL}/config/workspace`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                
+                lastApiResponse = await response.clone().json();
+                updateLastResponse();
+                
+                if (!response.ok) {
+                    throw new Error(`Failed to load workspaces: ${response.status} ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                
+                // Clear and populate dropdown
+                const workspaceSelect = document.getElementById('workspace-select');
+                workspaceSelect.innerHTML = '<option value="">-- Select Workspace --</option>';
+                
+                if (data.workspaces && data.workspaces.length > 0) {
+                    data.workspaces.forEach(workspace => {
+                        const option = document.createElement('option');
+                        option.value = workspace.id;
+                        option.textContent = workspace.name;
+                        workspaceSelect.appendChild(option);
+                    });
+                    
+                    addMessage('system', `Loaded ${data.workspaces.length} workspaces`);
+                } else {
+                    addMessage('system', 'No workspaces found. Create one to get started.');
+                }
+                
+            } catch (error) {
+                addMessage('system', error.message);
+                console.error('Load workspaces error:', error);
+            }
+        }
+
+        // Handle workspace selection
+        function handleWorkspaceSelect() {
+            const workspaceSelect = document.getElementById('workspace-select');
+            selectedWorkspaceId = workspaceSelect.value;
+            
+            if (selectedWorkspaceId) {
+                // Load conversations for this workspace
+                loadConversations(selectedWorkspaceId);
+                
+                // Log
+                const workspaceName = workspaceSelect.options[workspaceSelect.selectedIndex].text;
+                addMessage('system', `Selected workspace: ${workspaceName}`);
+            } else {
+                // Reset conversation dropdown and hide MCP panel
+                document.getElementById('conversation-select').innerHTML = '<option value="">-- Select Conversation --</option>';
+                document.getElementById('mcp-panel').style.display = 'none';
+                selectedConversationId = null;
+            }
+        }
+
+        // Load conversations
+        async function loadConversations(workspaceId) {
+            if (!token) {
+                addMessage('system', 'Not authenticated. Please login first.');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_URL}/config/conversation?workspace_id=${workspaceId}`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                
+                lastApiResponse = await response.clone().json();
+                updateLastResponse();
+                
+                if (!response.ok) {
+                    throw new Error(`Failed to load conversations: ${response.status} ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                
+                // Clear and populate dropdown
+                const conversationSelect = document.getElementById('conversation-select');
+                conversationSelect.innerHTML = '<option value="">-- Select Conversation --</option>';
+                
+                if (data.conversations && data.conversations.length > 0) {
+                    data.conversations.forEach(conversation => {
+                        const option = document.createElement('option');
+                        option.value = conversation.id;
+                        option.textContent = conversation.topic;
+                        conversationSelect.appendChild(option);
+                    });
+                    
+                    addMessage('system', `Loaded ${data.conversations.length} conversations`);
+                } else {
+                    addMessage('system', 'No conversations found in this workspace. Create one to get started.');
+                }
+                
+            } catch (error) {
+                addMessage('system', error.message);
+                console.error('Load conversations error:', error);
+            }
+        }
+
+        // Handle conversation selection
+        function handleConversationSelect() {
+            const conversationSelect = document.getElementById('conversation-select');
+            selectedConversationId = conversationSelect.value;
+            
+            if (selectedConversationId) {
+                // Show MCP panel
+                document.getElementById('mcp-panel').style.display = 'block';
+                
+                // Clear messages
+                clearMessages();
+                
+                // Log
+                const conversationTopic = conversationSelect.options[conversationSelect.selectedIndex].text;
+                addMessage('system', `Selected conversation: ${conversationTopic}`);
+                addMessage('system', 'Ready to test MCP features. Connect SSE to receive responses in real-time.');
+                
+                // Get context preview
+                getContextPreview();
+            } else {
+                // Hide MCP panel if no conversation selected
+                document.getElementById('mcp-panel').style.display = 'none';
+            }
+        }
+
+        // Send message with context
+        async function sendMessage() {
+            if (!token) {
+                addMessage('system', 'Not authenticated. Please login first.');
+                return;
+            }
+            
+            if (!selectedConversationId) {
+                addMessage('system', 'No conversation selected. Please select a conversation first.');
+                return;
+            }
+            
+            const messageInput = document.getElementById('message-input');
+            const content = messageInput.value.trim();
+            
+            if (!content) {
+                addMessage('system', 'Please enter a message to send.');
+                return;
+            }
+            
+            const useContext = document.getElementById('context-toggle').checked;
+            
+            try {
+                const messageData = {
+                    content,
+                    conversation_id: selectedConversationId,
+                    metadata: {
+                        client_id: 'mcp-test-client',
+                        client_version: '1.0.0',
+                        use_context: useContext
+                    }
+                };
+                
+                // If we have context and it should be used, add it to metadata
+                if (useContext && lastContextResult) {
+                    messageData.metadata.context = lastContextResult;
+                }
+                
+                const response = await fetch(`${API_URL}/input`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify(messageData)
+                });
+                
+                lastApiResponse = await response.clone().json();
+                updateLastResponse();
+                
+                if (!response.ok) {
+                    throw new Error(`Failed to send message: ${response.status} ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                
+                // Display sent message
+                addMessage('input', content);
+                
+                // Clear input
+                messageInput.value = '';
+                
+                // Get new context preview for next message
+                if (useContext) {
+                    getContextPreview();
+                }
+                
+                console.log('Message sent successfully:', data);
+                
+            } catch (error) {
+                addMessage('system', error.message);
+                console.error('Send message error:', error);
+            }
+        }
+
+        // Get context preview for the next message
+        async function getContextPreview() {
+            if (!token || !selectedConversationId || !user) {
+                return;
+            }
+            
+            try {
+                // Get message input content as query if available
+                const messageInput = document.getElementById('message-input');
+                const content = messageInput.value.trim();
+                
+                const response = await fetch(`${API_URL}/cognition/context`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        query: content || null,
+                        limit: 3
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`Failed to get context: ${response.status} ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                
+                // Store for later use
+                lastContextResult = data.data;
+                
+                // Display in the preview panel
+                const contextItems = document.getElementById('context-items');
+                contextItems.innerHTML = '';
+                
+                if (data.data.context && data.data.context.length > 0) {
+                    data.data.context.forEach(item => {
+                        const div = document.createElement('div');
+                        div.className = 'context-message';
+                        div.innerHTML = `<strong>${formatTimestamp(item.timestamp)}</strong>: ${item.content}`;
+                        contextItems.appendChild(div);
+                    });
+                    
+                    contextItems.innerHTML += `<div><small>${data.data.count} items found${data.data.query ? ` for query "${data.data.query}"` : ''}</small></div>`;
+                } else {
+                    contextItems.textContent = 'No relevant context found';
+                }
+                
+            } catch (error) {
+                console.error('Context preview error:', error);
+                const contextItems = document.getElementById('context-items');
+                contextItems.textContent = `Error getting context: ${error.message}`;
+            }
+        }
+
+        // Connect to SSE
+        async function connectToSSE() {
+            // Stop any existing communication
+            stopCommunication();
+            
+            if (!token) {
+                addMessage('system', 'Not authenticated. Please login first.');
+                return;
+            }
+            
+            if (!selectedConversationId) {
+                addMessage('system', 'No conversation selected. Please select a conversation first.');
+                return;
+            }
+            
+            addMessage('system', 'Connecting to SSE...');
+            
+            try {
+                // Define a simple fetch-based EventSource implementation for auth headers
+                class AuthEventSource {
+                    constructor(url, token) {
+                        this.url = url;
+                        this.token = token;
+                        this.eventListeners = {
+                            'open': [],
+                            'message': [],
+                            'error': []
+                        };
+                        this.controller = new AbortController();
+                        this.connect();
+                    }
+                    
+                    connect() {
+                        fetch(this.url, {
+                            headers: {
+                                'Authorization': `Bearer ${this.token}`,
+                                'Accept': 'text/event-stream'
+                            },
+                            signal: this.controller.signal
+                        }).then(response => {
+                            if (!response.ok) {
+                                throw new Error(`HTTP error! status: ${response.status}`);
+                            }
+                            
+                            // Connection is open
+                            this._dispatch('open', new Event('open'));
+                            
+                            // Read the stream
+                            const reader = response.body.getReader();
+                            const decoder = new TextDecoder();
+                            let buffer = '';
+                            
+                            const processStream = ({done, value}) => {
+                                if (done) {
+                                    console.log('Stream complete');
+                                    return;
+                                }
+                                
+                                // Process received data
+                                buffer += decoder.decode(value, {stream: true});
+                                const lines = buffer.split('\n\n');
+                                buffer = lines.pop() || '';
+                                
+                                for (const line of lines) {
+                                    if (line.trim()) {
+                                        const eventData = line.replace('data: ', '');
+                                        const messageEvent = new MessageEvent('message', {
+                                            data: eventData
+                                        });
+                                        this._dispatch('message', messageEvent);
+                                    }
+                                }
+                                
+                                // Continue reading
+                                return reader.read().then(processStream);
+                            };
+                            
+                            reader.read().then(processStream);
+                        }).catch(error => {
+                            console.error('SSE fetch error:', error);
+                            this._dispatch('error', new ErrorEvent('error', {
+                                message: error.message
+                            }));
+                        });
+                    }
+                    
+                    _dispatch(type, event) {
+                        for (const handler of this.eventListeners[type]) {
+                            handler(event);
+                        }
+                    }
+                    
+                    addEventListener(type, callback) {
+                        if (this.eventListeners[type]) {
+                            this.eventListeners[type].push(callback);
+                        }
+                    }
+                    
+                    removeEventListener(type, callback) {
+                        if (this.eventListeners[type]) {
+                            this.eventListeners[type] = this.eventListeners[type].filter(cb => cb !== callback);
+                        }
+                    }
+                    
+                    close() {
+                        this.controller.abort();
+                    }
+                }
+                
+                // Create AuthEventSource
+                const source = new AuthEventSource(`${API_URL}/output/stream?conversation_id=${selectedConversationId}`, token);
+                
+                // Store for later cleanup
+                window.eventSource = source;
+                
+                // Set up event handlers
+                source.addEventListener('open', function() {
+                    addMessage('system', 'SSE connection opened successfully!');
+                });
+                
+                source.addEventListener('message', function(event) {
+                    try {
+                        console.log('Raw SSE event received:', event);
+                        
+                        const data = JSON.parse(event.data);
+                        console.log('SSE event data parsed:', data);
+                        
+                        // Update last API response
+                        lastApiResponse = data;
+                        updateLastResponse();
+                        
+                        switch (data.type) {
+                            case 'connection_established':
+                                addMessage('system', 'SSE Connection established');
+                                break;
+                            case 'input':
+                                // Handle input event
+                                if (data.data && data.data.conversation_id === selectedConversationId) {
+                                    addMessage('input', data.data.content);
+                                }
+                                break;
+                            case 'output':
+                                // Handle output event
+                                if (data.data && data.data.conversation_id === selectedConversationId) {
+                                    addMessage('output', data.data.content);
+                                }
+                                break;
+                            case 'response_chunk':
+                                // Handle streaming response chunks
+                                if (data.conversation_id === selectedConversationId) {
+                                    addMessage('output', `[STREAM] ${data.data}`);
+                                }
+                                break;
+                            case 'response_complete':
+                                // Handle response completion
+                                if (data.conversation_id === selectedConversationId) {
+                                    addMessage('system', '[SERVER] Response complete');
+                                }
+                                break;
+                            case 'response':
+                                // Handle full response event
+                                if (data.data && data.data.conversation_id === selectedConversationId) {
+                                    addMessage('output', `[SERVER LLM] ${data.data.content}`);
+                                }
+                                break;
+                            case 'heartbeat':
+                                // Log heartbeat quietly but don't display
+                                console.log('Heartbeat received');
+                                break;
+                            default:
+                                console.log('Unknown event type:', data.type);
+                                addMessage('system', `Received event of type: ${data.type}`);
+                        }
+                    } catch (error) {
+                        console.error('Error processing SSE event:', error);
+                        addMessage('system', `Error processing event: ${error.message}`);
+                    }
+                });
+                
+                source.addEventListener('error', function(error) {
+                    console.error('SSE error:', error);
+                    addMessage('system', 'SSE error occurred. Check console for details.');
+                });
+                
+                addMessage('system', 'SSE connection established and running');
+            } catch (error) {
+                addMessage('system', `SSE connection error: ${error.message}`);
+                console.error('SSE connection error:', error);
+                
+                // Clean up controller on error
+                sseController = null;
+            }
+        }
+
+        // Stop SSE connection
+        function stopCommunication() {
+            // Close EventSource if active
+            if (window.eventSource) {
+                window.eventSource.close();
+                window.eventSource = null;
+                addMessage('system', 'SSE connection closed');
+            }
+        }
+
+        // Clear messages
+        function clearMessages() {
+            document.getElementById('messages').innerHTML = '';
+        }
+
+        // Get context from Cognition Service
+        async function getContext() {
+            if (!token || !user) {
+                addMessage('system', 'Not authenticated. Please login first.');
+                return;
+            }
+            
+            const query = document.getElementById('context-query').value.trim();
+            const limit = parseInt(document.getElementById('context-limit').value);
+            const recencyWeight = parseFloat(document.getElementById('recency-weight').value);
+            
+            try {
+                const response = await fetch(`${API_URL}/cognition/context`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        query: query || null,
+                        limit: limit,
+                        recency_weight: recencyWeight
+                    })
+                });
+                
+                lastApiResponse = await response.clone().json();
+                updateLastResponse();
+                
+                if (!response.ok) {
+                    throw new Error(`Failed to get context: ${response.status} ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                lastContextResult = data.data;
+                
+                // Display results
+                const resultsDiv = document.getElementById('context-results');
+                resultsDiv.innerHTML = '';
+                
+                if (data.data.context && data.data.context.length > 0) {
+                    // Add summary
+                    const summary = document.createElement('div');
+                    summary.innerHTML = `<strong>Found ${data.data.count} context items</strong>${data.data.query ? ` for query "${data.data.query}"` : ''}<br><br>`;
+                    resultsDiv.appendChild(summary);
+                    
+                    // Add each context item
+                    data.data.context.forEach((item, index) => {
+                        const itemDiv = document.createElement('div');
+                        itemDiv.className = 'context-message';
+                        itemDiv.innerHTML = `
+                            <strong>${index + 1}. ${formatTimestamp(item.timestamp)}</strong>
+                            <div>${item.content}</div>
+                            <button class="toggle-button" onclick="toggleItem('context-item-${index}')">Show details</button>
+                            <div id="context-item-${index}" class="expandable">
+                                <pre>${JSON.stringify(item, null, 2)}</pre>
+                            </div>
+                        `;
+                        resultsDiv.appendChild(itemDiv);
+                    });
+                } else {
+                    resultsDiv.textContent = 'No context items found';
+                }
+                
+                // Add to chat log as well
+                addMessage('context', `Retrieved ${data.data.count} context items${data.data.query ? ` for query "${data.data.query}"` : ''}`);
+                
+            } catch (error) {
+                document.getElementById('context-results').textContent = `Error: ${error.message}`;
+                console.error('Get context error:', error);
+            }
+        }
+
+        // Analyze conversation
+        async function analyzeConversation() {
+            if (!token) {
+                addMessage('system', 'Not authenticated. Please login first.');
+                return;
+            }
+            
+            if (!selectedConversationId) {
+                addMessage('system', 'No conversation selected. Please select a conversation first.');
+                return;
+            }
+            
+            const analysisType = document.getElementById('analysis-type').value;
+            
+            try {
+                const response = await fetch(`${API_URL}/cognition/analyze`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        conversation_id: selectedConversationId,
+                        analysis_type: analysisType
+                    })
+                });
+                
+                lastApiResponse = await response.clone().json();
+                updateLastResponse();
+                
+                if (!response.ok) {
+                    throw new Error(`Failed to analyze conversation: ${response.status} ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                
+                // Display results
+                const resultsDiv = document.getElementById('analysis-results');
+                resultsDiv.innerHTML = '';
+                
+                if (data.data) {
+                    // Format based on analysis type
+                    const analysisDiv = document.createElement('div');
+                    analysisDiv.className = 'analysis-message';
+                    
+                    let analysisContent = '';
+                    
+                    switch (data.data.type) {
+                        case 'summary':
+                            const results = data.data.results;
+                            analysisContent = `
+                                <strong>Conversation Summary</strong><br>
+                                Message Count: ${results.message_count}<br>
+                                Participants: ${results.participants}<br>
+                                Duration: ${formatSeconds(results.duration_seconds)}<br>
+                            `;
+                            break;
+                        case 'topics':
+                            const keywords = data.data.results.keywords || [];
+                            analysisContent = `
+                                <strong>Topic Analysis</strong><br>
+                                Total Words: ${data.data.results.word_count}<br>
+                                Top Keywords:<br>
+                                <ul>
+                                    ${keywords.map(k => `<li>${k.word} (${k.count})</li>`).join('')}
+                                </ul>
+                            `;
+                            break;
+                        case 'sentiment':
+                            const sentiment = data.data.results;
+                            const sentimentScore = parseFloat(sentiment.sentiment_score).toFixed(2);
+                            const sentimentLabel = sentimentScore > 0.2 ? 'Positive' : 
+                                                   sentimentScore < -0.2 ? 'Negative' : 'Neutral';
+                            analysisContent = `
+                                <strong>Sentiment Analysis</strong><br>
+                                Overall Sentiment: ${sentimentLabel} (${sentimentScore})<br>
+                                Positive Words: ${sentiment.positive_count}<br>
+                                Negative Words: ${sentiment.negative_count}<br>
+                            `;
+                            break;
+                        default:
+                            analysisContent = `<pre>${JSON.stringify(data.data, null, 2)}</pre>`;
+                    }
+                    
+                    analysisDiv.innerHTML = analysisContent;
+                    resultsDiv.appendChild(analysisDiv);
+                    
+                    // Add raw data toggle
+                    const rawToggle = document.createElement('div');
+                    rawToggle.innerHTML = `
+                        <button class="toggle-button" onclick="toggleItem('analysis-raw')">Show raw data</button>
+                        <div id="analysis-raw" class="expandable">
+                            <pre>${JSON.stringify(data.data, null, 2)}</pre>
+                        </div>
+                    `;
+                    resultsDiv.appendChild(rawToggle);
+                    
+                    // Add to chat log
+                    addMessage('analysis', `Analyzed conversation (${analysisType}): ${summarizeAnalysis(data.data)}`);
+                    
+                } else {
+                    resultsDiv.textContent = 'No analysis results returned';
+                }
+                
+            } catch (error) {
+                document.getElementById('analysis-results').textContent = `Error: ${error.message}`;
+                console.error('Analyze conversation error:', error);
+            }
+        }
+
+        // Summarize analysis for chat log
+        function summarizeAnalysis(data) {
+            if (!data || !data.type) return 'No results';
+            
+            switch (data.type) {
+                case 'summary':
+                    return `${data.results.message_count} messages, ${data.results.participants} participants`;
+                case 'topics':
+                    const topKeywords = (data.results.keywords || []).slice(0, 3).map(k => k.word).join(', ');
+                    return `Top keywords: ${topKeywords}`;
+                case 'sentiment':
+                    const score = parseFloat(data.results.sentiment_score).toFixed(2);
+                    return `Sentiment score: ${score} (${score > 0.2 ? 'Positive' : score < -0.2 ? 'Negative' : 'Neutral'})`;
+                default:
+                    return 'Analysis completed';
+            }
+        }
+
+        // Search user history
+        async function searchHistory() {
+            if (!token || !user) {
+                addMessage('system', 'Not authenticated. Please login first.');
+                return;
+            }
+            
+            const query = document.getElementById('search-query').value.trim();
+            
+            if (!query) {
+                addMessage('system', 'Please enter a search query.');
+                return;
+            }
+            
+            const limit = parseInt(document.getElementById('search-limit').value);
+            const includeConversations = document.getElementById('include-conversations').checked;
+            
+            try {
+                const response = await fetch(`${API_URL}/cognition/search`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        query: query,
+                        limit: limit,
+                        include_conversations: includeConversations
+                    })
+                });
+                
+                lastApiResponse = await response.clone().json();
+                updateLastResponse();
+                
+                if (!response.ok) {
+                    throw new Error(`Failed to search history: ${response.status} ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                
+                // Display results
+                const resultsDiv = document.getElementById('search-results');
+                resultsDiv.innerHTML = '';
+                
+                if (data.data.results && data.data.results.length > 0) {
+                    // Add summary
+                    const summary = document.createElement('div');
+                    summary.innerHTML = `<strong>Found ${data.data.count} results for "${data.data.query}"</strong><br><br>`;
+                    resultsDiv.appendChild(summary);
+                    
+                    // Add each result
+                    data.data.results.forEach((item, index) => {
+                        const itemDiv = document.createElement('div');
+                        itemDiv.className = 'search-message';
+                        
+                        let conversationInfo = '';
+                        if (item._conversation_data) {
+                            conversationInfo = `
+                                <div>
+                                    <small>From a conversation with ${item._conversation_data.participants} participants, 
+                                    ${item._conversation_data.message_count} messages</small>
+                                </div>
+                            `;
+                        }
+                        
+                        itemDiv.innerHTML = `
+                            <strong>${index + 1}. ${formatTimestamp(item.timestamp)}</strong>
+                            <div>${item.content}</div>
+                            ${conversationInfo}
+                            <button class="toggle-button" onclick="toggleItem('search-item-${index}')">Show details</button>
+                            <div id="search-item-${index}" class="expandable">
+                                <pre>${JSON.stringify(item, null, 2)}</pre>
+                            </div>
+                        `;
+                        resultsDiv.appendChild(itemDiv);
+                    });
+                } else {
+                    resultsDiv.textContent = `No results found for "${query}"`;
+                }
+                
+                // Add to chat log
+                addMessage('search', `Found ${data.data.count} results for "${query}"`);
+                
+            } catch (error) {
+                document.getElementById('search-results').textContent = `Error: ${error.message}`;
+                console.error('Search history error:', error);
+            }
+        }
+
+        // Update last response in debug panel
+        function updateLastResponse() {
+            const lastResponseJson = document.getElementById('last-response-json');
+            if (lastApiResponse) {
+                lastResponseJson.textContent = JSON.stringify(lastApiResponse, null, 2);
+            }
+        }
+
+        // Add message to the messages container
+        function addMessage(type, content) {
+            const messagesContainer = document.getElementById('messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${type}-message`;
+            
+            // Format message based on type
+            if (type === 'input') {
+                messageDiv.textContent = `You: ${content}`;
+            } else if (type === 'output') {
+                messageDiv.textContent = `Server: ${content}`;
+            } else if (type === 'context') {
+                messageDiv.textContent = `Context: ${content}`;
+            } else if (type === 'analysis') {
+                messageDiv.textContent = `Analysis: ${content}`;
+            } else if (type === 'search') {
+                messageDiv.textContent = `Search: ${content}`;
+            } else { // system
+                messageDiv.textContent = `System: ${content}`;
+            }
+            
+            // Add message to container
+            messagesContainer.appendChild(messageDiv);
+            
+            // Scroll to bottom
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+
+        // Format timestamp
+        function formatTimestamp(timestamp) {
+            if (!timestamp) return 'Unknown time';
+            
+            try {
+                const date = new Date(timestamp);
+                return date.toLocaleString();
+            } catch (e) {
+                return timestamp;
+            }
+        }
+
+        // Format seconds to time string
+        function formatSeconds(seconds) {
+            if (!seconds) return '0s';
+            
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            const remainingSeconds = Math.floor(seconds % 60);
+            
+            let result = '';
+            if (hours > 0) result += `${hours}h `;
+            if (minutes > 0) result += `${minutes}m `;
+            if (remainingSeconds > 0 || result === '') result += `${remainingSeconds}s`;
+            
+            return result.trim();
+        }
+
+        // Toggle expandable item
+        window.toggleItem = function(id) {
+            const element = document.getElementById(id);
+            if (element.style.display === 'block') {
+                element.style.display = 'none';
+            } else {
+                element.style.display = 'block';
+            }
+        }
+    </script>
+</body>
+</html>

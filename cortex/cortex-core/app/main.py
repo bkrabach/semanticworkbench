@@ -21,8 +21,8 @@ from app.core.mcp.registry import registry as mcp_registry
 from app.core.repository import RepositoryManager
 from app.database.unit_of_work import UnitOfWork
 from app.models import User
-from app.services.memory import MemoryService
 from app.services.cognition import CognitionService
+from app.services.memory import MemoryService
 
 # Load environment variables
 load_dotenv()
@@ -121,20 +121,20 @@ async def lifespan(app: FastAPI):
         # llm_adapter is already initialized when imported, but we log it here
     except Exception as e:
         logger.warning(f"Failed to initialize LLM adapter: {str(e)}. Will use mock responses.")
-        
+
     # Initialize and register MCP services
     logger.info("Initializing MCP services...")
-    
+
     # Create repository manager
     repository_manager = RepositoryManager()
     await repository_manager.initialize()
-    
+
     # Create and register Memory Service
     memory_service = MemoryService(repository_manager)
     await memory_service.initialize()
     await mcp_registry.register_service("memory", memory_service)
     logger.info("Memory Service registered with MCP registry")
-    
+
     # Create and register Cognition Service
     cognition_service = CognitionService(memory_service=memory_service)
     await cognition_service.initialize()
@@ -145,14 +145,14 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     logger.info("Application shutting down")
-    
+
     # Shutdown MCP services
     logger.info("Shutting down MCP services...")
     if cognition_service:
         await cognition_service.shutdown()
     if memory_service:
         await memory_service.shutdown()
-    
+
     # Shutdown event bus
     await event_bus.shutdown()
 

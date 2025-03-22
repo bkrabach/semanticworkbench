@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -57,21 +57,21 @@ class PaginationParams(BaseModel):
 
 class GetContextRequest(BaseModelWithMetadata):
     """Get context request model."""
-    
+
     query: Optional[str] = Field(None, description="Optional search query to filter context")
     limit: Optional[int] = Field(10, ge=1, le=100, description="Maximum number of items to return")
 
 
 class AnalyzeConversationRequest(BaseModelWithMetadata):
     """Analyze conversation request model."""
-    
+
     conversation_id: str = Field(..., description="The conversation ID to analyze")
     analysis_type: Optional[str] = Field("summary", description="Type of analysis (summary, topics, sentiment)")
 
 
 class SearchHistoryRequest(BaseModelWithMetadata):
     """Search history request model."""
-    
+
     query: str = Field(..., min_length=1, description="Search query string")
     limit: Optional[int] = Field(10, ge=1, le=100, description="Maximum number of results to return")
     include_conversations: Optional[bool] = Field(True, description="Whether to include conversation data")

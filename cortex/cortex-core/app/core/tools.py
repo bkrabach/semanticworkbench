@@ -23,6 +23,7 @@ except ImportError:
     def get_client():
         return None
 
+
 logger = logging.getLogger(__name__)
 
 
@@ -220,6 +221,7 @@ async def list_workspaces(user_id: str, limit: int = 10) -> Dict[str, Any]:
 
 class ContextInput(BaseModel):
     """Input parameters for the get context tool."""
+
     user_id: str = Field(..., description="The user ID to get context for")
     query: Optional[str] = Field(None, description="Optional search query to filter context")
     limit: int = Field(10, description="Maximum number of items to return")
@@ -227,6 +229,7 @@ class ContextInput(BaseModel):
 
 class ContextItem(BaseModel):
     """Individual context item."""
+
     id: str = Field(..., description="Item identifier")
     content: str = Field(..., description="Content text")
     timestamp: str = Field(..., description="When the context item was created")
@@ -235,6 +238,7 @@ class ContextItem(BaseModel):
 
 class ContextOutput(BaseModel):
     """Output schema for the get context tool."""
+
     context: List[ContextItem] = Field(..., description="Relevant context items")
     user_id: str = Field(..., description="The user ID")
     query: Optional[str] = Field(None, description="The search query used")
@@ -246,75 +250,59 @@ class ContextOutput(BaseModel):
 async def get_context(user_id: str, query: Optional[str] = None, limit: int = 10) -> Dict[str, Any]:
     """
     Get relevant context for a conversation based on user history.
-    
+
     Args:
         user_id: The user ID to get context for
         query: Optional search query to filter context
         limit: Maximum number of items to return
-        
+
     Returns:
         Dictionary with context information
     """
     try:
         logger.info(f"Getting context for user {user_id}")
-        
+
         # Get the MCP client
         mcp_client = get_client()
-        
+
         if mcp_client:
             # Get context from cognition service
             result = await mcp_client.get_resource(
-                service="cognition",
-                name="get_context",
-                params={
-                    "user_id": user_id,
-                    "query": query,
-                    "limit": limit
-                }
+                service_name="cognition", resource_name="context", params={"user_id": user_id, "query": query, "limit": limit}
             )
-            
+
             logger.info(f"Found {result.get('count', 0)} context items for user {user_id}")
             return result
         else:
             # Fallback to simpler implementation if MCP not available
             logger.warning("MCP client not available, using fallback for get_context")
-            
+
             # Get recent messages from database
             async with UnitOfWork.for_transaction() as uow:
                 message_repo = uow.repositories.get_message_repository()
                 messages = await message_repo.list_by_sender(user_id, limit=limit)
-                
+
                 context_items = []
                 for msg in messages:
                     if query and query.lower() not in msg.content.lower():
                         continue
-                        
+
                     context_items.append({
                         "id": msg.id,
                         "content": msg.content,
                         "timestamp": msg.timestamp,
-                        "conversation_id": msg.conversation_id
+                        "conversation_id": msg.conversation_id,
                     })
-                
-                return {
-                    "context": context_items,
-                    "user_id": user_id,
-                    "query": query,
-                    "count": len(context_items)
-                }
+
+                return {"context": context_items, "user_id": user_id, "query": query, "count": len(context_items)}
     except Exception as e:
         logger.error(f"Error getting context: {e}")
-        return {
-            "context": [],
-            "user_id": user_id,
-            "query": query,
-            "count": 0,
-            "error": str(e)
-        }
+        return {"context": [], "user_id": user_id, "query": query, "count": 0, "error": str(e)}
 
 
 class AnalysisInput(BaseModel):
     """Input parameters for the analyze conversation tool."""
+
     user_id: str = Field(..., description="The user ID requesting analysis")
     conversation_id: str = Field(..., description="The conversation ID to analyze")
     analysis_type: str = Field("summary", description="Type of analysis (summary, topics, sentiment)")
@@ -322,6 +310,7 @@ class AnalysisInput(BaseModel):
 
 class AnalysisOutput(BaseModel):
     """Output schema for the analyze conversation tool."""
+
     type: str = Field(..., description="Type of analysis performed")
     results: Dict[str, Any] = Field(..., description="Analysis results")
     conversation_id: str = Field(..., description="The conversation ID")
@@ -329,65 +318,57 @@ class AnalysisOutput(BaseModel):
 
 
 @register_tool("analyze_conversation")
-async def analyze_conversation(
-    user_id: str, 
-    conversation_id: str, 
-    analysis_type: str = "summary"
-) -> Dict[str, Any]:
+async def analyze_conversation(user_id: str, conversation_id: str, analysis_type: str = "summary") -> Dict[str, Any]:
     """
     Analyze a conversation for patterns and insights.
-    
+
     Args:
         user_id: The user ID requesting the analysis
         conversation_id: The conversation ID to analyze
         analysis_type: Type of analysis (summary, topics, sentiment)
-        
+
     Returns:
         Dictionary with analysis results
     """
     try:
         logger.info(f"Analyzing conversation {conversation_id} for user {user_id}")
-        
+
         # Get the MCP client
         mcp_client = get_client()
-        
+
         if mcp_client:
             # Get analysis from cognition service
             result = await mcp_client.get_resource(
-                service="cognition", 
-                name="analyze_conversation",
-                params={
-                    "user_id": user_id,
-                    "conversation_id": conversation_id,
-                    "analysis_type": analysis_type
-                }
+                service_name="cognition",
+                resource_name="analyze_conversation",
+                params={"user_id": user_id, "conversation_id": conversation_id, "analysis_type": analysis_type},
             )
-            
+
             logger.info(f"Completed {analysis_type} analysis for conversation {conversation_id}")
             return result
         else:
             # Fallback to simpler implementation if MCP not available
             logger.warning("MCP client not available, using fallback for analyze_conversation")
-            
+
             # Get conversation from database and do simple analysis
             async with UnitOfWork.for_transaction() as uow:
                 message_repo = uow.repositories.get_message_repository()
                 messages = await message_repo.list_by_conversation(conversation_id)
-                
+
                 if analysis_type == "summary":
                     # Simple count-based summary
                     participant_counts = {}
                     for msg in messages:
                         participant_counts[msg.sender_id] = participant_counts.get(msg.sender_id, 0) + 1
-                    
+
                     return {
                         "type": "summary",
                         "results": {
                             "message_count": len(messages),
                             "participants": len(participant_counts),
-                            "participant_counts": participant_counts
+                            "participant_counts": participant_counts,
                         },
-                        "conversation_id": conversation_id
+                        "conversation_id": conversation_id,
                     }
                 else:
                     # Simple response for other types
@@ -395,22 +376,18 @@ async def analyze_conversation(
                         "type": analysis_type,
                         "results": {
                             "message_count": len(messages),
-                            "analysis": f"{analysis_type} analysis not available without MCP"
+                            "analysis": f"{analysis_type} analysis not available without MCP",
                         },
-                        "conversation_id": conversation_id
+                        "conversation_id": conversation_id,
                     }
     except Exception as e:
         logger.error(f"Error analyzing conversation: {e}")
-        return {
-            "type": analysis_type,
-            "results": {},
-            "conversation_id": conversation_id,
-            "error": str(e)
-        }
+        return {"type": analysis_type, "results": {}, "conversation_id": conversation_id, "error": str(e)}
 
 
 class SearchInput(BaseModel):
     """Input parameters for the search history tool."""
+
     user_id: str = Field(..., description="The user ID to search history for")
     query: str = Field(..., description="Search query string")
     limit: int = Field(10, description="Maximum number of results to return")
@@ -419,6 +396,7 @@ class SearchInput(BaseModel):
 
 class SearchOutput(BaseModel):
     """Output schema for the search history tool."""
+
     results: List[Dict[str, Any]] = Field(..., description="Search results")
     count: int = Field(..., description="Number of results returned")
     query: str = Field(..., description="The search query used")
@@ -427,53 +405,50 @@ class SearchOutput(BaseModel):
 
 @register_tool("search_history")
 async def search_history(
-    user_id: str, 
-    query: str, 
-    limit: int = 10, 
-    include_conversations: bool = True
+    user_id: str, query: str, limit: int = 10, include_conversations: bool = True
 ) -> Dict[str, Any]:
     """
     Search user history for specific terms or patterns.
-    
+
     Args:
         user_id: The user ID to search history for
         query: Search query string
         limit: Maximum number of results to return
         include_conversations: Whether to include conversation data
-        
+
     Returns:
         Dictionary with search results
     """
     try:
         logger.info(f"Searching history for user {user_id} with query '{query}'")
-        
+
         # Get the MCP client
         mcp_client = get_client()
-        
+
         if mcp_client:
             # Search history via cognition service
             result = await mcp_client.get_resource(
-                service="cognition", 
-                name="search_history",
+                service_name="cognition",
+                resource_name="search_history",
                 params={
                     "user_id": user_id,
                     "query": query,
                     "limit": limit,
-                    "include_conversations": include_conversations
-                }
+                    "include_conversations": include_conversations,
+                },
             )
-            
+
             logger.info(f"Found {result.get('count', 0)} matches for query '{query}'")
             return result
         else:
             # Fallback to simpler implementation if MCP not available
             logger.warning("MCP client not available, using fallback for search_history")
-            
+
             # Search messages directly in database
             async with UnitOfWork.for_transaction() as uow:
                 message_repo = uow.repositories.get_message_repository()
                 messages = await message_repo.list_by_sender(user_id, limit=100)  # Get a larger set to search through
-                
+
                 # Simple search based on content matches
                 results = []
                 for msg in messages:
@@ -482,47 +457,38 @@ async def search_history(
                             "id": msg.id,
                             "content": msg.content,
                             "timestamp": msg.timestamp,
-                            "conversation_id": msg.conversation_id
+                            "conversation_id": msg.conversation_id,
                         }
-                        
+
                         # Add conversation data if requested
                         if include_conversations and msg.conversation_id:
                             result_item["_conversation_id"] = msg.conversation_id
-                        
+
                         results.append(result_item)
-                        
+
                         # Stop once we hit the limit
                         if len(results) >= limit:
                             break
-                
+
                 # If including conversations, fetch minimal conversation data
                 if include_conversations:
                     conversation_ids = {r.get("_conversation_id") for r in results if "_conversation_id" in r}
-                    
+
                     for conv_id in conversation_ids:
                         conv_messages = await message_repo.list_by_conversation(conv_id, limit=1)
-                        
+
                         # Add simple conversation data
                         for result in results:
                             if result.get("_conversation_id") == conv_id:
                                 result["_conversation_data"] = {
                                     "message_count": len(conv_messages),
-                                    "first_message": conv_messages[0].content if conv_messages else ""
+                                    "first_message": conv_messages[0].content if conv_messages else "",
                                 }
-                                
+
                                 # Remove the temporary field
                                 del result["_conversation_id"]
-                            
-                return {
-                    "results": results[:limit],
-                    "count": len(results[:limit]),
-                    "query": query
-                }
+
+                return {"results": results[:limit], "count": len(results[:limit]), "query": query}
     except Exception as e:
         logger.error(f"Error searching history: {e}")
-        return {
-            "results": [],
-            "count": 0,
-            "query": query,
-            "error": str(e)
-        }
+        return {"results": [], "count": 0, "query": query, "error": str(e)}

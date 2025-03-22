@@ -1,9 +1,8 @@
 import logging
 import uuid
 from datetime import datetime
-from typing import Dict, List, Any, Optional
+from typing import Any, Dict, List, Optional
 
-from app.core.mcp import tool, resource
 from app.core.repository import RepositoryManager
 
 logger = logging.getLogger(__name__)
@@ -73,7 +72,7 @@ class MemoryService:
         self.initialized = False
         logger.info("Memory Service shut down")
 
-    # Note: The @tool decorator doesn't work properly with instance methods, 
+    # Note: The @tool decorator doesn't work properly with instance methods,
     # so we can't use it here. In a real implementation, we'd use a proper FastMCP decorator.
     async def store_input(self, user_id: str, input_data: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -89,19 +88,11 @@ class MemoryService:
         try:
             # Validate user_id
             if not user_id:
-                return {
-                    "status": "error",
-                    "user_id": "",
-                    "error": "User ID is required"
-                }
+                return {"status": "error", "user_id": "", "error": "User ID is required"}
 
             # Validate input_data
             if not input_data:
-                return {
-                    "status": "error",
-                    "user_id": user_id,
-                    "error": "Input data is required"
-                }
+                return {"status": "error", "user_id": user_id, "error": "Input data is required"}
 
             # Add ID if not present
             if "id" not in input_data:
@@ -120,7 +111,7 @@ class MemoryService:
                 "content": input_data.get("content", ""),
                 "conversation_id": input_data.get("conversation_id"),
                 "timestamp": input_data["timestamp"],
-                "metadata": input_data.get("metadata", {})
+                "metadata": input_data.get("metadata", {}),
             }
 
             # Store the input
@@ -129,27 +120,14 @@ class MemoryService:
             logger.info(f"Stored input for user {user_id}: {message_id}")
 
             # Return success status
-            return {
-                "status": "stored",
-                "user_id": user_id,
-                "item_id": message_id
-            }
+            return {"status": "stored", "user_id": user_id, "item_id": message_id}
         except Exception as e:
             logger.error(f"Error storing input for user {user_id}: {e}")
 
             # Return error status
-            return {
-                "status": "error",
-                "user_id": user_id,
-                "error": str(e)
-            }
+            return {"status": "error", "user_id": user_id, "error": str(e)}
 
-    async def update_message(
-        self,
-        user_id: str,
-        message_id: str,
-        updates: Dict[str, Any]
-    ) -> Dict[str, Any]:
+    async def update_message(self, user_id: str, message_id: str, updates: Dict[str, Any]) -> Dict[str, Any]:
         """
         Update an existing message.
 
@@ -168,24 +146,21 @@ class MemoryService:
                     "status": "error",
                     "user_id": user_id,
                     "message_id": message_id,
-                    "error": "User ID, message ID, and updates are required"
+                    "error": "User ID, message ID, and updates are required",
                 }
 
             # Get the messages repository
             message_repo = self.repository_manager.get_repository("messages")
 
             # Find the message
-            message = await message_repo.find_one({
-                "id": message_id,
-                "user_id": user_id
-            })
+            message = await message_repo.find_one({"id": message_id, "user_id": user_id})
 
             if not message:
                 return {
                     "status": "error",
                     "user_id": user_id,
                     "message_id": message_id,
-                    "error": "Message not found or access denied"
+                    "error": "Message not found or access denied",
                 }
 
             # Create update object with only allowed fields
@@ -196,44 +171,29 @@ class MemoryService:
 
             if "metadata" in updates:
                 # Merge existing metadata with updates
-                metadata = {
-                    **(message.get("metadata") or {}),
-                    **updates["metadata"]
-                }
+                metadata = {**(message.get("metadata") or {}), **updates["metadata"]}
                 update_data["metadata"] = metadata
 
             # Add update timestamp
             update_data["updated_at"] = datetime.now().isoformat()
 
             # Update the message
-            updated = await message_repo.update(
-                {"id": message_id, "user_id": user_id},
-                {"$set": update_data}
-            )
+            updated = await message_repo.update({"id": message_id, "user_id": user_id}, {"$set": update_data})
 
             if updated:
                 logger.info(f"Updated message {message_id} for user {user_id}")
-                return {
-                    "status": "updated",
-                    "user_id": user_id,
-                    "message_id": message_id
-                }
+                return {"status": "updated", "user_id": user_id, "message_id": message_id}
             else:
                 return {
                     "status": "error",
                     "user_id": user_id,
                     "message_id": message_id,
-                    "error": "Failed to update message"
+                    "error": "Failed to update message",
                 }
         except Exception as e:
             logger.error(f"Error updating message {message_id} for user {user_id}: {e}")
 
-            return {
-                "status": "error",
-                "user_id": user_id,
-                "message_id": message_id,
-                "error": str(e)
-            }
+            return {"status": "error", "user_id": user_id, "message_id": message_id, "error": str(e)}
 
     async def delete_message(self, user_id: str, message_id: str) -> Dict[str, Any]:
         """
@@ -253,41 +213,29 @@ class MemoryService:
                     "status": "error",
                     "user_id": user_id,
                     "message_id": message_id,
-                    "error": "User ID and message ID are required"
+                    "error": "User ID and message ID are required",
                 }
 
             # Get the messages repository
             message_repo = self.repository_manager.get_repository("messages")
 
             # Delete the message
-            deleted = await message_repo.delete_one({
-                "id": message_id,
-                "user_id": user_id
-            })
+            deleted = await message_repo.delete_one({"id": message_id, "user_id": user_id})
 
             if deleted:
                 logger.info(f"Deleted message {message_id} for user {user_id}")
-                return {
-                    "status": "deleted",
-                    "user_id": user_id,
-                    "message_id": message_id
-                }
+                return {"status": "deleted", "user_id": user_id, "message_id": message_id}
             else:
                 return {
                     "status": "error",
                     "user_id": user_id,
                     "message_id": message_id,
-                    "error": "Message not found or access denied"
+                    "error": "Message not found or access denied",
                 }
         except Exception as e:
             logger.error(f"Error deleting message {message_id} for user {user_id}: {e}")
 
-            return {
-                "status": "error",
-                "user_id": user_id,
-                "message_id": message_id,
-                "error": str(e)
-            }
+            return {"status": "error", "user_id": user_id, "message_id": message_id, "error": str(e)}
 
     async def get_history(self, user_id: str) -> List[Dict[str, Any]]:
         """
@@ -311,7 +259,7 @@ class MemoryService:
             # Find all messages for the user
             messages = await message_repo.find_many(
                 {"user_id": user_id},
-                sort=[("timestamp", 1)]  # Sort by timestamp ascending
+                sort=[("timestamp", 1)],  # Sort by timestamp ascending
             )
 
             logger.info(f"Retrieved history for user {user_id}: {len(messages)} messages")
@@ -353,7 +301,7 @@ class MemoryService:
             messages = await message_repo.find_many(
                 {"user_id": user_id},
                 limit=limit_int,
-                sort=[("timestamp", -1)]  # Sort by timestamp descending
+                sort=[("timestamp", -1)],  # Sort by timestamp descending
             )
 
             logger.info(f"Retrieved limited history for user {user_id}: {len(messages)} messages (limit {limit})")
@@ -384,7 +332,7 @@ class MemoryService:
             # Find all messages for the conversation
             messages = await message_repo.find_many(
                 {"conversation_id": conversation_id},
-                sort=[("timestamp", 1)]  # Sort by timestamp ascending
+                sort=[("timestamp", 1)],  # Sort by timestamp ascending
             )
 
             logger.info(f"Retrieved conversation {conversation_id}: {len(messages)} messages")
@@ -415,11 +363,8 @@ class MemoryService:
 
             # Find messages for the conversation and user
             messages = await message_repo.find_many(
-                {
-                    "conversation_id": conversation_id,
-                    "user_id": user_id
-                },
-                sort=[("timestamp", 1)]  # Sort by timestamp ascending
+                {"conversation_id": conversation_id, "user_id": user_id},
+                sort=[("timestamp", 1)],  # Sort by timestamp ascending
             )
 
             logger.info(f"Retrieved conversation {conversation_id} for user {user_id}: {len(messages)} messages")

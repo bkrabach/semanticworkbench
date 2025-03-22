@@ -5,15 +5,14 @@ This module provides endpoints for accessing Cognition Service capabilities dire
 """
 
 import logging
-from typing import Dict, List, Optional, Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from ..core.exceptions import AccessDeniedError
-from ..models.api.request import SearchHistoryRequest, AnalyzeConversationRequest, GetContextRequest
-from ..models.api.response import ErrorResponse, SearchHistoryResponse, AnalyzeConversationResponse, GetContextResponse
+from ..core.tools import analyze_conversation, get_context, search_history
+from ..models.api.request import AnalyzeConversationRequest, GetContextRequest, SearchHistoryRequest
+from ..models.api.response import AnalyzeConversationResponse, ErrorResponse, GetContextResponse, SearchHistoryResponse
 from ..utils.auth import get_current_user
-from ..core.tools import search_history, analyze_conversation, get_context
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["cognition"])
@@ -28,35 +27,26 @@ router = APIRouter(tags=["cognition"])
         500: {"model": ErrorResponse},
     },
 )
-async def get_user_context(
-    request: GetContextRequest, current_user: dict = Depends(get_current_user)
-):
+async def get_user_context(request: GetContextRequest, current_user: dict = Depends(get_current_user)):
     """
     Get relevant context for the current user.
-    
+
     Args:
         request: The context request
         current_user: The authenticated user
-        
+
     Returns:
         Context response with relevant information
     """
     user_id = current_user["user_id"]
     logger.info(f"Retrieving context for user {user_id}")
-    
+
     try:
         # Call the get_context tool function
-        result = await get_context(
-            user_id=user_id,
-            query=request.query,
-            limit=request.limit
-        )
-        
+        result = await get_context(user_id=user_id, query=request.query, limit=request.limit)
+
         # Return the result
-        return GetContextResponse(
-            status="success",
-            data=result
-        )
+        return GetContextResponse(status="success", data=result)
     except Exception as e:
         logger.error(f"Error retrieving context: {str(e)}")
         raise HTTPException(
@@ -86,30 +76,25 @@ async def analyze_user_conversation(
 ):
     """
     Analyze a conversation for patterns and insights.
-    
+
     Args:
         request: The analysis request
         current_user: The authenticated user
-        
+
     Returns:
         Analysis response with results
     """
     user_id = current_user["user_id"]
     logger.info(f"Analyzing conversation {request.conversation_id} for user {user_id}")
-    
+
     try:
         # Call the analyze_conversation tool function
         result = await analyze_conversation(
-            user_id=user_id,
-            conversation_id=request.conversation_id,
-            analysis_type=request.analysis_type
+            user_id=user_id, conversation_id=request.conversation_id, analysis_type=request.analysis_type
         )
-        
+
         # Return the result
-        return AnalyzeConversationResponse(
-            status="success",
-            data=result
-        )
+        return AnalyzeConversationResponse(status="success", data=result)
     except AccessDeniedError as e:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -138,36 +123,31 @@ async def analyze_user_conversation(
         500: {"model": ErrorResponse},
     },
 )
-async def search_user_history(
-    request: SearchHistoryRequest, current_user: dict = Depends(get_current_user)
-):
+async def search_user_history(request: SearchHistoryRequest, current_user: dict = Depends(get_current_user)):
     """
     Search user history for specific terms or patterns.
-    
+
     Args:
         request: The search request
         current_user: The authenticated user
-        
+
     Returns:
         Search response with results
     """
     user_id = current_user["user_id"]
     logger.info(f"Searching history for user {user_id} with query '{request.query}'")
-    
+
     try:
         # Call the search_history tool function
         result = await search_history(
             user_id=user_id,
             query=request.query,
             limit=request.limit,
-            include_conversations=request.include_conversations
+            include_conversations=request.include_conversations,
         )
-        
+
         # Return the result
-        return SearchHistoryResponse(
-            status="success",
-            data=result
-        )
+        return SearchHistoryResponse(status="success", data=result)
     except Exception as e:
         logger.error(f"Error searching history: {str(e)}")
         raise HTTPException(
