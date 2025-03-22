@@ -43,11 +43,17 @@ async def test_llm_adapter_initialization_mock():
 async def test_llm_adapter_initialization_openai():
     """Test LLM adapter initialization with OpenAI provider."""
     with patch.dict("os.environ", {"LLM_PROVIDER": "openai", "USE_MOCK_LLM": "false"}):
-        # Mock the litellm client
-        with patch("app.core.llm_adapter.litellm"):
+        # Create a mock for the CortexLLMAgent
+        with patch('app.core.llm_adapter.CortexLLMAgent') as mock_agent_class:
+            mock_agent_instance = AsyncMock()
+            mock_agent_class.return_value = mock_agent_instance
+            
             adapter = LLMAdapter()
             assert adapter.use_mock is False
-            assert adapter.provider == "openai"
+            assert adapter.provider == 'openai'
+            
+            # Verify the agent was initialized
+            mock_agent_class.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -69,19 +75,24 @@ async def test_mock_llm_generation():
 async def test_openai_generation():
     """Test OpenAI generation with mocked response."""
     with patch.dict("os.environ", {"LLM_PROVIDER": "openai", "USE_MOCK_LLM": "false"}):
-        # Create a mock agent
+        # Create mock objects for the chain of calls
+        mock_output = MagicMock()
+        mock_output.tool_calls = None
+        mock_output.response = MagicMock()
+        mock_output.response.content = "OpenAI response"
+        
+        # Create a mock agent instance
         mock_agent = AsyncMock()
-        mock_run_response = MagicMock()
-        mock_run_response.response.model_dump.return_value = {"content": "OpenAI response"}
-        mock_run_response.tool_calls = None
-        mock_agent.run.return_value = mock_run_response
-
+        mock_agent.run.return_value = mock_output
+        
         # Patch the agent creation
-        with patch("app.core.llm_adapter.CortexLLMAgent", return_value=mock_agent):
+        with patch('app.core.llm_adapter.CortexLLMAgent') as mock_agent_class:
+            mock_agent_class.return_value = mock_agent
+            
             adapter = LLMAdapter()
             messages = [{"role": "user", "content": "Hello"}]
             response = await adapter.generate(messages)
-
+            
             assert response == {"content": "OpenAI response"}
             mock_agent.run.assert_called_once()
 
@@ -92,24 +103,57 @@ async def test_generation_with_tool_call():
     with patch.dict("os.environ", {"LLM_PROVIDER": "openai", "USE_MOCK_LLM": "false"}):
         # Create a mock agent with tool call
         mock_agent = AsyncMock()
-        mock_run_response = MagicMock()
-        mock_run_response.response.model_dump.return_value = {"content": None}
-
-        # Create a mock tool call
+        mock_output = MagicMock()
+        
+        # Mock the tool call structure
         mock_tool_call = MagicMock()
         mock_tool_call.name = "test_tool"
-        mock_tool_call.arguments = '{"param1": "value1", "param2": 42}'
-        mock_run_response.tool_calls = [mock_tool_call]
-
-        mock_agent.run.return_value = mock_run_response
-
+        # Set arguments as a dictionary, not a string
+        mock_tool_call.arguments = {"param1": "value1", "param2": 42}
+        
+        # Set up the response structure
+        mock_output.tool_calls = [mock_tool_call]
+        mock_output.response = MagicMock()
+        mock_output.response.content = ""
+        
+        mock_agent.run.return_value = mock_output
+        
         # Patch the agent creation
-        with patch("app.core.llm_adapter.CortexLLMAgent", return_value=mock_agent):
+        with patch('app.core.llm_adapter.CortexLLMAgent') as mock_agent_class:
+            mock_agent_class.return_value = mock_agent
+            
             adapter = LLMAdapter()
             messages = [{"role": "user", "content": "Use a tool"}]
             response = await adapter.generate(messages)
-
+            
+            # Check that tool name and arguments dictionary are returned
             assert response == {"tool": "test_tool", "input": {"param1": "value1", "param2": 42}}
+            mock_agent.run.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_generation_with_anthropic_model():
+    """Test generation with Anthropic provider."""
+    with patch.dict("os.environ", {"LLM_PROVIDER": "anthropic", "USE_MOCK_LLM": "false"}):
+        # Create mock objects for the chain of calls
+        mock_output = MagicMock()
+        mock_output.tool_calls = None
+        mock_output.response = MagicMock()
+        mock_output.response.content = "Anthropic response"
+        
+        # Create a mock agent instance
+        mock_agent = AsyncMock()
+        mock_agent.run.return_value = mock_output
+        
+        # Patch the agent creation
+        with patch('app.core.llm_adapter.CortexLLMAgent') as mock_agent_class:
+            mock_agent_class.return_value = mock_agent
+            
+            adapter = LLMAdapter()
+            messages = [{"role": "user", "content": "Hello"}]
+            response = await adapter.generate(messages)
+            
+            assert response == {"content": "Anthropic response"}
             mock_agent.run.assert_called_once()
 
 
@@ -120,16 +164,39 @@ async def test_error_handling():
         # Create a mock agent that raises an exception
         mock_agent = AsyncMock()
         mock_agent.run.side_effect = Exception("API error")
-
+        
         # Patch the agent creation
-        with patch("app.core.llm_adapter.CortexLLMAgent", return_value=mock_agent):
+        with patch('app.core.llm_adapter.CortexLLMAgent') as mock_agent_class:
+            mock_agent_class.return_value = mock_agent
+            
             adapter = LLMAdapter()
             messages = [{"role": "user", "content": "Hello"}]
-
+            
             # The adapter should handle exceptions gracefully
             response = await adapter.generate(messages)
-
-            # Should return a content with error message
-            assert "content" in response
-            assert "error" in response["content"].lower()
+            
+            # Should return None on error
+            assert response is None
             mock_agent.run.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_adapter_initialization_failure_fallback():
+    """Test adapter initialization failure with fallback to mock."""
+    with patch.dict("os.environ", {"LLM_PROVIDER": "openai", "USE_MOCK_LLM": "false"}):
+        # Create a mock for the CortexLLMAgent that raises an exception
+        with patch('app.core.llm_adapter.CortexLLMAgent', side_effect=Exception("Init error")):
+            adapter = LLMAdapter()
+            
+            # Should fall back to mock
+            assert adapter.use_mock is True
+            
+            # Test that it uses mock_llm for generation
+            with patch("app.core.mock_llm.mock_llm.generate_mock_response") as mock_generate:
+                mock_generate.return_value = {"content": "Fallback response"}
+                
+                messages = [{"role": "user", "content": "Hello"}]
+                response = await adapter.generate(messages)
+                
+                assert response == {"content": "Fallback response"}
+                mock_generate.assert_called_once()

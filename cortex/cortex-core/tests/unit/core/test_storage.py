@@ -2,206 +2,164 @@
 Unit tests for the storage module.
 """
 
-import json
-from datetime import datetime
-
 import pytest
-from app.core.storage import (
-    DataType,
-    FileSystemStorage,
-    MemoryStorage,
-    format_item_key,
-    load_file,
-    save_file,
-)
+from app.core.storage import InMemoryStorage
+from app.models.core_domain import Conversation, Message, User, Workspace
 
 
 @pytest.fixture
 def memory_storage():
-    """Create a memory storage instance for testing."""
-    return MemoryStorage()
+    """Create an in-memory storage instance for testing."""
+    return InMemoryStorage()
 
 
-@pytest.fixture
-def temp_dir(tmp_path):
-    """Create a temporary directory for file storage testing."""
-    return tmp_path
+def test_user_operations(memory_storage):
+    """Test user creation and retrieval."""
+    # Create test user
+    user = User(
+        user_id="test_user_id",
+        name="Test User",
+        email="test@example.com"
+    )
+    
+    # Store user
+    stored_user = memory_storage.create_user(user)
+    assert stored_user["user_id"] == "test_user_id"
+    assert stored_user["name"] == "Test User"
+    assert stored_user["email"] == "test@example.com"
+    
+    # Retrieve user
+    retrieved_user = memory_storage.get_user("test_user_id")
+    assert retrieved_user == stored_user
+    
+    # Non-existent user
+    assert memory_storage.get_user("nonexistent") is None
 
 
-@pytest.fixture
-def file_storage(temp_dir):
-    """Create a file storage instance with a temporary directory."""
-    storage = FileSystemStorage(storage_path=str(temp_dir))
-    return storage
+def test_workspace_operations(memory_storage):
+    """Test workspace creation, retrieval and listing."""
+    # Create test workspaces
+    workspace1 = Workspace(
+        id="workspace1",
+        name="Workspace 1",
+        owner_id="owner1",
+        description="Test workspace 1"
+    )
+    workspace2 = Workspace(
+        id="workspace2",
+        name="Workspace 2",
+        owner_id="owner1",
+        description="Test workspace 2"
+    )
+    workspace3 = Workspace(
+        id="workspace3",
+        name="Workspace 3",
+        owner_id="owner2",
+        description="Test workspace 3"
+    )
+    
+    # Store workspaces
+    memory_storage.create_workspace(workspace1)
+    memory_storage.create_workspace(workspace2)
+    memory_storage.create_workspace(workspace3)
+    
+    # Get workspace by ID
+    retrieved = memory_storage.get_workspace("workspace1")
+    assert retrieved["id"] == "workspace1"
+    assert retrieved["name"] == "Workspace 1"
+    
+    # List workspaces by owner
+    owner1_workspaces = memory_storage.list_workspaces("owner1")
+    assert len(owner1_workspaces) == 2
+    assert any(ws["id"] == "workspace1" for ws in owner1_workspaces)
+    assert any(ws["id"] == "workspace2" for ws in owner1_workspaces)
+    
+    owner2_workspaces = memory_storage.list_workspaces("owner2")
+    assert len(owner2_workspaces) == 1
+    assert owner2_workspaces[0]["id"] == "workspace3"
 
 
-def test_format_item_key():
-    """Test the format_item_key function."""
-    # Test with standard inputs
-    key = format_item_key(DataType.CONVERSATION, "user123", "conv456")
-    assert key == "conversation:user123:conv456"
-
-    # Test with workspace
-    key = format_item_key(DataType.WORKSPACE, "user123", "ws789")
-    assert key == "workspace:user123:ws789"
-
-    # Test without item_id
-    key = format_item_key(DataType.USER, "user123")
-    assert key == "user:user123"
-
-
-def test_memory_storage_store_and_retrieve(memory_storage):
-    """Test storing and retrieving items from memory storage."""
-    # Store a test item
-    test_item = {"id": "test123", "name": "Test Item", "created_at": datetime.now().isoformat()}
-
-    key = format_item_key(DataType.CONVERSATION, "user456", "test123")
-    memory_storage.store(key, test_item)
-
-    # Retrieve the item
-    retrieved = memory_storage.retrieve(key)
-    assert retrieved == test_item
-
-    # Check non-existent item
-    nonexistent = memory_storage.retrieve("nonexistent:key")
-    assert nonexistent is None
-
-
-def test_memory_storage_list_items(memory_storage):
-    """Test listing items by prefix from memory storage."""
-    # Store multiple items
-    items = {
-        "conversation:user1:conv1": {"id": "conv1", "user_id": "user1"},
-        "conversation:user1:conv2": {"id": "conv2", "user_id": "user1"},
-        "conversation:user2:conv3": {"id": "conv3", "user_id": "user2"},
-        "workspace:user1:ws1": {"id": "ws1", "user_id": "user1"},
-    }
-
-    for key, item in items.items():
-        memory_storage.store(key, item)
-
-    # List user1's conversations
-    user1_convs = memory_storage.list_items("conversation:user1:")
-    assert len(user1_convs) == 2
-    assert any(item["id"] == "conv1" for item in user1_convs)
-    assert any(item["id"] == "conv2" for item in user1_convs)
-
-    # List user2's conversations
-    user2_convs = memory_storage.list_items("conversation:user2:")
-    assert len(user2_convs) == 1
-    assert user2_convs[0]["id"] == "conv3"
-
-    # List user1's workspaces
-    user1_ws = memory_storage.list_items("workspace:user1:")
-    assert len(user1_ws) == 1
-    assert user1_ws[0]["id"] == "ws1"
+def test_conversation_operations(memory_storage):
+    """Test conversation creation, retrieval and listing."""
+    # Create test conversations
+    conversation1 = Conversation(
+        id="conv1",
+        topic="Conversation Topic 1",
+        workspace_id="workspace1",
+        participant_ids=["user1", "user2"]
+    )
+    conversation2 = Conversation(
+        id="conv2",
+        topic="Conversation Topic 2",
+        workspace_id="workspace1",
+        participant_ids=["user1", "user3"]
+    )
+    conversation3 = Conversation(
+        id="conv3",
+        topic="Conversation Topic 3",
+        workspace_id="workspace2",
+        participant_ids=["user2", "user3"]
+    )
+    
+    # Store conversations
+    memory_storage.create_conversation(conversation1)
+    memory_storage.create_conversation(conversation2)
+    memory_storage.create_conversation(conversation3)
+    
+    # Get conversation by ID
+    retrieved = memory_storage.get_conversation("conv1")
+    assert retrieved["id"] == "conv1"
+    assert retrieved["topic"] == "Conversation Topic 1"
+    
+    # List conversations by workspace
+    ws1_conversations = memory_storage.list_conversations("workspace1")
+    assert len(ws1_conversations) == 2
+    assert any(conv["id"] == "conv1" for conv in ws1_conversations)
+    assert any(conv["id"] == "conv2" for conv in ws1_conversations)
+    
+    ws2_conversations = memory_storage.list_conversations("workspace2")
+    assert len(ws2_conversations) == 1
+    assert ws2_conversations[0]["id"] == "conv3"
 
 
-def test_memory_storage_delete(memory_storage):
-    """Test deleting items from memory storage."""
-    # Store a test item
-    test_item = {"id": "delete_test", "content": "Delete me"}
-    key = "test:delete_test"
-    memory_storage.store(key, test_item)
-
-    # Verify item exists
-    assert memory_storage.retrieve(key) == test_item
-
-    # Delete the item
-    memory_storage.delete(key)
-
-    # Verify item is gone
-    assert memory_storage.retrieve(key) is None
-
-
-@pytest.mark.asyncio
-async def test_file_storage_store_and_retrieve(file_storage, temp_dir):
-    """Test storing and retrieving items from file storage."""
-    # Store a test item
-    test_item = {"id": "file123", "name": "File Test", "created_at": datetime.now().isoformat()}
-
-    key = format_item_key(DataType.CONVERSATION, "user789", "file123")
-    await file_storage.store(key, test_item)
-
-    # Check that the file exists
-    expected_path = temp_dir / "conversation" / "user789" / "file123.json"
-    assert expected_path.exists()
-
-    # Verify file contents
-    with open(expected_path, "r") as f:
-        stored_data = json.load(f)
-    assert stored_data == test_item
-
-    # Retrieve the item
-    retrieved = await file_storage.retrieve(key)
-    assert retrieved == test_item
-
-
-@pytest.mark.asyncio
-async def test_file_storage_list_items(file_storage, temp_dir):
-    """Test listing items by prefix from file storage."""
-    # Create directory structure
-    conv_dir = temp_dir / "conversation" / "list_user"
-    conv_dir.mkdir(parents=True, exist_ok=True)
-
-    # Create test files
-    test_items = [
-        {"id": "list1", "name": "List Test 1"},
-        {"id": "list2", "name": "List Test 2"},
-        {"id": "list3", "name": "List Test 3"},
-    ]
-
-    for item in test_items:
-        with open(conv_dir / f"{item['id']}.json", "w") as f:
-            json.dump(item, f)
-
-    # List items
-    items = await file_storage.list_items("conversation:list_user:")
-    assert len(items) == 3
-
-    # Verify all items are found
-    for expected in test_items:
-        assert any(item["id"] == expected["id"] for item in items)
-
-
-@pytest.mark.asyncio
-async def test_file_storage_delete(file_storage, temp_dir):
-    """Test deleting items from file storage."""
-    # Create test file
-    delete_dir = temp_dir / "test" / "delete_user"
-    delete_dir.mkdir(parents=True, exist_ok=True)
-
-    test_item = {"id": "delete_file", "content": "Delete me"}
-    file_path = delete_dir / "delete_file.json"
-
-    with open(file_path, "w") as f:
-        json.dump(test_item, f)
-
-    # Verify file exists
-    assert file_path.exists()
-
-    # Delete the item
-    await file_storage.delete("test:delete_user:delete_file")
-
-    # Verify file is gone
-    assert not file_path.exists()
-
-
-def test_save_load_file(temp_dir):
-    """Test the save_file and load_file utility functions."""
-    file_path = temp_dir / "test_save_load.json"
-    test_data = {"key": "value", "nested": {"inner": "data"}}
-
-    # Save file
-    save_file(str(file_path), test_data)
-
-    # Verify file exists
-    assert file_path.exists()
-
-    # Load file
-    loaded_data = load_file(str(file_path))
-    assert loaded_data == test_data
-
-    # Test loading non-existent file
-    nonexistent = load_file(str(temp_dir / "nonexistent.json"))
-    assert nonexistent is None
+def test_message_operations(memory_storage):
+    """Test message creation, retrieval and listing."""
+    # Create test messages
+    message1 = Message(
+        id="msg1",
+        conversation_id="conv1",
+        sender_id="user1",
+        content="Hello"
+    )
+    message2 = Message(
+        id="msg2",
+        conversation_id="conv1",
+        sender_id="assistant",
+        content="Hi there"
+    )
+    message3 = Message(
+        id="msg3",
+        conversation_id="conv2",
+        sender_id="user2",
+        content="Different conversation"
+    )
+    
+    # Store messages
+    memory_storage.create_message(message1)
+    memory_storage.create_message(message2)
+    memory_storage.create_message(message3)
+    
+    # Get message by ID
+    retrieved = memory_storage.get_message("msg1")
+    assert retrieved["id"] == "msg1"
+    assert retrieved["content"] == "Hello"
+    
+    # List messages by conversation
+    conv1_messages = memory_storage.list_messages("conv1")
+    assert len(conv1_messages) == 2
+    assert any(msg["id"] == "msg1" for msg in conv1_messages)
+    assert any(msg["id"] == "msg2" for msg in conv1_messages)
+    
+    conv2_messages = memory_storage.list_messages("conv2")
+    assert len(conv2_messages) == 1
+    assert conv2_messages[0]["id"] == "msg3"

@@ -3,140 +3,198 @@ Unit tests for the tools module.
 """
 
 import pytest
-from app.core.exceptions import ToolExecutionException
-from app.core.tools import execute_tool, get_registered_tools, register_tool
+from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import datetime
+from app.core.tools import (
+    get_conversation_summary,
+    get_current_time,
+    get_user_info,
+    list_workspaces,
+    ConversationSummaryOutput,
+    TimeOutput,
+    UserInfoOutput,
+    WorkspaceListOutput
+)
+from app.models import Conversation, Message, User, Workspace
 
 
 @pytest.mark.asyncio
-async def test_register_tool():
-    """Test registering a tool."""
-
-    # Define a sample tool
-    @register_tool("test_tool")
-    async def sample_tool(param1: str, param2: int = 0):
-        """Sample tool for testing."""
-        return {"result": f"{param1}-{param2}"}
-
-    # Check if the tool was registered
-    tools = get_registered_tools()
-    assert "test_tool" in tools
-
-    # Check schema properties
-    schema = tools["test_tool"]["schema"]
-    assert schema["name"] == "test_tool"
-    assert "description" in schema
-    assert "parameters" in schema
-
-    # Check required parameters
-    params = schema["parameters"]["properties"]
-    assert "param1" in params
-    assert "param2" in params
-    assert "param1" in schema["parameters"]["required"]
-    assert "param2" not in schema["parameters"]["required"]
+async def test_get_current_time():
+    """Test the get_current_time tool."""
+    # Execute the tool
+    result = await get_current_time()
+    
+    # Verify basic structure
+    assert isinstance(result, dict)
+    assert "iso_format" in result
+    assert "date" in result
+    assert "time" in result
+    assert "year" in result
+    assert "month" in result
+    assert "day" in result
+    assert "day_of_week" in result
+    
+    # Verify that the returned date is reasonable
+    now = datetime.now()
+    assert now.strftime("%Y") == result["year"]
+    assert now.strftime("%d") == result["day"]
 
 
 @pytest.mark.asyncio
-async def test_register_tool_with_types():
-    """Test registering a tool with various parameter types."""
-
-    @register_tool("typed_tool")
-    async def typed_tool(
-        str_param: str,
-        int_param: int,
-        float_param: float,
-        bool_param: bool,
-        list_param: list,
-        dict_param: dict,
-    ):
-        """Tool with various parameter types."""
-        return {"result": "success"}
-
-    # Check if the tool was registered
-    tools = get_registered_tools()
-    assert "typed_tool" in tools
-
-    # Check schema properties for each type
-    params = tools["typed_tool"]["schema"]["parameters"]["properties"]
-    assert params["str_param"]["type"] == "string"
-    assert params["int_param"]["type"] == "integer"
-    assert params["float_param"]["type"] == "number"
-    assert params["bool_param"]["type"] == "boolean"
-    assert params["list_param"]["type"] == "array"
-    assert params["dict_param"]["type"] == "object"
-
-
-@pytest.mark.asyncio
-async def test_execute_tool():
-    """Test executing a registered tool."""
-
-    # Register a test tool
-    @register_tool("execute_test_tool")
-    async def execute_test_tool(a: int, b: int, operation: str = "add"):
-        """Test tool for execution."""
-        if operation == "add":
-            return {"result": a + b}
-        elif operation == "multiply":
-            return {"result": a * b}
-        else:
-            raise ValueError(f"Unsupported operation: {operation}")
-
-    # Execute the tool with add operation
-    result = await execute_tool("execute_test_tool", {"a": 5, "b": 3, "operation": "add"})
-    assert result["result"] == 8
-
-    # Execute the tool with multiply operation
-    result = await execute_tool("execute_test_tool", {"a": 5, "b": 3, "operation": "multiply"})
-    assert result["result"] == 15
+async def test_get_user_info():
+    """Test the get_user_info tool with mock repository."""
+    # Mock the UnitOfWork and repository
+    mock_user = User(user_id="test-user", name="Test User", email="test@example.com")
+    
+    with patch("app.core.tools.UnitOfWork.for_transaction") as mock_uow:
+        # Set up the mock repositories
+        mock_user_repo = AsyncMock()
+        mock_user_repo.get_by_id = AsyncMock(return_value=mock_user)
+        
+        # Set up the mock unit of work
+        mock_uow_context = AsyncMock()
+        mock_uow_context.__aenter__ = AsyncMock(return_value=mock_uow_context)
+        mock_uow_context.__aexit__ = AsyncMock(return_value=None)
+        mock_uow_context.repositories = MagicMock()
+        mock_uow_context.repositories.get_user_repository = MagicMock(return_value=mock_user_repo)
+        mock_uow.return_value = mock_uow_context
+        
+        # Call the tool
+        result = await get_user_info("test-user")
+        
+        # Verify the result
+        assert result["user_id"] == "test-user"
+        assert result["name"] == "Test User"
+        assert result["email"] == "test@example.com"
+        assert result["status"] == "active"
 
 
 @pytest.mark.asyncio
-async def test_execute_nonexistent_tool():
-    """Test executing a tool that doesn't exist."""
-    with pytest.raises(ToolExecutionException) as exc_info:
-        await execute_tool("nonexistent_tool", {"param": "value"})
-
-    assert "Tool not found" in str(exc_info.value)
-
-
-@pytest.mark.asyncio
-async def test_execute_tool_missing_params():
-    """Test executing a tool with missing required parameters."""
-
-    # Register a test tool with required parameters
-    @register_tool("required_params_tool")
-    async def required_params_tool(required_param: str, optional_param: int = 0):
-        """Tool with required and optional parameters."""
-        return {"result": f"{required_param}-{optional_param}"}
-
-    # Execute without the required parameter
-    with pytest.raises(ToolExecutionException) as exc_info:
-        await execute_tool("required_params_tool", {"optional_param": 42})
-
-    assert "Missing required parameter" in str(exc_info.value)
-
-    # Execute with only the required parameter
-    result = await execute_tool("required_params_tool", {"required_param": "test"})
-    assert result["result"] == "test-0"
+async def test_get_user_info_not_found():
+    """Test the get_user_info tool with a non-existent user."""
+    with patch("app.core.tools.UnitOfWork.for_transaction") as mock_uow:
+        # Set up the mock repositories
+        mock_user_repo = AsyncMock()
+        mock_user_repo.get_by_id = AsyncMock(return_value=None)
+        
+        # Set up the mock unit of work
+        mock_uow_context = AsyncMock()
+        mock_uow_context.__aenter__ = AsyncMock(return_value=mock_uow_context)
+        mock_uow_context.__aexit__ = AsyncMock(return_value=None)
+        mock_uow_context.repositories = MagicMock()
+        mock_uow_context.repositories.get_user_repository = MagicMock(return_value=mock_user_repo)
+        mock_uow.return_value = mock_uow_context
+        
+        # Call the tool
+        result = await get_user_info("non-existent-user")
+        
+        # Verify the result for non-existent user
+        assert result["user_id"] == "non-existent-user"
+        assert result["name"] == "Unknown User"
+        assert result["email"] is None
+        assert result["status"] == "not_found"
 
 
 @pytest.mark.asyncio
-async def test_execute_tool_with_error():
-    """Test executing a tool that raises an error."""
+async def test_list_workspaces():
+    """Test the list_workspaces tool."""
+    # Create mock workspaces
+    mock_workspaces = [
+        Workspace(id="ws1", name="Workspace 1", description="First workspace", owner_id="user1"),
+        Workspace(id="ws2", name="Workspace 2", description="Second workspace", owner_id="user1"),
+    ]
+    
+    with patch("app.core.tools.UnitOfWork.for_transaction") as mock_uow:
+        # Set up the mock repositories
+        mock_workspace_repo = AsyncMock()
+        mock_workspace_repo.list_by_owner = AsyncMock(return_value=mock_workspaces)
+        
+        # Set up the mock unit of work
+        mock_uow_context = AsyncMock()
+        mock_uow_context.__aenter__ = AsyncMock(return_value=mock_uow_context)
+        mock_uow_context.__aexit__ = AsyncMock(return_value=None)
+        mock_uow_context.repositories = MagicMock()
+        mock_uow_context.repositories.get_workspace_repository = MagicMock(return_value=mock_workspace_repo)
+        mock_uow.return_value = mock_uow_context
+        
+        # Call the tool
+        result = await list_workspaces("user1", limit=10)
+        
+        # Verify the result
+        assert result["count"] == 2
+        assert len(result["workspaces"]) == 2
+        workspace_ids = {ws["id"] for ws in result["workspaces"]}
+        assert workspace_ids == {"ws1", "ws2"}
 
-    # Register a test tool that raises an error
-    @register_tool("error_tool")
-    async def error_tool(trigger_error: bool = True):
-        """Tool that raises an error if triggered."""
-        if trigger_error:
-            raise ValueError("Intentional error for testing")
-        return {"result": "success"}
 
-    # Execute with error
-    with pytest.raises(ToolExecutionException) as exc_info:
-        await execute_tool("error_tool", {"trigger_error": True})
+@pytest.mark.asyncio
+async def test_get_conversation_summary():
+    """Test the get_conversation_summary tool."""
+    # Mock data
+    mock_conversation = Conversation(
+        id="conv1", 
+        workspace_id="ws1", 
+        topic="Test Conversation", 
+        participant_ids=["user1", "user2"]
+    )
+    
+    mock_messages = [
+        Message(id="msg1", conversation_id="conv1", sender_id="user1", content="Hello"),
+        Message(id="msg2", conversation_id="conv1", sender_id="user2", content="Hi there"),
+    ]
+    
+    with patch("app.core.tools.UnitOfWork.for_transaction") as mock_uow:
+        # Set up the mock repositories
+        mock_conversation_repo = AsyncMock()
+        mock_conversation_repo.get_by_id = AsyncMock(return_value=mock_conversation)
+        
+        mock_message_repo = AsyncMock()
+        mock_message_repo.list_by_conversation = AsyncMock(return_value=mock_messages)
+        
+        # Set up the mock unit of work
+        mock_uow_context = AsyncMock()
+        mock_uow_context.__aenter__ = AsyncMock(return_value=mock_uow_context)
+        mock_uow_context.__aexit__ = AsyncMock(return_value=None)
+        mock_uow_context.repositories = MagicMock()
+        mock_uow_context.repositories.get_conversation_repository = MagicMock(return_value=mock_conversation_repo)
+        mock_uow_context.repositories.get_message_repository = MagicMock(return_value=mock_message_repo)
+        mock_uow.return_value = mock_uow_context
+        
+        # Call the tool
+        result = await get_conversation_summary("conv1", "user1")
+        
+        # Verify the result
+        assert result["message_count"] == 2
+        assert result["topic"] == "Test Conversation"
+        assert result["participant_count"] == 2
+        assert "Conversation with topic: Test Conversation" in result["summary"]
 
-    assert "Intentional error" in str(exc_info.value)
 
-    # Execute without error
-    result = await execute_tool("error_tool", {"trigger_error": False})
-    assert result["result"] == "success"
+@pytest.mark.asyncio
+async def test_get_conversation_summary_not_found():
+    """Test the get_conversation_summary tool with a non-existent conversation."""
+    with patch("app.core.tools.UnitOfWork.for_transaction") as mock_uow:
+        # Set up the mock repositories
+        mock_conversation_repo = AsyncMock()
+        mock_conversation_repo.get_by_id = AsyncMock(return_value=None)
+        
+        mock_message_repo = AsyncMock()
+        mock_message_repo.list_by_conversation = AsyncMock(return_value=[])
+        
+        # Set up the mock unit of work
+        mock_uow_context = AsyncMock()
+        mock_uow_context.__aenter__ = AsyncMock(return_value=mock_uow_context)
+        mock_uow_context.__aexit__ = AsyncMock(return_value=None)
+        mock_uow_context.repositories = MagicMock()
+        mock_uow_context.repositories.get_conversation_repository = MagicMock(return_value=mock_conversation_repo)
+        mock_uow_context.repositories.get_message_repository = MagicMock(return_value=mock_message_repo)
+        mock_uow.return_value = mock_uow_context
+        
+        # Call the tool
+        result = await get_conversation_summary("non-existent-conv", "user1")
+        
+        # Verify the result for non-existent conversation
+        assert result["message_count"] == 0
+        assert result["topic"] == "unknown"
+        assert result["participant_count"] == 0
+        assert result["summary"] == "Conversation not found"

@@ -388,7 +388,11 @@ async def create_conversation(request: ConversationCreate, current_user: dict = 
 
         logger.info(f"Created conversation {conversation.id} in workspace {workspace_id}")
 
-        return ConversationResponse(status="conversation created", conversation=created_conversation)
+        # Convert to dictionary
+        conversation_dict = created_conversation.model_dump()
+        conversation_dict["messages"] = []  # Empty messages for new conversation
+        
+        return ConversationResponse(status="conversation created", conversation=conversation_dict)
     except Exception as e:
         handle_repository_error(e)
 
@@ -504,10 +508,18 @@ async def get_conversation(conversation_id: str, current_user: dict = Depends(ge
                     entity_id=conversation_id,
                     user_id=user_id,
                 )
+                
+            # Add messages to the conversation
+            message_repo = uow.repositories.get_message_repository()
+            messages = await message_repo.list_by_conversation(conversation_id)
+            
+            # Convert conversation to dict to add messages
+            conversation_dict = conversation.model_dump()
+            conversation_dict["messages"] = [message.model_dump() for message in messages]
 
         logger.info(f"Retrieved conversation {conversation_id}")
 
-        return ConversationResponse(status="conversation retrieved", conversation=conversation)
+        return ConversationResponse(status="conversation retrieved", conversation=conversation_dict)
     except Exception as e:
         handle_repository_error(e)
 
@@ -592,8 +604,15 @@ async def update_conversation(
             await uow.commit()
 
         logger.info(f"Updated conversation {conversation_id}")
+        
+        # Convert to dictionary
+        conversation_dict = updated_conversation.model_dump()
+        # Add messages to the conversation
+        message_repo = uow.repositories.get_message_repository()
+        messages = await message_repo.list_by_conversation(conversation_id)
+        conversation_dict["messages"] = [message.model_dump() for message in messages]
 
-        return ConversationResponse(status="conversation updated", conversation=updated_conversation)
+        return ConversationResponse(status="conversation updated", conversation=conversation_dict)
     except Exception as e:
         handle_repository_error(e)
 

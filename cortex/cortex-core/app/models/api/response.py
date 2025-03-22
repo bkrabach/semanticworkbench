@@ -39,7 +39,7 @@ class ConversationResponse(BaseModel):
     """Conversation response model."""
 
     status: str = Field(..., description="Status of the operation")
-    conversation: Conversation = Field(..., description="Created conversation")
+    conversation: Dict[str, Any] = Field(..., description="Conversation data with messages")
 
 
 class ConversationsListResponse(BaseModel):
