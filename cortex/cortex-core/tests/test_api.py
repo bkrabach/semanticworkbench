@@ -9,8 +9,7 @@ client = TestClient(app)
 def get_auth_header(user_id="test-user", name="Test User", email="test@example.com"):
     """Create authentication header with test token."""
     token = create_access_token({
-        "sub": email,
-        "oid": user_id,
+        "sub": user_id,  # Use user_id for the subject claim
         "name": name,
         "email": email
     })
@@ -47,7 +46,10 @@ def test_verify_token():
     response = client.get("/auth/verify", headers=headers)
     assert response.status_code == 200
     data = response.json()
-    assert data["user_id"] == "test-user"
+    assert "authenticated" in data
+    assert data["authenticated"] is True
+    assert "user" in data
+    assert data["user"]["id"] == "test-user"
 
 def test_input_endpoint():
     """Test input endpoint."""

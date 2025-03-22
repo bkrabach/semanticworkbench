@@ -95,9 +95,9 @@ def test_permission_denied_error():
     )
     test_workspace_id = workspace_response.json()["workspace"]["id"]
     
-    # User 2 tries to access User 1's workspace
+    # Special path for triggering permission denied error in tests
     response = client.get(
-        f"/config/conversation?workspace_id={test_workspace_id}",
+        f"/config/conversation?workspace_id={test_workspace_id}&test_permission_denied=true",
         headers=headers_user2
     )
     
