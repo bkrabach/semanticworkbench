@@ -16,6 +16,10 @@ from app.core.event_bus import event_bus
 from app.core.exceptions import CortexException
 from app.models.domain import User
 from app.database.unit_of_work import UnitOfWork
+from app.core.response_handler import response_handler
+from app.core.llm_adapter import llm_adapter
+# Import all tools to register them
+from app.core.tools import *
 
 # Load environment variables
 load_dotenv()
@@ -79,6 +83,26 @@ async def lifespan(app: FastAPI):
     # Ensure test users exist in the database
     logger.info("Setting up test users...")
     await ensure_test_users_exist()
+    
+    # Set default environment variables for LLM if not present
+    if not os.getenv("LLM_PROVIDER"):
+        os.environ["LLM_PROVIDER"] = "openai"  # Default provider
+        # In a real deployment, these would be set in the environment
+        # or in a .env file. For demo purposes, we set a value but keep it invalid
+        if not os.getenv("OPENAI_API_KEY"):
+            os.environ["OPENAI_API_KEY"] = "sk-demo-key-will-fail"
+            os.environ["OPENAI_MODEL"] = "gpt-3.5-turbo"
+    
+    # Initialize LLM adapter
+    try:
+        logger.info(f"Initializing LLM adapter with provider: {os.getenv('LLM_PROVIDER')}")
+        # llm_adapter is already initialized when imported, but we log it here
+    except Exception as e:
+        logger.warning(f"Failed to initialize LLM adapter: {str(e)}. Will use mock responses.")
+        
+    # Log registered tools
+    from app.core.tools import tool_registry
+    logger.info(f"Registered tools: {', '.join(tool_registry.list_tools())}")
 
     yield
     

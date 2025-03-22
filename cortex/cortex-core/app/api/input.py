@@ -1,5 +1,6 @@
 import logging
-from fastapi import APIRouter, Depends, HTTPException, status
+import asyncio
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from datetime import datetime
 
 from ..utils.auth import get_current_user
@@ -8,10 +9,13 @@ from ..models.api.response import InputResponse, ErrorResponse
 from ..core.event_bus import event_bus
 from ..models.domain import Message
 from ..database.unit_of_work import UnitOfWork
+from ..core.response_handler import response_handler
 from ..core.exceptions import (
     EventBusException,
     EntityNotFoundError,
-    AccessDeniedError
+    AccessDeniedError,
+    LLMException,
+    ToolExecutionException
 )
 
 logger = logging.getLogger(__name__)
@@ -25,15 +29,16 @@ router = APIRouter(tags=["input"])
 })
 async def receive_input(
     request: InputRequest,
+    background_tasks: BackgroundTasks,
     current_user: dict = Depends(get_current_user)
 ):
     """
-    Receive input from a client.
+    Receive input from a client and process it with ResponseHandler.
 
     Args:
         request: The input request
+        background_tasks: FastAPI background tasks
         current_user: The authenticated user
-        db: Database session
 
     Returns:
         Status response
@@ -74,18 +79,6 @@ async def receive_input(
             # Create a timestamp
             timestamp = datetime.now().isoformat()
 
-            # Create and store message
-            message = Message(
-                sender_id=user_id,
-                content=request.content,
-                conversation_id=request.conversation_id,
-                timestamp=timestamp,
-                metadata=request.metadata
-            )
-
-            message_repo = uow.repositories.get_message_repository()
-            await message_repo.create(message)
-
             # Create event with user ID
             event = {
                 "type": "input",
@@ -111,10 +104,20 @@ async def receive_input(
                     message="Failed to publish input event",
                     details={"conversation_id": request.conversation_id}
                 )
+                
+            # Create a background task to handle the response generation
+            # This allows us to return a response immediately while processing continues
+            background_tasks.add_task(
+                response_handler.handle_message,
+                user_id=user_id,
+                conversation_id=request.conversation_id,
+                message_content=request.content,
+                metadata=request.metadata
+            )
 
             # Return response
             return InputResponse(
-                status="received",
+                status="processing",
                 data={
                     "content": request.content,
                     "conversation_id": request.conversation_id,

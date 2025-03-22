@@ -315,6 +315,48 @@ class EventBusException(ServiceException):
         )
 
 
+class LLMException(ServiceException):
+    """Exception raised for LLM service errors."""
+
+    def __init__(
+        self,
+        message: str = "LLM service error",
+        provider: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None,
+    ):
+        _details = details or {}
+        if provider:
+            _details["provider"] = provider
+
+        super().__init__(
+            message,
+            code="llm_error",
+            status_code=500,
+            details=_details,
+        )
+
+
+class ToolExecutionException(ServiceException):
+    """Exception raised when a tool execution fails."""
+
+    def __init__(
+        self,
+        message: str = "Tool execution failed",
+        tool_name: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None,
+    ):
+        _details = details or {}
+        if tool_name:
+            _details["tool_name"] = tool_name
+
+        super().__init__(
+            message,
+            code="tool_execution_error",
+            status_code=500,
+            details=_details,
+        )
+
+
 # Database Exceptions
 
 class DatabaseException(CortexException):
