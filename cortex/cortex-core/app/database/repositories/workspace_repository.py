@@ -1,11 +1,13 @@
 import json
-from typing import Optional, List
-from sqlalchemy import select, func
+from typing import List, Optional
+
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .base import BaseRepository
-from ...models.domain import Workspace
+from ...models import Workspace
 from ..models import Workspace as DbWorkspace
+from .base import BaseRepository
+
 
 class WorkspaceRepository(BaseRepository[Workspace, DbWorkspace]):
     """Repository for workspace operations."""
@@ -33,10 +35,7 @@ class WorkspaceRepository(BaseRepository[Workspace, DbWorkspace]):
         """
         try:
             result = await self.session.execute(
-                select(DbWorkspace)
-                .where(DbWorkspace.owner_id == owner_id)
-                .limit(limit)
-                .offset(offset)
+                select(DbWorkspace).where(DbWorkspace.owner_id == owner_id).limit(limit).offset(offset)
             )
             db_workspaces = result.scalars().all()
             # Filter out None values to satisfy type checker
@@ -83,9 +82,7 @@ class WorkspaceRepository(BaseRepository[Workspace, DbWorkspace]):
         """
         try:
             result = await self.session.execute(
-                select(func.count())
-                .select_from(DbWorkspace)
-                .where(DbWorkspace.owner_id == owner_id)
+                select(func.count()).select_from(DbWorkspace).where(DbWorkspace.owner_id == owner_id)
             )
             return result.scalar() or 0
         except Exception as e:
@@ -108,7 +105,7 @@ class WorkspaceRepository(BaseRepository[Workspace, DbWorkspace]):
         # Parse metadata JSON
         metadata = {}
         # Use getattr to avoid SQLAlchemy Column type issues
-        metadata_json = getattr(db_entity, 'metadata_json', None)
+        metadata_json = getattr(db_entity, "metadata_json", None)
         if metadata_json is not None:
             try:
                 metadata_str = str(metadata_json)
@@ -117,11 +114,11 @@ class WorkspaceRepository(BaseRepository[Workspace, DbWorkspace]):
                 pass
 
         return Workspace(
-            id=str(getattr(db_entity, 'id')),
-            name=str(getattr(db_entity, 'name')),
-            description=str(getattr(db_entity, 'description')),
-            owner_id=str(getattr(db_entity, 'owner_id')),
-            metadata=metadata
+            id=str(getattr(db_entity, "id")),
+            name=str(getattr(db_entity, "name")),
+            description=str(getattr(db_entity, "description")),
+            owner_id=str(getattr(db_entity, "owner_id")),
+            metadata=metadata,
         )
 
     def _to_db(self, entity: Workspace) -> DbWorkspace:
@@ -143,7 +140,7 @@ class WorkspaceRepository(BaseRepository[Workspace, DbWorkspace]):
             name=entity.name,
             description=entity.description,
             owner_id=entity.owner_id,
-            metadata_json=metadata_json
+            metadata_json=metadata_json,
         )
 
     def _update_db_entity(self, db_entity: DbWorkspace, entity: Workspace) -> DbWorkspace:
@@ -158,14 +155,14 @@ class WorkspaceRepository(BaseRepository[Workspace, DbWorkspace]):
             Updated database workspace
         """
         # Use setattr to avoid typechecking issues with SQLAlchemy columns
-        setattr(db_entity, 'name', entity.name)
-        setattr(db_entity, 'description', entity.description)
+        setattr(db_entity, "name", entity.name)
+        setattr(db_entity, "description", entity.description)
 
         # Update metadata
         metadata_json = "{}"
         if entity.metadata:
             metadata_json = json.dumps(entity.metadata)
 
-        setattr(db_entity, 'metadata_json', metadata_json)
+        setattr(db_entity, "metadata_json", metadata_json)
 
         return db_entity

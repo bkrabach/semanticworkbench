@@ -1,11 +1,13 @@
 import json
 from typing import Optional
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .base import BaseRepository
-from ...models.domain import User
+from ...models import User
 from ..models import User as DbUser
+from .base import BaseRepository
+
 
 class UserRepository(BaseRepository[User, DbUser]):
     """Repository for user operations."""
@@ -30,9 +32,7 @@ class UserRepository(BaseRepository[User, DbUser]):
             User if found, None otherwise
         """
         try:
-            result = await self.session.execute(
-                select(DbUser).where(DbUser.email == email)
-            )
+            result = await self.session.execute(select(DbUser).where(DbUser.email == email))
             db_user = result.scalars().first()
             return self._to_domain(db_user) if db_user else None
         except Exception as e:
@@ -50,9 +50,7 @@ class UserRepository(BaseRepository[User, DbUser]):
             User if found, None otherwise
         """
         try:
-            result = await self.session.execute(
-                select(DbUser).where(DbUser.user_id == entity_id)
-            )
+            result = await self.session.execute(select(DbUser).where(DbUser.user_id == entity_id))
             db_user = result.scalars().first()
             return self._to_domain(db_user) if db_user else None
         except Exception as e:
@@ -75,7 +73,7 @@ class UserRepository(BaseRepository[User, DbUser]):
         # Parse metadata JSON
         metadata = {}
         # Use getattr to avoid SQLAlchemy Column type issues
-        metadata_json = getattr(db_entity, 'metadata_json', None)
+        metadata_json = getattr(db_entity, "metadata_json", None)
         if metadata_json is not None:
             try:
                 metadata_str = str(metadata_json)
@@ -84,10 +82,10 @@ class UserRepository(BaseRepository[User, DbUser]):
                 pass
 
         return User(
-            user_id=str(getattr(db_entity, 'user_id')),
-            name=str(getattr(db_entity, 'name')),
-            email=str(getattr(db_entity, 'email')),
-            metadata=metadata
+            user_id=str(getattr(db_entity, "user_id")),
+            name=str(getattr(db_entity, "name")),
+            email=str(getattr(db_entity, "email")),
+            metadata=metadata,
         )
 
     def _to_db(self, entity: User) -> DbUser:
@@ -104,12 +102,7 @@ class UserRepository(BaseRepository[User, DbUser]):
         if entity.metadata:
             metadata_json = json.dumps(entity.metadata)
 
-        return DbUser(
-            user_id=entity.user_id,
-            name=entity.name,
-            email=entity.email,
-            metadata_json=metadata_json
-        )
+        return DbUser(user_id=entity.user_id, name=entity.name, email=entity.email, metadata_json=metadata_json)
 
     def _update_db_entity(self, db_entity: DbUser, entity: User) -> DbUser:
         """
@@ -123,14 +116,14 @@ class UserRepository(BaseRepository[User, DbUser]):
             Updated database user
         """
         # Use setattr to safely update Column attributes
-        setattr(db_entity, 'name', entity.name)
-        setattr(db_entity, 'email', entity.email)
+        setattr(db_entity, "name", entity.name)
+        setattr(db_entity, "email", entity.email)
 
         # Update metadata
         metadata_json = "{}"
         if entity.metadata:
             metadata_json = json.dumps(entity.metadata)
 
-        setattr(db_entity, 'metadata_json', metadata_json)
+        setattr(db_entity, "metadata_json", metadata_json)
 
         return db_entity

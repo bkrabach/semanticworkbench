@@ -1,11 +1,13 @@
 import json
-from typing import Optional, List
-from sqlalchemy import select, func
+from typing import List, Optional
+
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .base import BaseRepository
-from ...models.domain import Conversation
+from ...models import Conversation
 from ..models import Conversation as DbConversation
+from .base import BaseRepository
+
 
 class ConversationRepository(BaseRepository[Conversation, DbConversation]):
     """Repository for conversation operations."""
@@ -19,8 +21,7 @@ class ConversationRepository(BaseRepository[Conversation, DbConversation]):
         """
         super().__init__(session, Conversation, DbConversation)
 
-    async def list_by_workspace(self, workspace_id: str,
-                              limit: int = 100, offset: int = 0) -> List[Conversation]:
+    async def list_by_workspace(self, workspace_id: str, limit: int = 100, offset: int = 0) -> List[Conversation]:
         """
         List conversations in a specific workspace.
 
@@ -34,10 +35,7 @@ class ConversationRepository(BaseRepository[Conversation, DbConversation]):
         """
         try:
             result = await self.session.execute(
-                select(DbConversation)
-                .where(DbConversation.workspace_id == workspace_id)
-                .limit(limit)
-                .offset(offset)
+                select(DbConversation).where(DbConversation.workspace_id == workspace_id).limit(limit).offset(offset)
             )
             db_conversations = result.scalars().all()
             # Filter out None values to satisfy type checker
@@ -59,9 +57,7 @@ class ConversationRepository(BaseRepository[Conversation, DbConversation]):
         """
         try:
             result = await self.session.execute(
-                select(func.count())
-                .select_from(DbConversation)
-                .where(DbConversation.workspace_id == workspace_id)
+                select(func.count()).select_from(DbConversation).where(DbConversation.workspace_id == workspace_id)
             )
             return result.scalar() or 0
         except Exception as e:
@@ -84,7 +80,7 @@ class ConversationRepository(BaseRepository[Conversation, DbConversation]):
         # Parse metadata JSON
         metadata = {}
         # Use getattr to avoid SQLAlchemy Column type issues
-        metadata_json = getattr(db_entity, 'metadata_json', None)
+        metadata_json = getattr(db_entity, "metadata_json", None)
         if metadata_json is not None:
             try:
                 metadata_str = str(metadata_json)
@@ -95,7 +91,7 @@ class ConversationRepository(BaseRepository[Conversation, DbConversation]):
         # Parse participant IDs JSON
         participant_ids = []
         # Use getattr to avoid SQLAlchemy Column type issues
-        participant_ids_json = getattr(db_entity, 'participant_ids_json', None)
+        participant_ids_json = getattr(db_entity, "participant_ids_json", None)
         if participant_ids_json is not None:
             try:
                 participant_ids_str = str(participant_ids_json)
@@ -104,11 +100,11 @@ class ConversationRepository(BaseRepository[Conversation, DbConversation]):
                 pass
 
         return Conversation(
-            id=str(getattr(db_entity, 'id')),
-            workspace_id=str(getattr(db_entity, 'workspace_id')),
-            topic=str(getattr(db_entity, 'topic')),
+            id=str(getattr(db_entity, "id")),
+            workspace_id=str(getattr(db_entity, "workspace_id")),
+            topic=str(getattr(db_entity, "topic")),
             participant_ids=participant_ids,
-            metadata=metadata
+            metadata=metadata,
         )
 
     def _to_db(self, entity: Conversation) -> DbConversation:
@@ -134,11 +130,10 @@ class ConversationRepository(BaseRepository[Conversation, DbConversation]):
             workspace_id=entity.workspace_id,
             topic=entity.topic,
             participant_ids_json=participant_ids_json,
-            metadata_json=metadata_json
+            metadata_json=metadata_json,
         )
 
-    def _update_db_entity(self, db_entity: DbConversation,
-                         entity: Conversation) -> DbConversation:
+    def _update_db_entity(self, db_entity: DbConversation, entity: Conversation) -> DbConversation:
         """
         Update database conversation from domain conversation.
 
@@ -150,19 +145,19 @@ class ConversationRepository(BaseRepository[Conversation, DbConversation]):
             Updated database conversation
         """
         # Use setattr to avoid SQLAlchemy Column type issues
-        setattr(db_entity, 'workspace_id', entity.workspace_id)
-        setattr(db_entity, 'topic', entity.topic)
+        setattr(db_entity, "workspace_id", entity.workspace_id)
+        setattr(db_entity, "topic", entity.topic)
 
         # Update participant IDs
         if entity.participant_ids:
-            setattr(db_entity, 'participant_ids_json', json.dumps(entity.participant_ids))
+            setattr(db_entity, "participant_ids_json", json.dumps(entity.participant_ids))
         else:
-            setattr(db_entity, 'participant_ids_json', "[]")
+            setattr(db_entity, "participant_ids_json", "[]")
 
         # Update metadata
         if entity.metadata:
-            setattr(db_entity, 'metadata_json', json.dumps(entity.metadata))
+            setattr(db_entity, "metadata_json", json.dumps(entity.metadata))
         else:
-            setattr(db_entity, 'metadata_json', "{}")
+            setattr(db_entity, "metadata_json", "{}")
 
         return db_entity

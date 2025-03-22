@@ -1,7 +1,7 @@
 import logging
 from typing import Dict, List, Any, Optional
 
-from ..models.domain import User, Workspace, Conversation, Message
+from ..models import User, Workspace, Conversation, Message
 
 logger = logging.getLogger(__name__)
 

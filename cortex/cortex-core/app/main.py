@@ -14,7 +14,7 @@ from app.api.output import router as output_router
 from app.api.config import router as config_router
 from app.core.event_bus import event_bus
 from app.core.exceptions import CortexException
-from app.models.domain import User
+from app.models import User
 from app.database.unit_of_work import UnitOfWork
 from app.core.response_handler import response_handler
 from app.core.llm_adapter import llm_adapter
@@ -64,6 +64,23 @@ async def ensure_test_users_exist():
             else:
                 logger.info(f"Test user already exists: {email}")
         
+        # Also ensure the 'assistant' system user exists for messages from the AI
+        assistant_id = "assistant"
+        assistant_email = "assistant@system.local"
+        existing_assistant = await user_repo.get_by_id(assistant_id)
+        
+        if not existing_assistant:
+            logger.info(f"Creating system assistant user with ID: {assistant_id}")
+            assistant_user = User(
+                user_id=assistant_id,
+                name="AI Assistant",
+                email=assistant_email,
+                metadata={"is_system": True}
+            )
+            await user_repo.create(assistant_user)
+        else:
+            logger.info(f"System assistant user already exists")
+        
         # Commit all changes
         await uow.commit()
         logger.info("Test user setup complete")
@@ -87,11 +104,18 @@ async def lifespan(app: FastAPI):
     # Set default environment variables for LLM if not present
     if not os.getenv("LLM_PROVIDER"):
         os.environ["LLM_PROVIDER"] = "openai"  # Default provider
-        # In a real deployment, these would be set in the environment
-        # or in a .env file. For demo purposes, we set a value but keep it invalid
-        if not os.getenv("OPENAI_API_KEY"):
-            os.environ["OPENAI_API_KEY"] = "sk-demo-key-will-fail"
-            os.environ["OPENAI_MODEL"] = "gpt-3.5-turbo"
+        
+    # Check if we're using mock or real LLM
+    use_mock = os.getenv("USE_MOCK_LLM", "").lower() == "true"
+    
+    # Only set fake key if we're using mock and don't have real keys configured
+    if use_mock and not os.getenv("OPENAI_API_KEY"):
+        os.environ["OPENAI_API_KEY"] = "sk-demo-key-will-fail"
+        os.environ["OPENAI_MODEL"] = "gpt-3.5-turbo"
+        logger.info("Using mock LLM with dummy API key")
+    else:
+        # Using real LLM with keys from .env
+        logger.info("Using real LLM with configured API keys")
     
     # Initialize LLM adapter
     try:

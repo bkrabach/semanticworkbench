@@ -7,7 +7,7 @@ from ..utils.auth import get_current_user
 from ..models.api.request import InputRequest
 from ..models.api.response import InputResponse, ErrorResponse
 from ..core.event_bus import event_bus
-from ..models.domain import Message
+from ..models import Message
 from ..database.unit_of_work import UnitOfWork
 from ..core.response_handler import response_handler
 from ..core.exceptions import (
@@ -117,7 +117,7 @@ async def receive_input(
 
             # Return response
             return InputResponse(
-                status="processing",
+                status="received",
                 data={
                     "content": request.content,
                     "conversation_id": request.conversation_id,

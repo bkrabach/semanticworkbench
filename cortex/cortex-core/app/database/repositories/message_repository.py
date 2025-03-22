@@ -1,11 +1,13 @@
 import json
-from typing import Optional, List
-from sqlalchemy import select, func
+from typing import List, Optional
+
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .base import BaseRepository
-from ...models.domain import Message
+from ...models import Message
 from ..models import Message as DbMessage
+from .base import BaseRepository
+
 
 class MessageRepository(BaseRepository[Message, DbMessage]):
     """Repository for message operations."""
@@ -19,8 +21,7 @@ class MessageRepository(BaseRepository[Message, DbMessage]):
         """
         super().__init__(session, Message, DbMessage)
 
-    async def list_by_conversation(self, conversation_id: str,
-                                 limit: int = 100, offset: int = 0) -> List[Message]:
+    async def list_by_conversation(self, conversation_id: str, limit: int = 100, offset: int = 0) -> List[Message]:
         """
         List messages in a specific conversation.
 
@@ -60,9 +61,7 @@ class MessageRepository(BaseRepository[Message, DbMessage]):
         """
         try:
             result = await self.session.execute(
-                select(func.count())
-                .select_from(DbMessage)
-                .where(DbMessage.conversation_id == conversation_id)
+                select(func.count()).select_from(DbMessage).where(DbMessage.conversation_id == conversation_id)
             )
             return result.scalar() or 0
         except Exception as e:
@@ -85,7 +84,7 @@ class MessageRepository(BaseRepository[Message, DbMessage]):
         # Parse metadata JSON
         metadata = {}
         # Use getattr to avoid SQLAlchemy Column type issues
-        metadata_json = getattr(db_entity, 'metadata_json', None)
+        metadata_json = getattr(db_entity, "metadata_json", None)
         if metadata_json is not None:
             try:
                 metadata_str = str(metadata_json)
@@ -94,12 +93,12 @@ class MessageRepository(BaseRepository[Message, DbMessage]):
                 pass
 
         return Message(
-            id=str(getattr(db_entity, 'id')),
-            conversation_id=str(getattr(db_entity, 'conversation_id')),
-            sender_id=str(getattr(db_entity, 'sender_id')),
-            content=str(getattr(db_entity, 'content')),
-            timestamp=str(getattr(db_entity, 'timestamp')),
-            metadata=metadata
+            id=str(getattr(db_entity, "id")),
+            conversation_id=str(getattr(db_entity, "conversation_id")),
+            sender_id=str(getattr(db_entity, "sender_id")),
+            content=str(getattr(db_entity, "content")),
+            timestamp=str(getattr(db_entity, "timestamp")),
+            metadata=metadata,
         )
 
     def _to_db(self, entity: Message) -> DbMessage:
@@ -122,7 +121,7 @@ class MessageRepository(BaseRepository[Message, DbMessage]):
             sender_id=entity.sender_id,
             content=entity.content,
             timestamp=entity.timestamp,
-            metadata_json=metadata_json
+            metadata_json=metadata_json,
         )
 
     def _update_db_entity(self, db_entity: DbMessage, entity: Message) -> DbMessage:
@@ -137,15 +136,15 @@ class MessageRepository(BaseRepository[Message, DbMessage]):
             Updated database message
         """
         # Use setattr to avoid SQLAlchemy Column type issues
-        setattr(db_entity, 'conversation_id', entity.conversation_id)
-        setattr(db_entity, 'sender_id', entity.sender_id)
-        setattr(db_entity, 'content', entity.content)
-        setattr(db_entity, 'timestamp', entity.timestamp)
+        setattr(db_entity, "conversation_id", entity.conversation_id)
+        setattr(db_entity, "sender_id", entity.sender_id)
+        setattr(db_entity, "content", entity.content)
+        setattr(db_entity, "timestamp", entity.timestamp)
 
         # Update metadata
         if entity.metadata:
-            setattr(db_entity, 'metadata_json', json.dumps(entity.metadata))
+            setattr(db_entity, "metadata_json", json.dumps(entity.metadata))
         else:
-            setattr(db_entity, 'metadata_json', "{}")
+            setattr(db_entity, "metadata_json", "{}")
 
         return db_entity

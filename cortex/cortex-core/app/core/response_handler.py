@@ -10,13 +10,13 @@ import json
 import logging
 import os
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Callable
+from typing import Any, Dict, List, Optional, Callable, cast
 
 from .event_bus import event_bus
 from .exceptions import ToolExecutionException
 from .llm_adapter import llm_adapter
 from ..database.unit_of_work import UnitOfWork
-from ..models.domain import Message
+from ..models import Message
 
 logger = logging.getLogger(__name__)
 
@@ -158,7 +158,8 @@ class ResponseHandler:
             created_message = await message_repo.create(message)
             await uow.commit()
             
-            return created_message
+            # Cast to help mypy understand the type
+            return cast(Message, created_message)
     
     async def _get_conversation_history(
         self, 
@@ -177,7 +178,7 @@ class ResponseHandler:
         """
         async with UnitOfWork.for_transaction() as uow:
             message_repo = uow.repositories.get_message_repository()
-            messages = await message_repo.get_by_conversation_id(conversation_id, limit=limit)
+            messages = await message_repo.list_by_conversation(conversation_id, limit=limit)
             
             history = []
             for msg in messages:
@@ -424,7 +425,7 @@ class ResponseHandler:
                 logger.warning(f"Reached max iterations ({max_iterations}) without final answer for conversation {conversation_id}")
                 
             # 5. Stream the final answer via SSE
-            await self._stream_response(conversation_id, final_answer)
+            await self._stream_response(conversation_id, final_answer or "I apologize, but I wasn't able to generate a response.")
             
         except Exception as e:
             logger.error(f"Error handling message: {str(e)}", exc_info=True)

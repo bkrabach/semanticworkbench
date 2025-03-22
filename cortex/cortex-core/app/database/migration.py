@@ -2,7 +2,7 @@ import logging
 from typing import Dict, Any
 
 from ..core.storage import storage
-from ..models.domain import User, Workspace, Conversation, Message
+from ..models import User, Workspace, Conversation, Message
 from .unit_of_work import UnitOfWork
 
 logger = logging.getLogger(__name__)

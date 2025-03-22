@@ -773,7 +773,12 @@
                 addMessage('system', 'Using fetchEventSource library to connect with auth headers');
                 
                 // Call the fetchEventSource function
-                await fetchEventSource(`${API_URL}/output/stream`, {
+                if (!selectedConversationId) {
+                    addMessage('system', 'No conversation selected. Please select a conversation first.');
+                    return;
+                }
+                
+                await fetchEventSource(`${API_URL}/output/stream?conversation_id=${selectedConversationId}`, {
                     method: 'GET',
                     headers: {
                         'Authorization': `Bearer ${token}`,
@@ -812,6 +817,24 @@
                                     // Handle output event
                                     if (data.data && data.data.conversation_id === selectedConversationId) {
                                         addMessage('output', data.data.content);
+                                    }
+                                    break;
+                                case 'response_chunk':
+                                    // Handle streaming response chunks
+                                    if (data.conversation_id === selectedConversationId) {
+                                        addMessage('output', `[STREAM] ${data.data}`);
+                                    }
+                                    break;
+                                case 'response_complete':
+                                    // Handle response completion
+                                    if (data.conversation_id === selectedConversationId) {
+                                        addMessage('system', '[SERVER] Response complete');
+                                    }
+                                    break;
+                                case 'response':
+                                    // Handle full response event
+                                    if (data.data && data.data.conversation_id === selectedConversationId) {
+                                        addMessage('output', `[SERVER LLM] ${data.data.content}`);
                                     }
                                     break;
                                 case 'heartbeat':
