@@ -1,30 +1,27 @@
-import json
 import asyncio
+import json
 import logging
+from datetime import datetime
+from typing import Any, Dict
+
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
-from datetime import datetime
-from typing import Dict, Any
 
-from ..utils.auth import get_current_user
 from ..core.event_bus import event_bus
 from ..core.exceptions import ServiceUnavailableException
 from ..core.response_handler import get_output_queue
 from ..models.api.response import ErrorResponse
+from ..utils.auth import get_current_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["output"])
 
-@router.get("/output/stream", responses={
-    401: {"model": ErrorResponse},
-    500: {"model": ErrorResponse},
-    503: {"model": ErrorResponse}
-})
-async def output_stream(
-    request: Request,
-    conversation_id: str,
-    current_user: dict = Depends(get_current_user)
-):
+
+@router.get(
+    "/output/stream",
+    responses={401: {"model": ErrorResponse}, 500: {"model": ErrorResponse}, 503: {"model": ErrorResponse}},
+)
+async def output_stream(request: Request, conversation_id: str, current_user: dict = Depends(get_current_user)):
     """
     Server-Sent Events (SSE) endpoint for streaming output to clients.
 
@@ -44,15 +41,12 @@ async def output_stream(
 
     # Subscribe to event bus as well for system events
     event_bus_queue: asyncio.Queue[Dict[str, Any]] = asyncio.Queue()
-    
+
     try:
         event_bus.subscribe(event_bus_queue)
     except Exception as e:
         logger.error(f"Failed to subscribe to event bus: {e}")
-        raise ServiceUnavailableException(
-            message="Unable to establish event stream",
-            service_name="event_bus"
-        )
+        raise ServiceUnavailableException(message="Unable to establish event stream", service_name="event_bus")
 
     async def event_generator():
         """Generate SSE events from both conversation queue and event bus."""
@@ -62,7 +56,7 @@ async def output_stream(
                 "type": "connection_established",
                 "user_id": user_id,
                 "conversation_id": conversation_id,
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
             }
             yield f"data: {json.dumps(connection_event)}\n\n"
 
@@ -74,10 +68,7 @@ async def output_stream(
                 # Check if we need to send a heartbeat
                 now = datetime.now()
                 if (now - last_heartbeat).total_seconds() >= heartbeat_interval:
-                    heartbeat_event = {
-                        "type": "heartbeat",
-                        "timestamp": now.isoformat()
-                    }
+                    heartbeat_event = {"type": "heartbeat", "timestamp": now.isoformat()}
                     yield f"data: {json.dumps(heartbeat_event)}\n\n"
                     last_heartbeat = now
                     continue
@@ -86,34 +77,33 @@ async def output_stream(
                 try:
                     # Wait for either a response handler event or an event bus event
                     done, pending = await asyncio.wait(
-                        [
-                            asyncio.create_task(queue.get()),
-                            asyncio.create_task(event_bus_queue.get())
-                        ],
-                        timeout=heartbeat_interval/2,
-                        return_when=asyncio.FIRST_COMPLETED
+                        [asyncio.create_task(queue.get()), asyncio.create_task(event_bus_queue.get())],
+                        timeout=heartbeat_interval / 2,
+                        return_when=asyncio.FIRST_COMPLETED,
                     )
-                    
+
                     # Cancel any pending tasks
                     for task in pending:
                         task.cancel()
-                        
+
                     # Process completed tasks
                     for task in done:
                         event = task.result()
-                        
+
                         # If it's a string (from response handler), pass it through
                         if isinstance(event, str):
                             yield f"data: {event}\n\n"
                         # Otherwise, it's a dict from the event bus
                         elif isinstance(event, dict):
                             # Filter events for this user/conversation
-                            if (event.get("user_id") == user_id or 
-                                event.get("conversation_id") == conversation_id or 
-                                event.get("type") == "heartbeat"):
+                            if (
+                                event.get("user_id") == user_id
+                                or event.get("conversation_id") == conversation_id
+                                or event.get("type") == "heartbeat"
+                            ):
                                 # Format as SSE event
                                 yield f"data: {json.dumps(event)}\n\n"
-                                
+
                 except asyncio.TimeoutError:
                     # No event received, continue and check heartbeat
                     continue
@@ -124,16 +114,9 @@ async def output_stream(
             raise
         except Exception as e:
             logger.error(f"Error in SSE stream for user {user_id}: {e}")
-            error_event = {
-                "type": "error",
-                "message": "Stream error occurred",
-                "timestamp": datetime.now().isoformat()
-            }
+            error_event = {"type": "error", "message": "Stream error occurred", "timestamp": datetime.now().isoformat()}
             yield f"data: {json.dumps(error_event)}\n\n"
-            raise ServiceUnavailableException(
-                message=f"Error in event stream: {str(e)}",
-                service_name="event_stream"
-            )
+            raise ServiceUnavailableException(message=f"Error in event stream: {str(e)}", service_name="event_stream")
         finally:
             # Always unsubscribe to prevent memory leaks
             try:
@@ -142,7 +125,4 @@ async def output_stream(
             except Exception as cleanup_error:
                 logger.error(f"Error during connection cleanup: {cleanup_error}")
 
-    return StreamingResponse(
-        event_generator(),
-        media_type="text/event-stream"
-    )
+    return StreamingResponse(event_generator(), media_type="text/event-stream")

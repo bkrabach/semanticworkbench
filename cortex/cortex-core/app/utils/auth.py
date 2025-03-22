@@ -1,12 +1,12 @@
 import os
 from datetime import datetime, timedelta
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
+from dotenv import load_dotenv
 from fastapi import Depends
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from pydantic import BaseModel
-from dotenv import load_dotenv
 
 from ..core.exceptions import InvalidCredentialsException, TokenExpiredException
 
@@ -21,11 +21,14 @@ ACCESS_TOKEN_EXPIRE_HOURS = int(os.getenv("JWT_EXPIRATION_HOURS", 24))
 # OAuth2 password bearer scheme for token extraction
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
 
+
 class TokenData(BaseModel):
     """Token data model."""
+
     user_id: str
     name: str = ""  # Default empty string if None
     email: str = ""  # Default empty string if None
+
 
 def create_access_token(data: Dict[str, Any], expires_delta: Optional[timedelta] = None) -> str:
     """
@@ -43,6 +46,7 @@ def create_access_token(data: Dict[str, Any], expires_delta: Optional[timedelta]
     to_encode.update({"exp": expire})
     encoded_jwt: str = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
+
 
 async def get_current_user(token: str = Depends(oauth2_scheme)) -> Dict[str, Any]:
     """
@@ -65,22 +69,18 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> Dict[str, Any
 
         if user_id is None:
             raise InvalidCredentialsException(
-                message="Invalid token: missing user identifier",
-                details={"headers": {"WWW-Authenticate": "Bearer"}}
+                message="Invalid token: missing user identifier", details={"headers": {"WWW-Authenticate": "Bearer"}}
             )
 
         # Check token expiration
         exp = payload.get("exp")
         if exp and datetime.fromtimestamp(exp) < datetime.utcnow():
-            raise TokenExpiredException(
-                details={"headers": {"WWW-Authenticate": "Bearer"}}
-            )
+            raise TokenExpiredException(details={"headers": {"WWW-Authenticate": "Bearer"}})
 
         token_data = TokenData(user_id=user_id, name=name, email=email)
     except JWTError:
         raise InvalidCredentialsException(
-            message="Invalid authentication token",
-            details={"headers": {"WWW-Authenticate": "Bearer"}}
+            message="Invalid authentication token", details={"headers": {"WWW-Authenticate": "Bearer"}}
         )
 
     return {"user_id": token_data.user_id, "name": token_data.name, "email": token_data.email}

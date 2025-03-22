@@ -1,13 +1,15 @@
 import asyncio
 import logging
-from typing import Dict, List, Any, Set
+from typing import Any, Dict, List, Set
 
 logger = logging.getLogger(__name__)
+
 
 class EventBus:
     """
     Simple in-memory event bus for internal communication.
     """
+
     def __init__(self):
         self.subscribers: List[asyncio.Queue[Dict[str, Any]]] = []
         self._active_tasks: Set[asyncio.Task[Any]] = set()
@@ -79,6 +81,7 @@ class EventBus:
         # Clear subscribers
         self.subscribers.clear()
         logger.info("Event bus shut down")
+
 
 # Global event bus instance
 event_bus = EventBus()

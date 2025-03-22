@@ -5,14 +5,12 @@ from typing import AsyncGenerator
 
 # Import aiosqlite directly as recommended by SQLAlchemy for async SQLite
 # The import is needed even if not directly referenced in the code
-import aiosqlite  # noqa: F401
 from dotenv import load_dotenv
-
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
-    create_async_engine,
     async_sessionmaker,
+    create_async_engine,
 )
 
 # Configure logging
@@ -44,11 +42,12 @@ async_session_factory = async_sessionmaker(
     expire_on_commit=False,
 )
 
+
 @asynccontextmanager
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
     """
     Get a database session as an async context manager.
-    
+
     Yields:
         AsyncSession: An async SQLAlchemy session
     """
@@ -58,16 +57,17 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
     finally:
         await session.close()
 
+
 async def init_db() -> None:
     """Initialize the database by creating all tables."""
     from .models import Base
-    
+
     async with engine.begin() as conn:
         # Set essential SQLite pragmas
         await conn.execute(text("PRAGMA journal_mode=WAL"))
         await conn.execute(text("PRAGMA foreign_keys=ON"))
-        
+
         # Create tables
         await conn.run_sync(Base.metadata.create_all)
-    
+
     logger.info("Database initialized")

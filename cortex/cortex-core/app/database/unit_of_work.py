@@ -6,35 +6,36 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .connection import get_session
 from .repositories.factory import RepositoryFactory
 
+
 class UnitOfWork:
     """
     Unit of Work pattern implementation for managing database transactions.
     """
-    
+
     def __init__(self, session: AsyncSession):
         """
         Initialize Unit of Work.
-        
+
         Args:
             session: SQLAlchemy async session
         """
         self.session = session
         self.repositories = RepositoryFactory(session)
-    
+
     async def commit(self) -> None:
         """Commit current transaction."""
         await self.session.commit()
-    
+
     async def rollback(self) -> None:
         """Rollback current transaction."""
         await self.session.rollback()
-    
+
     @classmethod
     @asynccontextmanager
     async def for_transaction(cls) -> AsyncGenerator["UnitOfWork", None]:
         """
         Create a Unit of Work for a transaction.
-        
+
         Usage:
             ```
             async with UnitOfWork.for_transaction() as uow:
@@ -43,7 +44,7 @@ class UnitOfWork:
                 # Commit transaction
                 await uow.commit()
             ```
-        
+
         Yields:
             Unit of Work instance
         """

@@ -5,8 +5,8 @@ This module defines a custom exception hierarchy for Cortex Core.
 All exceptions raised by the application should inherit from CortexException.
 """
 
-from typing import Dict, Any, Optional
 import logging
+from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -63,14 +63,15 @@ class CortexException(Exception):
         Args:
             level: Logging level (defaults to ERROR)
         """
-        logger.log(level, f"{self.__class__.__name__}: {self.message}", extra={
-            "error_code": self.code,
-            "status_code": self.status_code,
-            "details": self.details
-        })
+        logger.log(
+            level,
+            f"{self.__class__.__name__}: {self.message}",
+            extra={"error_code": self.code, "status_code": self.status_code, "details": self.details},
+        )
 
 
 # Authentication Exceptions
+
 
 class AuthException(CortexException):
     """Base class for authentication errors."""
@@ -135,6 +136,7 @@ class PermissionDeniedException(AuthException):
 
 # Resource Exceptions
 
+
 class ResourceException(CortexException):
     """Base class for resource errors."""
 
@@ -196,6 +198,7 @@ class ResourceAlreadyExistsException(ResourceException):
 
 # Validation Exceptions
 
+
 class ValidationException(CortexException):
     """Base class for validation errors."""
 
@@ -231,6 +234,7 @@ class InputValidationException(ValidationException):
 
 # Configuration Exceptions
 
+
 class ConfigurationException(CortexException):
     """Base class for configuration errors."""
 
@@ -265,6 +269,7 @@ class MissingConfigurationException(ConfigurationException):
 
 
 # Service Exceptions
+
 
 class ServiceException(CortexException):
     """Base class for service errors."""
@@ -358,6 +363,7 @@ class ToolExecutionException(ServiceException):
 
 
 # Database Exceptions
+
 
 class DatabaseException(CortexException):
     """Base class for database errors."""

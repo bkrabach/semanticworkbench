@@ -1,14 +1,16 @@
 import logging
-from typing import Dict, List, Any, Optional
+from typing import Any, Dict, List, Optional
 
-from ..models import User, Workspace, Conversation, Message
+from ..models import Conversation, Message, User, Workspace
 
 logger = logging.getLogger(__name__)
+
 
 class InMemoryStorage:
     """
     Simple in-memory storage for development use.
     """
+
     def __init__(self):
         self.users: Dict[str, Dict[str, Any]] = {}
         self.workspaces: Dict[str, Dict[str, Any]] = {}
@@ -41,10 +43,7 @@ class InMemoryStorage:
 
     def list_workspaces(self, owner_id: str) -> List[Dict[str, Any]]:
         """List workspaces by owner ID."""
-        return [
-            workspace for workspace in self.workspaces.values()
-            if workspace["owner_id"] == owner_id
-        ]
+        return [workspace for workspace in self.workspaces.values() if workspace["owner_id"] == owner_id]
 
     # Conversation operations
 
@@ -61,8 +60,7 @@ class InMemoryStorage:
     def list_conversations(self, workspace_id: str) -> List[Dict[str, Any]]:
         """List conversations by workspace ID."""
         return [
-            conversation for conversation in self.conversations.values()
-            if conversation["workspace_id"] == workspace_id
+            conversation for conversation in self.conversations.values() if conversation["workspace_id"] == workspace_id
         ]
 
     # Message operations
@@ -79,10 +77,8 @@ class InMemoryStorage:
 
     def list_messages(self, conversation_id: str) -> List[Dict[str, Any]]:
         """List messages by conversation ID."""
-        return [
-            message for message in self.messages.values()
-            if message["conversation_id"] == conversation_id
-        ]
+        return [message for message in self.messages.values() if message["conversation_id"] == conversation_id]
+
 
 # Singleton instance
 storage = InMemoryStorage()

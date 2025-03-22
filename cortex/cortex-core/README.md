@@ -29,14 +29,17 @@ This implementation delivers a complete Phase 2 system with SQLite persistence a
 ## API Endpoints
 
 ### Authentication
+
 - `POST /auth/login`: Authenticate and receive JWT token
 - `GET /auth/verify`: Verify JWT token validity
 
 ### Input/Output
+
 - `POST /input`: Receive input from clients
 - `GET /output/stream`: Stream output to clients via SSE
 
 ### Configuration
+
 - `POST /config/workspace`: Create a new workspace
 - `GET /config/workspace`: List user's workspaces
 - `GET /config/workspace/{id}`: Get a specific workspace
@@ -58,27 +61,33 @@ This implementation delivers a complete Phase 2 system with SQLite persistence a
 ### Installation
 
 1. Clone the repository:
+
    ```bash
    git clone <repository-url>
    cd cortex-core
    ```
 
 2. Set up the environment using the Makefile:
+
    ```bash
    make
    ```
+
    This will:
+
    - Create a virtual environment
    - Install all dependencies
    - Set up development tools
 
 3. Configure environment variables:
+
    ```bash
    cp .env.example .env
    # Edit .env with your settings
    ```
-   
+
    Key environment variables:
+
    ```
    JWT_SECRET=your-jwt-secret
    DATABASE_URL=sqlite:///./cortex.db
@@ -136,7 +145,6 @@ See [CLIENT_INTEGRATION.md](docs/CLIENT_INTEGRATION.md) for detailed examples an
 - [Client Integration](docs/CLIENT_INTEGRATION.md): Guide for client developers
 - [Event Bus](docs/EVENT_BUS.md): Detailed documentation of the event system
 - [Implementation Philosophy](docs/IMPLEMENTATION_PHILOSOPHY.md): Core design principles
-- [Phase 2 Implementation](docs/PHASE2_IMPLEMENTATION.md): Details of the Phase 2 implementation
 
 ## Testing
 
@@ -227,11 +235,3 @@ The project is implemented in phases:
 3. 🔄 **Phase 3**: MCP Protocol and service architecture
 4. 🔄 **Phase 4**: Distributed services
 5. 🔄 **Phase 5**: Production hardening (PostgreSQL, Azure integration)
-
-## License
-
-[License Information]
-
-## Contact
-
-[Contact Information]

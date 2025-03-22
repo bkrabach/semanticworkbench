@@ -1,6 +1,8 @@
-import pytest
 import asyncio
+
+import pytest
 from app.core.event_bus import EventBus
+
 
 @pytest.mark.asyncio
 async def test_event_bus_publish_subscribe():

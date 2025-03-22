@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends
 from fastapi.security import OAuth2PasswordRequestForm
 
-from ..utils.auth import create_access_token, get_current_user, ACCESS_TOKEN_EXPIRE_HOURS
-from ..models.api.response import LoginResponse
 from ..core.exceptions import InvalidCredentialsException
+from ..models.api.response import LoginResponse
+from ..utils.auth import ACCESS_TOKEN_EXPIRE_HOURS, create_access_token, get_current_user
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -25,9 +25,10 @@ USERS = {
         "password": "password123",
         "oid": "550e8400-e29b-41d4-a716-446655440000",
         "name": "Test User",
-        "email": "user@example.com"
+        "email": "user@example.com",
     }
 }
+
 
 @router.post("/login", response_model=LoginResponse)
 async def login(form_data: OAuth2PasswordRequestForm = Depends()):
@@ -48,17 +49,11 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
     user = USERS.get(form_data.username)
     if not user or user["password"] != form_data.password:
         raise InvalidCredentialsException(
-            message="Invalid email or password",
-            details={"headers": {"WWW-Authenticate": "Bearer"}}
+            message="Invalid email or password", details={"headers": {"WWW-Authenticate": "Bearer"}}
         )
 
     # Create token with user data
-    token_data = {
-        "sub": form_data.username,
-        "oid": user["oid"],
-        "name": user["name"],
-        "email": user["email"]
-    }
+    token_data = {"sub": form_data.username, "oid": user["oid"], "name": user["name"], "email": user["email"]}
 
     access_token = create_access_token(token_data)
 
@@ -66,12 +61,9 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
         access_token=access_token,
         token_type="bearer",
         expires_in=ACCESS_TOKEN_EXPIRE_HOURS * 3600,  # Convert hours to seconds
-        claims={
-            "oid": user["oid"],
-            "name": user["name"],
-            "email": user["email"]
-        }
+        claims={"oid": user["oid"], "name": user["name"], "email": user["email"]},
     )
+
 
 @router.get("/verify")
 async def verify_token(current_user: dict = Depends(get_current_user)):

@@ -110,6 +110,7 @@
     "preconfigured",
     "pydantic",
     "pyjwt",
+    "Pylance",
     "pyproject",
     "pytest",
     "qualname",
