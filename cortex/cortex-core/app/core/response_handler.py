@@ -292,13 +292,58 @@ class ResponseHandler:
 
             # 2. Retrieve conversation history
             history = await self._get_conversation_history(conversation_id)
+            
+            # 2a. Try to get relevant context from Cognition Service
+            try:
+                # Get tool function by name
+                context_tool = tool_registry.get("get_context")
+                if context_tool:
+                    # Try to get context with user query
+                    context_result = await context_tool(
+                        user_id=user_id,
+                        query=message_content,
+                        limit=5  # Limit context items to avoid overwhelming the LLM
+                    )
+                    
+                    # If we have context items, format them for inclusion
+                    if context_result and "context" in context_result and context_result["context"]:
+                        context_items = context_result["context"]
+                        logger.info(f"Retrieved {len(context_items)} context items from Cognition Service")
+                    else:
+                        context_items = []
+                else:
+                    context_items = []
+            except Exception as e:
+                logger.warning(f"Failed to retrieve context from Cognition Service: {e}")
+                context_items = []
 
             # 3. Prepare initial messages list for LLM
             messages = []
 
             # Add system instruction if available
             if self.system_prompt:
-                messages.append({"role": "system", "content": self.system_prompt})
+                base_system_prompt = self.system_prompt
+                
+                # Add context to system prompt if available
+                if context_items:
+                    context_text = "Here is some relevant context that might help you respond:\n\n"
+                    for item in context_items:
+                        if "content" in item:
+                            context_text += f"- {item['content']}\n"
+                    
+                    # Append context to system prompt
+                    enhanced_system_prompt = f"{base_system_prompt}\n\n{context_text}"
+                    messages.append({"role": "system", "content": enhanced_system_prompt})
+                else:
+                    messages.append({"role": "system", "content": base_system_prompt})
+            elif context_items:
+                # No system prompt but we have context, add it as a system message
+                context_text = "Here is some relevant context that might help you respond:\n\n"
+                for item in context_items:
+                    if "content" in item:
+                        context_text += f"- {item['content']}\n"
+                
+                messages.append({"role": "system", "content": context_text})
 
             # Add conversation history
             messages.extend(history)

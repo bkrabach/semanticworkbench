@@ -53,3 +53,24 @@ class ErrorResponse(BaseModel):
     """Error response model."""
 
     error: Dict[str, Any] = Field(..., description="Error details")
+
+
+class GetContextResponse(BaseModel):
+    """Get context response model."""
+
+    status: str = Field(..., description="Status of the operation")
+    data: Dict[str, Any] = Field(..., description="Context data")
+
+
+class AnalyzeConversationResponse(BaseModel):
+    """Analyze conversation response model."""
+
+    status: str = Field(..., description="Status of the operation")
+    data: Dict[str, Any] = Field(..., description="Analysis results")
+
+
+class SearchHistoryResponse(BaseModel):
+    """Search history response model."""
+
+    status: str = Field(..., description="Status of the operation")
+    data: Dict[str, Any] = Field(..., description="Search results")
