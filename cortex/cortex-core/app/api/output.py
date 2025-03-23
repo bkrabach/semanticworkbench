@@ -30,6 +30,7 @@ async def event_generator(
     client_queue: asyncio.Queue = event_bus.subscribe(
         event_type=None,  # Subscribe to all event types
         conversation_id=conversation_id,  # Filter by conversation if specified
+        user_id=user_id,  # Filter by user ID
     )
 
     logger.debug("Subscribed to event bus")
@@ -52,10 +53,7 @@ async def event_generator(
                 yield ": ping\n\n"
                 continue
 
-            # Filter events for this user (the EventBus doesn't do this filtering yet)
-            if event.get("user_id") != user_id:
-                logger.debug(f"Filtering event for wrong user: {event.get('user_id')}")
-                continue
+            # No need to filter events for this user - the EventBus now does this filtering
 
             # Format as SSE event
             event_type = event.get("type", "message")

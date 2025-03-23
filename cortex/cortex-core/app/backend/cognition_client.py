@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -45,6 +46,7 @@ class CognitionClient:
                          If None, uses the value from configuration.
         """
         from app.core.config import COGNITION_SERVICE_URL
+
         self.service_url = service_url or COGNITION_SERVICE_URL
         self.session: Optional[ClientSession] = None
         self.streams_context: Optional[SSEContext] = None
@@ -164,6 +166,18 @@ class CognitionClient:
         except MCPConnectionError:
             # Re-raise connection errors
             raise
+        except asyncio.TimeoutError as e:
+            error_msg = f"Timeout while calling evaluate_context: {e}"
+            logger.error(error_msg)
+            raise MCPServiceError(error_msg)
+        except AttributeError as e:
+            error_msg = f"Unexpected response structure from cognition service: {e}"
+            logger.error(error_msg)
+            raise MCPServiceError(error_msg)
+        except AssertionError as e:
+            error_msg = f"Invalid session state in cognition client: {e}"
+            logger.error(error_msg)
+            raise MCPServiceError(error_msg)
         except Exception as e:
             error_msg = f"Error calling evaluate_context: {e}"
             logger.error(error_msg)

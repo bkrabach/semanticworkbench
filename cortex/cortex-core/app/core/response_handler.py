@@ -120,17 +120,50 @@ class ResponseHandler:
                 memory_snippets=memory_snippets,
                 expert_insights=[],  # Will add domain expert results here when implemented
             )
+            
+            # Check if response might be a structured output (JSON)
+            final_response = response
+            try:
+                from app.models.llm import ToolRequest, FinalAnswer
+                import json
+                
+                # Try to parse as JSON
+                if response.strip().startswith('{') and response.strip().endswith('}'): 
+                    parsed_data = json.loads(response)
+                    
+                    # Try to parse as a ToolRequest
+                    if 'tool' in parsed_data and 'args' in parsed_data:
+                        tool_request = ToolRequest(**parsed_data)
+                        logger.info(f"Received tool request: {tool_request.tool}")
+                        
+                        # For now, we'll just log it and return a placeholder response
+                        # In the future, this would invoke the appropriate tool
+                        # and possibly do another LLM call with the results
+                        logger.info(f"Tool request args: {tool_request.args}")
+                        
+                        # Simple tool handling placeholder - this would be expanded later
+                        final_response = f"I would use the {tool_request.tool} tool, but that's not fully implemented yet."
+                    
+                    # Try to parse as a FinalAnswer
+                    elif 'answer' in parsed_data:
+                        final_answer = FinalAnswer(**parsed_data)
+                        final_response = final_answer.answer
+                        logger.info(f"Received structured final answer")
+            except Exception as e:
+                # If parsing fails, just use the original response
+                logger.debug(f"Response not structured or parsing failed: {e}")
+                # Keep using the original response (already set in final_response)
 
             # 4. Store the assistant response in memory
             await self.memory_client.store_message(
-                user_id=user_id, conversation_id=conversation_id, content=response, role="assistant"
+                user_id=user_id, conversation_id=conversation_id, content=final_response, role="assistant"
             )
 
             # 5. Publish output event with the response
             output_event = EventData({
                 "user_id": user_id,
                 "conversation_id": conversation_id,
-                "data": {"content": response, "role": "assistant"},
+                "data": {"content": final_response, "role": "assistant"},
             })
             await self.event_bus.publish_async("assistant_response", output_event)
 
