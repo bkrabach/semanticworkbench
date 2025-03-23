@@ -1,3 +1,4 @@
+import os
 import uuid
 from contextlib import asynccontextmanager
 
@@ -20,15 +21,30 @@ async def lifespan(app: FastAPI):
     """Handle application startup and shutdown events."""
     global response_handler
 
+    # Get service URLs from environment variables or use defaults
+    memory_url = os.environ.get("MEMORY_SERVICE_URL", "http://localhost:5001/sse")
+    cognition_url = os.environ.get("COGNITION_SERVICE_URL", "http://localhost:5000/sse")
+    
     # Initialize components on application startup
-    response_handler = await create_response_handler(event_bus)
-    print("Cortex Core started and response handler initialized")
+    response_handler = await create_response_handler(
+        event_bus=event_bus,
+        memory_url=memory_url,
+        cognition_url=cognition_url
+    )
+    
+    # Store response handler in app state for access by health checks
+    app.state.response_handler = response_handler
+    
+    print("Cortex Core started with services:")
+    print(f"- Memory service: {memory_url}")
+    print(f"- Cognition service: {cognition_url}")
 
     yield
 
     # Clean up resources on application shutdown
     if response_handler:
         await response_handler.stop()
+    app.state.response_handler = None
     print("Cortex Core shutting down, resources cleaned up")
 
 
@@ -86,9 +102,6 @@ async def root():
 async def health_check():
     """Health check endpoint to verify that the service is running."""
     return {"status": "ok"}
-
-
-# These event handlers have been replaced by the lifespan context manager above
 
 
 if __name__ == "__main__":

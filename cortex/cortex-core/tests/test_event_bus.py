@@ -11,13 +11,13 @@ async def test_event_bus_publish_subscribe():
     queue = asyncio.Queue()
 
     # Subscribe to events
-    bus.subscribe(queue)
+    queue = bus.subscribe()
 
     # Test event
     test_event = {"type": "test", "data": {"message": "hello"}, "user_id": "test-user"}
 
     # Publish event
-    await bus.publish(test_event)
+    await bus.publish_async("test", test_event)
 
     # Get event from queue
     received_event = await asyncio.wait_for(queue.get(), timeout=1.0)
@@ -29,7 +29,8 @@ async def test_event_bus_publish_subscribe():
     bus.unsubscribe(queue)
 
     # Publish another event
-    await bus.publish({"type": "test2", "data": {"message": "world"}, "user_id": "test-user"})
+    test_event2 = {"type": "test2", "data": {"message": "world"}, "user_id": "test-user"}
+    await bus.publish_async("test2", test_event2)
 
     # Verify queue is empty (no more events after unsubscribe)
     assert queue.empty()

@@ -1,4 +1,3 @@
-import asyncio
 from typing import Any, Dict
 
 from fastapi import APIRouter, Depends
@@ -25,14 +24,13 @@ async def receive_input(message: api_models.InputMessage, current_user: Dict[str
 
     # Create an event for the message
     input_event = {
-        "type": "input",
         "user_id": user_id,
         "conversation_id": conversation_id,
         "data": {"content": message.content, "metadata": message.metadata if message.metadata else {}, "role": "user"},
     }
 
     # Publish the event to the event bus
-    asyncio.create_task(event_bus.publish(input_event))
+    event_bus.publish("user_message", input_event)
 
     # Return immediate acknowledgment
     return api_models.MessageAck(

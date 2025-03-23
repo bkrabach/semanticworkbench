@@ -17,11 +17,12 @@ async def event_generator(
     request: Request, user_id: str, conversation_id: Optional[str] = None
 ) -> AsyncGenerator[str, None]:
     """Generate SSE events for a specific user and optionally a specific conversation."""
-    # Create a queue for this client
-    client_queue: asyncio.Queue = asyncio.Queue()
-
-    # Subscribe to the event bus
-    event_bus.subscribe(client_queue)
+    # Subscribe to the event bus with filters for this user and conversation
+    # This is more efficient than manually filtering events after receiving them
+    client_queue: asyncio.Queue = event_bus.subscribe(
+        event_type=None,  # Subscribe to all event types
+        conversation_id=conversation_id  # Filter by conversation if specified
+    )
 
     try:
         # Keep the connection open
@@ -38,12 +39,8 @@ async def event_generator(
                 yield ": ping\n\n"
                 continue
 
-            # Filter events for this user
+            # Filter events for this user (the EventBus doesn't do this filtering yet)
             if event.get("user_id") != user_id:
-                continue
-
-            # Filter by conversation_id if specified
-            if conversation_id and event.get("conversation_id") != conversation_id:
                 continue
 
             # Format as SSE event

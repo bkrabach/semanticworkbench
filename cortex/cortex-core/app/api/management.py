@@ -60,10 +60,10 @@ async def publish_system_event(
         )
 
     # Add user_id to the event payload
-    event_payload = {"type": event_type, "user_id": current_user["id"], "data": payload}
+    event_payload = {"user_id": current_user["id"], "data": payload}
 
     # Publish the event
-    await event_bus.publish(event_payload)
+    event_bus.publish(event_type, event_payload)
 
     return {"status": "published", "event_type": event_type}
 
