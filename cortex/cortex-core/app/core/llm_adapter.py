@@ -2,348 +2,110 @@
 LLM Adapter module.
 
 This module provides a structured interface to call different LLM providers
-using Pydantic AI's Agent abstraction for type-safe interactions and
-consistent response handling.
+using a consistent abstraction layer for type-safe interactions and
+standardized response handling.
 """
 
 import json
 import logging
 import os
 import uuid
-from typing import Any, Dict, List, Optional, Protocol, cast
+from typing import Any, Dict, List, Optional, cast
 
 from ..models.domain.pydantic_ai import AssistantMessage, LLMInput, LLMOutput, SystemMessage, ToolCall, UserMessage
 from ..models.domain.pydantic_ai import ChatMessage as PydanticChatMessage
 from .exceptions import LLMException
-from .mock_llm import mock_llm
 
 # For type clarity in this module
 ChatMessage = Dict[str, str]
 
-
-# Define a protocol for model interfaces
-class ModelProtocol(Protocol):
-    async def generate(self, *args: Any, **kwargs: Any) -> Any: ...
-
-
-class PydAIBaseModel:
-    pass
-
-
-class OpenAIModel(PydAIBaseModel):
-    def __init__(self, model_name: str, api_key: Optional[str] = None) -> None:
-        self.model_name = model_name
-        self.api_key = api_key
-
-
-class OpenAICompatibleModel(PydAIBaseModel):
-    def __init__(self, model_name: str, api_key: Optional[str] = None, base_url: Optional[str] = None, api_version: Optional[str] = None, azure_deployment: Optional[str] = None) -> None:
-        self.model_name = model_name
-        self.api_key = api_key
-        self.base_url = base_url
-        self.api_version = api_version
-        self.azure_deployment = azure_deployment
-
-
-class AnthropicModel(PydAIBaseModel):
-    def __init__(self, model_name: str, api_key: Optional[str] = None) -> None:
-        self.model_name = model_name
-        self.api_key = api_key
-
-
 logger = logging.getLogger(__name__)
 
 
-class CortexLLMAgent:
-    """Agent implementation using Pydantic AI for LLM interactions."""
-
-    def __init__(self, config: Dict[str, Any]) -> None:
-        """Initialize the Pydantic AI agent with configuration."""
-        self.config = config
-        self.model_name = config.get("model")
-        self.temperature = config.get("temperature", 0.7)
-        self.max_tokens = config.get("max_tokens", 1024)
-
-        # Initialize the model
-        self.model = self._get_model()
-
-    def _get_model(self) -> PydAIBaseModel:
-        """Create the appropriate Pydantic AI model based on configuration."""
-        provider = self.config.get("provider", "openai").lower()
-
-        if provider == "openai":
-            api_key = os.getenv("OPENAI_API_KEY")
-            base_url = os.getenv("OPENAI_API_BASE")
-            model_name = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
-
-            if base_url:
-                return OpenAICompatibleModel(model_name, api_key=api_key, base_url=base_url)
-            else:
-                return OpenAIModel(model_name, api_key=api_key)
-
-        elif provider == "azure_openai":
-            api_key = os.getenv("AZURE_OPENAI_KEY")
-            base_url = os.getenv("AZURE_OPENAI_BASE_URL")
-            deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-35-turbo")
-            api_version = os.getenv("AZURE_OPENAI_API_VERSION", "2023-05-15")
-
-            # Azure OpenAI is handled as a compatible model with Azure-specific config
-            return OpenAICompatibleModel(
-                deployment, api_key=api_key, base_url=base_url, api_version=api_version, azure_deployment=deployment
-            )
-
-        elif provider == "anthropic":
-            api_key = os.getenv("ANTHROPIC_API_KEY")
-            model_name = os.getenv("ANTHROPIC_MODEL", "claude-3-opus-20240229")
-
-            return AnthropicModel(model_name, api_key=api_key)
-
-        else:
-            # Default to OpenAI for unsupported providers
-            logger.warning(f"Unsupported provider: {provider}, defaulting to OpenAI")
-            api_key = os.getenv("OPENAI_API_KEY")
-            model_name = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
-            return OpenAIModel(model_name, api_key=api_key)
-
-    def model_config(self) -> Dict[str, Any]:
-        """Define the model configuration for the agent."""
-        return {
-            "model": self.model_name,
-            "temperature": self.temperature,
-            "max_tokens": self.max_tokens,
-        }
-
-    async def run(self, input_data: LLMInput) -> LLMOutput:
-        """
-        Execute the agent with the given input.
-
-        Args:
-            input_data: The structured input for the LLM
-
-        Returns:
-            The structured output from the LLM
-
-        Raises:
-            LLMProviderError: If there's an error interacting with the LLM
-        """
-        try:
-            # Build the messages array for the model
-            messages: List[ChatMessage] = []
-
-            # Add system message if provided
-            if input_data.system_message:
-                messages.append({"role": "system", "content": input_data.system_message.content})
-
-            # Add history messages
-            if input_data.history:
-                for msg in input_data.history:
-                    if isinstance(msg, dict) and "role" in msg and "content" in msg:
-                        messages.append({"role": msg["role"], "content": msg["content"]})
-
-            # Add the current user message
-            messages.append({"role": "user", "content": input_data.user_message.content})
-
-            # Set up tools if provided
-            api_tools = None
-            if input_data.tools:
-                # Convert tools to OpenAI format for function calling
-                api_tools = [{"type": "function", "function": tool} for tool in input_data.tools]
-
-            # Get provider type from the model
-            provider = self.config.get("provider", "openai").lower()
-
-            # Make the actual API call based on provider
-            if provider == "openai":
-                # Import the necessary module
-                from openai import AsyncOpenAI
-
-                # Create OpenAI client
-                client = AsyncOpenAI(api_key=getattr(self.model, "api_key", None))
-
-                # Handle base_url attribute access with type ignore for Pylance
-                if hasattr(self.model, "base_url") and getattr(self.model, "base_url", None):  # type: ignore
-                    client.base_url = getattr(self.model, "base_url")  # type: ignore
-
-                # Make API call - type ignore for OpenAI API messages format
-                response = await client.chat.completions.create(
-                    model=getattr(self.model, "model_name", "gpt-3.5-turbo"),
-                    messages=messages,  # type: ignore
-                    temperature=self.temperature,
-                    max_tokens=self.max_tokens,
-                    tools=None if not api_tools else api_tools,  # type: ignore
-                )
-
-                # Check for tool calls
-                if response.choices[0].message.tool_calls:
-                    # Extract tool calls
-                    api_tool_calls = response.choices[0].message.tool_calls
-                    tool_calls = []
-
-                    for tc in api_tool_calls:
-                        try:
-                            args = json.loads(tc.function.arguments)
-                        except Exception:
-                            args = {}
-
-                        tool_calls.append(ToolCall(id=tc.id, name=tc.function.name, arguments=args))
-
-                    return LLMOutput(response=AssistantMessage(content=""), tool_calls=tool_calls)
-                else:
-                    # Return content response
-                    content = response.choices[0].message.content or ""
-                    return LLMOutput(response=AssistantMessage(content=content), tool_calls=None)
-
-            elif provider == "azure_openai":
-                # Import the necessary module
-                from openai import AsyncAzureOpenAI
-
-                # Create Azure OpenAI client
-                client = AsyncAzureOpenAI(
-                    api_key=getattr(self.model, "api_key", None),
-                    api_version=getattr(self.model, "api_version", "2023-05-15"),
-                    azure_endpoint=getattr(self.model, "base_url", ""),
-                )
-
-                # Get deployment name
-                deployment = getattr(self.model, "azure_deployment", "gpt-35-turbo")
-
-                # Make API call - type ignore for OpenAI API messages format
-                response = await client.chat.completions.create(
-                    model=deployment,
-                    messages=messages,  # type: ignore
-                    temperature=self.temperature,
-                    max_tokens=self.max_tokens,
-                    tools=None if not api_tools else api_tools,  # type: ignore
-                )
-
-                # Check for tool calls
-                if response.choices[0].message.tool_calls:
-                    # Extract tool calls
-                    api_tool_calls = response.choices[0].message.tool_calls
-                    tool_calls = []
-
-                    for tc in api_tool_calls:
-                        try:
-                            args = json.loads(tc.function.arguments)
-                        except Exception:
-                            args = {}
-
-                        tool_calls.append(ToolCall(id=tc.id, name=tc.function.name, arguments=args))
-
-                    return LLMOutput(response=AssistantMessage(content=""), tool_calls=tool_calls)
-                else:
-                    # Return content response
-                    content = response.choices[0].message.content or ""
-                    return LLMOutput(response=AssistantMessage(content=content), tool_calls=None)
-
-            elif provider == "anthropic":
-                # Import the necessary module
-                from anthropic import AsyncAnthropic
-
-                # Create Anthropic client
-                anthropic_client = AsyncAnthropic(api_key=getattr(self.model, "api_key", None))
-
-                # Anthropic uses a different format for messages
-                # Convert our messages to Anthropic format
-                system_prompt = None
-
-                # Using Any type for API compatibility
-                anthropic_messages: List[Dict[str, Any]] = []
-
-                # Convert from our messages to Anthropic format
-                # Type ignore for mypy since we know the structure is compatible
-                for msg in messages:  # type: ignore
-                    if msg["role"] == "system":
-                        system_prompt = msg["content"]
-                    elif msg["role"] == "user":
-                        anthropic_messages.append({"role": "user", "content": msg["content"]})  # type: ignore
-                    elif msg["role"] == "assistant":
-                        anthropic_messages.append({"role": "assistant", "content": msg["content"]})  # type: ignore
-
-                # Make API call - type ignore for Anthropic API message format
-                response = await anthropic_client.messages.create(
-                    model=getattr(self.model, "model_name", "claude-3-opus-20240229"),
-                    messages=anthropic_messages,  # type: ignore
-                    system=system_prompt,  # type: ignore
-                    temperature=self.temperature,
-                    max_tokens=self.max_tokens,
-                )
-
-                # Process the response content
-                content = ""
-                if hasattr(response, "content") and response.content:
-                    for block in response.content:
-                        # Generic access to text attribute with type ignore for Pylance
-                        # This handles different content block types from Anthropic API
-                        if hasattr(block, "text"):
-                            text = getattr(block, "text", "")  # type: ignore
-                            if text:
-                                content += text
-
-                # Claude doesn't have native tool calls in the same way
-                # Just return the content
-                return LLMOutput(response=AssistantMessage(content=content), tool_calls=None)
-
-            else:
-                # Unknown provider or not implemented yet
-                # Fall back to mock for unsupported providers
-                logger.warning(f"Provider {provider} not fully implemented, using mock")
-
-                # Call mock_llm as fallback
-                mock_result = await mock_llm.generate_mock_response(messages)
-
-                if "tool" in mock_result:
-                    tool_calls = [
-                        ToolCall(id=str(uuid.uuid4()), name=mock_result["tool"], arguments=mock_result["input"])
-                    ]
-                    content = ""
-                else:
-                    tool_calls = None
-                    content = mock_result.get("content", "I'm not sure how to respond to that.")
-
-                return LLMOutput(response=AssistantMessage(content=content), tool_calls=tool_calls)
-        except Exception as e:
-            raise LLMException(f"Error from LLM provider: {str(e)}")
-
-
 class LLMAdapter:
-    """Adapter for interacting with LLMs through the Pydantic AI framework."""
+    """Adapter for interacting with LLMs through a consistent abstraction layer."""
 
     def __init__(self) -> None:
-        """Initialize the LLM adapter based on environment variables."""
+        """
+        Initialize the LLM adapter based on environment variables.
+        
+        Raises:
+            ValueError: If required environment variables for the configured provider are missing
+        """
         self.provider = os.getenv("LLM_PROVIDER", "openai").lower()
         self.use_mock = os.getenv("USE_MOCK_LLM", "false").lower() == "true"
 
         # Common parameters
         self.temperature = float(os.getenv("LLM_TEMPERATURE", "0.7"))
         self.max_tokens = int(os.getenv("LLM_MAX_TOKENS", "1024"))
+        
+        # Validate provider support
+        supported_providers = ["openai", "azure_openai", "anthropic"]
+        if not self.use_mock and self.provider not in supported_providers:
+            logger.warning(f"Unsupported provider: {self.provider}, defaulting to openai")
+            self.provider = "openai"
 
-        # Set up configuration for the agent
+        # Set up model name based on provider
+        self.model_name = self._get_model_name()
+        
+        # Set up configuration
         self.config = {
             "provider": self.provider,
+            "model": self.model_name,
             "temperature": self.temperature,
             "max_tokens": self.max_tokens,
         }
 
-        # Provider-specific configuration
-        if self.provider == "openai":
-            self.config["model"] = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
-        elif self.provider == "azure_openai":
-            self.config["model"] = os.getenv("AZURE_OPENAI_DEPLOYMENT")
-        elif self.provider == "anthropic":
-            self.config["model"] = os.getenv("ANTHROPIC_MODEL", "claude-3-opus-20240229")
-
-        # Initialize the Pydantic AI agent if not using mock
+        # Initialize the agent if not using mock
         if not self.use_mock:
             try:
-                self.agent = CortexLLMAgent(self.config)
-                logger.info(f"LLM Adapter initialized with provider: {self.provider}")
+                # Validate that required provider configuration is available
+                self._validate_provider_config()
+                logger.info(f"LLM Adapter initialized with provider: {self.provider}, model: {self.model_name}")
             except Exception as e:
                 logger.warning(f"Failed to initialize LLM provider: {str(e)}. Falling back to mock LLM.")
                 self.use_mock = True
 
         if self.use_mock:
             logger.info("Using Mock LLM for responses")
+    
+    def _get_model_name(self) -> str:
+        """
+        Get the appropriate model name based on provider.
+        
+        Returns:
+            str: The model name for the configured provider
+        """
+        if self.provider == "openai":
+            return os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
+        elif self.provider == "azure_openai":
+            return os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-35-turbo")
+        elif self.provider == "anthropic":
+            return os.getenv("ANTHROPIC_MODEL", "claude-3-opus-20240229")
+        else:
+            # Should not reach here due to provider validation
+            return "gpt-3.5-turbo"
+    
+    def _validate_provider_config(self) -> None:
+        """
+        Validate that required provider configuration is available.
+        
+        Raises:
+            ValueError: If required environment variables are missing
+        """
+        if self.provider == "openai":
+            api_key = os.getenv("OPENAI_API_KEY")
+            if not api_key:
+                raise ValueError("OPENAI_API_KEY environment variable is required")
+        elif self.provider == "azure_openai":
+            api_key = os.getenv("AZURE_OPENAI_KEY")
+            base_url = os.getenv("AZURE_OPENAI_BASE_URL")
+            if not api_key or not base_url:
+                raise ValueError("AZURE_OPENAI_KEY and AZURE_OPENAI_BASE_URL environment variables are required")
+        elif self.provider == "anthropic":
+            api_key = os.getenv("ANTHROPIC_API_KEY")
+            if not api_key:
+                raise ValueError("ANTHROPIC_API_KEY environment variable is required")
 
     async def generate(self, messages: List[ChatMessage]) -> Optional[Dict[str, Any]]:
         """
@@ -357,78 +119,335 @@ class LLMAdapter:
             or {"tool": "...", "input": {...}} for a tool request.
             Returns None if the call fails.
         """
-        # Check if we should use the mock LLM (only for development/testing)
+        # Check if we should use the mock LLM (for testing only)
         if self.use_mock:
             logger.info("Using mock LLM for response generation")
-            # Check last 3 messages to see if we've already made a tool call
-            recent_tool_call = False
-            for i in range(min(3, len(messages))):
-                idx = len(messages) - 1 - i
-                if idx >= 0 and "Tool '" in messages[idx].get("content", ""):
-                    recent_tool_call = True
-                    break
-
-            # Don't use tool if we've already made a recent tool call to avoid loops
-            return await mock_llm.generate_mock_response(messages, with_tool=not recent_tool_call)
+            # Import here to avoid circular dependency
+            from tests.mocks.mock_llm import generate_mock_response
+            return await generate_mock_response(messages)
 
         try:
-            # Extract system message if present
-            system_message = None
-            chat_history: List[ChatMessage] = []
-            user_message = None
-
-            for msg in messages:
-                role = msg.get("role", "user")
-                content = msg.get("content", "")
-
-                if role == "system":
-                    system_message = SystemMessage(content=content)
-                elif role == "user":
-                    # Keep track of the last user message
-                    user_message = UserMessage(content=content)
-                else:
-                    # Add to history (Note: using our local ChatMessage type)
-                    chat_history.append({"role": role, "content": content})
-
-            # If no user message was found, use the last message
-            if not user_message and messages:
-                last_msg = messages[-1]
-                user_message = UserMessage(content=last_msg.get("content", ""))
-
-            # Make sure we have a user message
-            if not user_message:
-                user_message = UserMessage(content="")
-
-            # Create input for the agent
-            # Cast history to the expected type for LLMInput
-            input_data = LLMInput(
-                user_message=user_message,
-                system_message=system_message,
-                history=cast(List[PydanticChatMessage], chat_history),
-            )
-
-            # Log that we're calling the real LLM
-            provider = str(self.config.get("provider", "openai")).lower()
-            model_name = self.config.get("model", "unknown")
-            logger.info(f"Calling real LLM provider: {provider}, model: {model_name}")
-
-            # Run the agent with actual implementation
-            output = await self.agent.run(input_data)
-
-            # Convert the output to the expected format
-            if output.tool_calls:
-                # Return the first tool call
-                tool_call = output.tool_calls[0]
-                logger.info(f"LLM requested tool: {tool_call.name}")
-                return {"tool": tool_call.name, "input": tool_call.arguments}
+            # Prepare input data for LLM from messages
+            input_data = self._prepare_input(messages)
+            
+            # Call the appropriate provider based on configuration
+            if self.provider == "openai":
+                return await self._generate_openai(input_data)
+            elif self.provider == "azure_openai":
+                return await self._generate_azure_openai(input_data)
+            elif self.provider == "anthropic":
+                return await self._generate_anthropic(input_data)
             else:
-                # Return the content
-                logger.info("LLM returned content response")
-                return {"content": output.response.content}
-
+                # This should not happen due to validation in __init__
+                logger.error(f"Unsupported provider: {self.provider}")
+                return None
+            
         except Exception as e:
             logger.error(f"LLM API call failed: {type(e).__name__} - {str(e)}")
             return None
+    
+    def _prepare_input(self, messages: List[ChatMessage]) -> LLMInput:
+        """
+        Prepare input for the LLM in the appropriate format.
+        
+        Args:
+            messages: List of message dictionaries
+            
+        Returns:
+            LLMInput: Structured input for the LLM
+        """
+        # Extract system message if present
+        system_message = None
+        chat_history: List[ChatMessage] = []
+        user_message = None
+
+        for msg in messages:
+            role = msg.get("role", "user")
+            content = msg.get("content", "")
+
+            if role == "system":
+                system_message = SystemMessage(content=content)
+            elif role == "user":
+                # Keep track of the last user message
+                user_message = UserMessage(content=content)
+            else:
+                # Add to history
+                chat_history.append({"role": role, "content": content})
+
+        # If no user message was found, use the last message
+        if not user_message and messages:
+            last_msg = messages[-1]
+            user_message = UserMessage(content=last_msg.get("content", ""))
+
+        # Make sure we have a user message
+        if not user_message:
+            user_message = UserMessage(content="")
+
+        # Create and return input
+        return LLMInput(
+            user_message=user_message,
+            system_message=system_message,
+            history=cast(List[PydanticChatMessage], chat_history),
+        )
+    
+    async def _generate_openai(self, input_data: LLMInput) -> Dict[str, Any]:
+        """
+        Generate a response using OpenAI API.
+        
+        Args:
+            input_data: Structured input for the LLM
+            
+        Returns:
+            Dict with response data
+            
+        Raises:
+            LLMException: If there's an error communicating with OpenAI
+        """
+        try:
+            # Import the necessary module
+            from openai import AsyncOpenAI
+            
+            # Build messages array
+            messages = []
+            
+            # Add system message if provided
+            if input_data.system_message:
+                messages.append({"role": "system", "content": input_data.system_message.content})
+                
+            # Add history messages
+            if input_data.history:
+                for msg in input_data.history:
+                    if isinstance(msg, dict) and "role" in msg and "content" in msg:
+                        messages.append({"role": msg["role"], "content": msg["content"]})
+                        
+            # Add the current user message
+            messages.append({"role": "user", "content": input_data.user_message.content})
+            
+            # Set up tools if provided
+            api_tools = None
+            if input_data.tools:
+                # Convert tools to OpenAI format for function calling
+                api_tools = [{"type": "function", "function": tool} for tool in input_data.tools]
+            
+            # Create OpenAI client
+            client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+            
+            # Handle base_url if provided
+            base_url = os.getenv("OPENAI_API_BASE")
+            if base_url:
+                client.base_url = base_url
+            
+            # Make API call
+            response = await client.chat.completions.create(
+                model=self.model_name,
+                messages=messages,  # type: ignore
+                temperature=self.temperature,
+                max_tokens=self.max_tokens,
+                tools=None if not api_tools else api_tools,  # type: ignore
+            )
+            
+            # Check for tool calls
+            if response.choices[0].message.tool_calls:
+                # Extract tool calls
+                api_tool_calls = response.choices[0].message.tool_calls
+                
+                # Get the first tool call
+                tc = api_tool_calls[0]
+                
+                try:
+                    args = json.loads(tc.function.arguments)
+                except Exception:
+                    args = {}
+                
+                logger.info(f"OpenAI requested tool: {tc.function.name}")
+                return {"tool": tc.function.name, "input": args}
+            else:
+                # Return content response
+                content = response.choices[0].message.content or ""
+                logger.info("OpenAI returned content response")
+                return {"content": content}
+                
+        except Exception as e:
+            logger.error(f"OpenAI API call failed: {str(e)}")
+            raise LLMException(f"Error from OpenAI: {str(e)}")
+    
+    async def _generate_azure_openai(self, input_data: LLMInput) -> Dict[str, Any]:
+        """
+        Generate a response using Azure OpenAI API.
+        
+        Args:
+            input_data: Structured input for the LLM
+            
+        Returns:
+            Dict with response data
+            
+        Raises:
+            LLMException: If there's an error communicating with Azure OpenAI
+        """
+        try:
+            # Import the necessary module
+            from openai import AsyncAzureOpenAI
+            
+            # Build messages array
+            messages = []
+            
+            # Add system message if provided
+            if input_data.system_message:
+                messages.append({"role": "system", "content": input_data.system_message.content})
+                
+            # Add history messages
+            if input_data.history:
+                for msg in input_data.history:
+                    if isinstance(msg, dict) and "role" in msg and "content" in msg:
+                        messages.append({"role": msg["role"], "content": msg["content"]})
+                        
+            # Add the current user message
+            messages.append({"role": "user", "content": input_data.user_message.content})
+            
+            # Set up tools if provided
+            api_tools = None
+            if input_data.tools:
+                # Convert tools to OpenAI format for function calling
+                api_tools = [{"type": "function", "function": tool} for tool in input_data.tools]
+            
+            # Create Azure OpenAI client
+            client = AsyncAzureOpenAI(
+                api_key=os.getenv("AZURE_OPENAI_KEY"),
+                api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2023-05-15"),
+                azure_endpoint=os.getenv("AZURE_OPENAI_BASE_URL", ""),
+            )
+            
+            # Make API call
+            response = await client.chat.completions.create(
+                model=self.model_name,
+                messages=messages,  # type: ignore
+                temperature=self.temperature,
+                max_tokens=self.max_tokens,
+                tools=None if not api_tools else api_tools,  # type: ignore
+            )
+            
+            # Check for tool calls
+            if response.choices[0].message.tool_calls:
+                # Extract tool calls
+                api_tool_calls = response.choices[0].message.tool_calls
+                
+                # Get the first tool call
+                tc = api_tool_calls[0]
+                
+                try:
+                    args = json.loads(tc.function.arguments)
+                except Exception:
+                    args = {}
+                
+                logger.info(f"Azure OpenAI requested tool: {tc.function.name}")
+                return {"tool": tc.function.name, "input": args}
+            else:
+                # Return content response
+                content = response.choices[0].message.content or ""
+                logger.info("Azure OpenAI returned content response")
+                return {"content": content}
+                
+        except Exception as e:
+            logger.error(f"Azure OpenAI API call failed: {str(e)}")
+            raise LLMException(f"Error from Azure OpenAI: {str(e)}")
+    
+    async def _generate_anthropic(self, input_data: LLMInput) -> Dict[str, Any]:
+        """
+        Generate a response using Anthropic API.
+        
+        Args:
+            input_data: Structured input for the LLM
+            
+        Returns:
+            Dict with response data
+            
+        Raises:
+            LLMException: If there's an error communicating with Anthropic
+        """
+        try:
+            # Import the necessary module
+            from anthropic import AsyncAnthropic
+            
+            # Create Anthropic client
+            anthropic_client = AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+            
+            # Extract system prompt if provided
+            system_prompt = None
+            if input_data.system_message:
+                system_prompt = input_data.system_message.content
+            
+            # Anthropic uses a different format for messages
+            anthropic_messages: List[Dict[str, Any]] = []
+            
+            # Add history messages
+            if input_data.history:
+                for msg in input_data.history:
+                    if isinstance(msg, dict) and "role" in msg and "content" in msg:
+                        role = msg["role"]
+                        # Anthropic only supports user and assistant roles
+                        if role in ["user", "assistant"]:
+                            anthropic_messages.append({"role": role, "content": msg["content"]})
+            
+            # Add the current user message
+            anthropic_messages.append({"role": "user", "content": input_data.user_message.content})
+            
+            # Make API call
+            response = await anthropic_client.messages.create(
+                model=self.model_name,
+                messages=anthropic_messages,  # type: ignore
+                system=system_prompt,  # type: ignore
+                temperature=self.temperature,
+                max_tokens=self.max_tokens,
+            )
+            
+            # Process the response content
+            content = ""
+            if hasattr(response, "content") and response.content:
+                for block in response.content:
+                    if hasattr(block, "text"):
+                        text = getattr(block, "text", "")  # type: ignore
+                        if text:
+                            content += text
+            
+            # Check for tool calls in the content
+            # Claude models may format tool calls in the content with JSON
+            if content and "```json" in content and ("tool" in content or "function" in content):
+                # Attempt to extract JSON
+                try:
+                    # Find JSON blocks
+                    start_idx = content.find("```json")
+                    if start_idx != -1:
+                        json_str = content[start_idx + 7:]
+                        end_idx = json_str.find("```")
+                        if end_idx != -1:
+                            json_str = json_str[:end_idx].strip()
+                            tool_data = json.loads(json_str)
+                            
+                            # Check if it's a tool call
+                            if "tool" in tool_data or "function" in tool_data:
+                                tool_name = tool_data.get("tool", tool_data.get("function", {}).get("name"))
+                                tool_args = tool_data.get("input", tool_data.get("arguments", {}))
+                                
+                                if isinstance(tool_args, str):
+                                    # Try to parse JSON string arguments
+                                    try:
+                                        tool_args = json.loads(tool_args)
+                                    except:
+                                        pass
+                                
+                                if tool_name:
+                                    logger.info(f"Anthropic requested tool: {tool_name}")
+                                    return {"tool": tool_name, "input": tool_args}
+                except Exception as json_err:
+                    logger.debug(f"Failed to parse JSON tool call from Anthropic: {str(json_err)}")
+            
+            # Just return the content if no tool call detected
+            logger.info("Anthropic returned content response")
+            return {"content": content}
+                
+        except Exception as e:
+            logger.error(f"Anthropic API call failed: {str(e)}")
+            raise LLMException(f"Error from Anthropic: {str(e)}")
 
 
 # Create a global instance
