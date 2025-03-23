@@ -174,7 +174,8 @@ class ResponseHandler:
             message_repo = uow.repositories.get_message_repository()
             messages = await message_repo.list_by_conversation(conversation_id, limit=limit)
 
-            history = []
+            # Convert Message objects to dict format expected by LLM
+            history: List[Dict[str, str]] = []
             for msg in messages:
                 # Default to user role if not specified
                 role = msg.metadata.get("role", "user") if msg.metadata else "user"
@@ -235,14 +236,17 @@ class ResponseHandler:
             final_text = ""
             
         # Get the current assistant message ID for this streaming session
-        assistant_message_id = None
+        assistant_message_id: Optional[str] = None
         try:
             async with UnitOfWork.for_transaction() as uow:
                 message_repo = uow.repositories.get_message_repository()
                 # Get the most recent assistant message for this conversation
-                messages = await message_repo.list_by_conversation(conversation_id, limit=1, role="assistant")
-                if messages and len(messages) > 0:
-                    assistant_message_id = messages[0].id
+                # Explicitly annotate the correct type
+                assistant_messages: List[Message] = await message_repo.list_by_conversation(
+                    conversation_id, limit=1, role="assistant"
+                )
+                if assistant_messages and len(assistant_messages) > 0:
+                    assistant_message_id = assistant_messages[0].id
         except Exception as e:
             logger.warning(f"Failed to get assistant message ID for streaming: {e}")
             # Continue without message ID if we can't get it
@@ -438,8 +442,7 @@ class ResponseHandler:
                         },
                         "metadata": {
                             "tool_name": tool_name,
-                            "tool_args": tool_args,
-                            "is_final": False
+                            "tool_args": tool_args
                         }
                     }
                     await queue.put(json.dumps(tool_event))
@@ -478,8 +481,7 @@ class ResponseHandler:
                             "metadata": {
                                 "tool_name": tool_name,
                                 "tool_message_id": tool_message_id,
-                                "result": tool_result,
-                                "is_final": False
+                                "result": tool_result
                             }
                         }
                         await queue.put(json.dumps(tool_result_event))
@@ -550,8 +552,7 @@ class ResponseHandler:
                             },
                             
                             "metadata": {
-                                "iterations": iterations,
-                                "is_final": True
+                                "iterations": iterations
                             }
                         }
 
@@ -579,13 +580,16 @@ class ResponseHandler:
             else:
                 # Send the complete response in a single message
                 # Get assistant message ID
-                assistant_message_id = None
+                message_id: Optional[str] = None
                 try:
                     async with UnitOfWork.for_transaction() as uow:
                         message_repo = uow.repositories.get_message_repository()
-                        messages = await message_repo.list_by_conversation(conversation_id, limit=1, role="assistant")
-                        if messages and len(messages) > 0:
-                            assistant_message_id = messages[0].id
+                        # Explicitly annotate the correct type
+                        assistant_messages: List[Message] = await message_repo.list_by_conversation(
+                            conversation_id, limit=1, role="assistant"
+                        )
+                        if assistant_messages and len(assistant_messages) > 0:
+                            message_id = assistant_messages[0].id
                 except Exception as e:
                     logger.warning(f"Failed to get assistant message ID for non-streaming response: {e}")
                 
@@ -599,7 +603,7 @@ class ResponseHandler:
                     "data": {
                         "content": response_text,
                         "conversation_id": conversation_id,
-                        "message_id": assistant_message_id,
+                        "message_id": message_id,
                         "timestamp": datetime.now().isoformat(),
                         "sender": {
                             "id": "cortex-core",

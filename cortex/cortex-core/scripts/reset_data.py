@@ -3,7 +3,7 @@ import os
 
 #!/usr/bin/env python3
 """
-Script to reset the project's SQLite database by deleting files matching "cortex-db*"
+Script to reset the project's SQLite database by deleting files matching "cortex.db*"
 from the parent directory of this script.
 """
 
@@ -11,10 +11,14 @@ from the parent directory of this script.
 def reset_db():
     # Determine the parent directory relative to this script
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    parent_dir = os.path.join(current_dir, "..")
+
+    # Get the parent directory
+    # This assumes the script is in a subdirectory of the project root
+    # and the database files are in the parent directory.
+    parent_dir = os.path.abspath(os.path.join(current_dir, ".."))
 
     # Pattern to match the SQLite database files
-    pattern = os.path.join(parent_dir, "cortex-db*")
+    pattern = os.path.join(parent_dir, "cortex.db*")
 
     # Find all matching files
     files_to_delete = glob.glob(pattern)
