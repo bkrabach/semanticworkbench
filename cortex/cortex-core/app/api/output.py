@@ -23,14 +23,15 @@ async def event_generator(
     """Generate SSE events for a specific user and optionally a specific conversation."""
     # Subscribe to the event bus with filters for this user and conversation
     # This is more efficient than manually filtering events after receiving them
-    logger.info(f"Creating SSE stream for user: {user_id}" + 
-                (f", conversation: {conversation_id}" if conversation_id else ""))
-    
+    logger.info(
+        f"Creating SSE stream for user: {user_id}" + (f", conversation: {conversation_id}" if conversation_id else "")
+    )
+
     client_queue: asyncio.Queue = event_bus.subscribe(
         event_type=None,  # Subscribe to all event types
-        conversation_id=conversation_id  # Filter by conversation if specified
+        conversation_id=conversation_id,  # Filter by conversation if specified
     )
-    
+
     logger.debug("Subscribed to event bus")
     events_sent = 0
 
@@ -61,7 +62,7 @@ async def event_generator(
             event_data = json.dumps(event)
             yield f"event: {event_type}\ndata: {event_data}\n\n"
             events_sent += 1
-            
+
             if events_sent % 10 == 0:  # Log every 10 events
                 logger.debug(f"Sent {events_sent} events to user: {user_id}")
 
@@ -79,13 +80,25 @@ async def stream_output(
     request: Request,
     conversation_id: Optional[str] = Query(None),
     current_user: Dict[str, Any] = Depends(get_current_user),
-):
-    """Open a Server-Sent Events stream for outputs."""
+) -> StreamingResponse:
+    """
+    Open a Server-Sent Events stream for receiving real-time outputs.
+
+    Args:
+        request: The FastAPI request object
+        conversation_id: Optional ID of the conversation to filter events
+        current_user: The authenticated user information
+
+    Returns:
+        A streaming response with server-sent events
+    """
     # User has already been authenticated via the dependency
     user_id = current_user["id"]
-    
-    logger.info(f"SSE stream requested by user: {user_id}" + 
-                (f" for conversation: {conversation_id}" if conversation_id else ""))
+
+    logger.info(
+        f"SSE stream requested by user: {user_id}"
+        + (f" for conversation: {conversation_id}" if conversation_id else "")
+    )
 
     # Return SSE stream response
     response = StreamingResponse(
@@ -97,6 +110,6 @@ async def stream_output(
             "X-Accel-Buffering": "no",  # Disable buffering in nginx
         },
     )
-    
+
     logger.debug(f"SSE stream response created for user: {user_id}")
     return response

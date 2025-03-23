@@ -2,6 +2,7 @@ import logging
 import os
 import uuid
 from contextlib import asynccontextmanager
+from typing import AsyncGenerator, Dict
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -21,24 +22,22 @@ response_handler = None
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Handle application startup and shutdown events."""
     global response_handler
 
     # Get service URLs from environment variables or use defaults
     memory_url = os.environ.get("MEMORY_SERVICE_URL", "http://localhost:5001/sse")
     cognition_url = os.environ.get("COGNITION_SERVICE_URL", "http://localhost:5000/sse")
-    
+
     # Initialize components on application startup
     response_handler = await create_response_handler(
-        event_bus=event_bus,
-        memory_url=memory_url,
-        cognition_url=cognition_url
+        event_bus=event_bus, memory_url=memory_url, cognition_url=cognition_url
     )
-    
+
     # Store response handler in app state for access by health checks
     app.state.response_handler = response_handler
-    
+
     logger.info("Cortex Core started with services:")
     logger.info(f"- Memory service: {memory_url}")
     logger.info(f"- Cognition service: {cognition_url}")
@@ -56,7 +55,7 @@ app = FastAPI(title="Cortex Core MVP", lifespan=lifespan)
 
 
 @app.exception_handler(CortexException)
-async def cortex_exception_handler(request: Request, exc: CortexException):
+async def cortex_exception_handler(request: Request, exc: CortexException) -> JSONResponse:
     """Handle custom Cortex exceptions."""
     # Create a copy of the detail dictionary
     response = dict(exc.detail) if isinstance(exc.detail, dict) else {"error": str(exc.detail)}
@@ -66,7 +65,7 @@ async def cortex_exception_handler(request: Request, exc: CortexException):
 
 
 @app.exception_handler(RequestValidationError)
-async def validation_exception_handler(request: Request, exc: RequestValidationError):
+async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
     """Handle FastAPI validation errors."""
     # Extract error messages
     validation_errors = []
@@ -97,13 +96,13 @@ app.include_router(management.router)
 
 
 @app.get("/", tags=["system"])
-async def root():
+async def root() -> Dict[str, str]:
     """Root endpoint returning basic service information."""
     return {"status": "online", "service": "Cortex Core"}
 
 
 @app.get("/health", tags=["system"])
-async def health_check():
+async def health_check() -> Dict[str, str]:
     """Health check endpoint to verify that the service is running."""
     return {"status": "ok"}
 

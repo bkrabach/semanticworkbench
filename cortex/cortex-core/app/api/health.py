@@ -49,7 +49,7 @@ class HealthResponse(BaseModel):
 
 
 @router.get("", response_model=HealthResponse)
-async def health_check(request: Request):
+async def health_check(request: Request) -> HealthResponse:
     """
     Health check endpoint for the Cortex API.
     Returns the status of the API, system information, and the status of its dependencies.
@@ -58,24 +58,24 @@ async def health_check(request: Request):
     # Access response handler from application state
     app = request.app
     response_handler = app.state.response_handler if hasattr(app.state, "response_handler") else None
-    
+
     # Get version from environment or default
     version = os.environ.get("APP_VERSION", "1.0.0")
-    
+
     # Calculate uptime
     uptime_seconds = time.time() - APP_START_TIME
-    
+
     # Get system information
     system_info = SystemInfo(
         hostname=platform.node(),
         platform=f"{platform.system()} {platform.release()}",
         python_version=platform.python_version(),
         uptime_seconds=uptime_seconds,
-        environment=os.environ.get("ENVIRONMENT", "development")
+        environment=os.environ.get("ENVIRONMENT", "development"),
     )
-    
+
     logger.debug(f"System info collected: uptime={uptime_seconds:.2f}s")
-    
+
     # Collect service health checks
     services = {}
 
@@ -90,7 +90,7 @@ async def health_check(request: Request):
             # Create temporary client for health check only
             cognition_client = CognitionClient()
             logger.debug("Created temporary cognition client for health check")
-            
+
         # Measure latency
         start_time = time.time()
         if cognition_client.session is None:
@@ -101,27 +101,23 @@ async def health_check(request: Request):
         if cognition_client.session is None:
             logger.error("Failed to establish cognition session after connect")
             raise RuntimeError("Failed to establish cognition session")
-            
+
         logger.debug("Listing available tools from cognition service")
         tools_response = await cognition_client.session.list_tools()
         latency_ms = (time.time() - start_time) * 1000
-        
+
         available_tools = [t.name for t in tools_response.tools]
         logger.info(f"Cognition service healthy, latency: {latency_ms:.2f}ms, tools: {len(available_tools)}")
-        
+
         services["cognition"] = {
-            "status": "healthy", 
+            "status": "healthy",
             "latency_ms": latency_ms,
             "tools": available_tools,
-            "last_checked": datetime.now().isoformat()
+            "last_checked": datetime.now().isoformat(),
         }
     except Exception as e:
         logger.error(f"Cognition service health check failed: {str(e)}")
-        services["cognition"] = {
-            "status": "unhealthy", 
-            "error": str(e),
-            "last_checked": datetime.now().isoformat()
-        }
+        services["cognition"] = {"status": "unhealthy", "error": str(e), "last_checked": datetime.now().isoformat()}
 
     # Check memory service health
     try:
@@ -134,36 +130,28 @@ async def health_check(request: Request):
             # Create temporary client for health check only
             memory_client = MemoryClient()
             logger.debug("Created temporary memory client for health check")
-            
+
         # Measure latency
         start_time = time.time()
         if memory_client.session is None:
             logger.debug("Memory client not connected, connecting now...")
             await memory_client.connect()
-            
+
         # Just ping the connection
         # Ensure session is available after connect
         if memory_client.session is None:
             logger.error("Failed to establish memory session after connect")
             raise RuntimeError("Failed to establish memory session")
-            
+
         logger.debug("Initializing memory service session")
         await memory_client.session.initialize()
         latency_ms = (time.time() - start_time) * 1000
-        
+
         logger.info(f"Memory service healthy, latency: {latency_ms:.2f}ms")
-        services["memory"] = {
-            "status": "healthy", 
-            "latency_ms": latency_ms,
-            "last_checked": datetime.now().isoformat()
-        }
+        services["memory"] = {"status": "healthy", "latency_ms": latency_ms, "last_checked": datetime.now().isoformat()}
     except Exception as e:
         logger.error(f"Memory service health check failed: {str(e)}")
-        services["memory"] = {
-            "status": "unhealthy", 
-            "error": str(e),
-            "last_checked": datetime.now().isoformat()
-        }
+        services["memory"] = {"status": "unhealthy", "error": str(e), "last_checked": datetime.now().isoformat()}
 
     # Determine overall status based on dependent services
     overall_status = "healthy"
@@ -186,7 +174,7 @@ async def health_check(request: Request):
 
 
 @router.get("/ping")
-async def ping():
+async def ping() -> Dict[str, Any]:
     """
     Simple ping endpoint for basic availability checks.
     """
