@@ -1239,7 +1239,7 @@ GET  /output/stream          - Receive SSE events with responses
                             const messageId = messageData.message_id || `${messageType}-${Date.now()}`;
                             const content = messageData.content;
                             const inReplyTo = null; // in_reply_to field removed
-                            const isFinal = data.metadata?.is_final || false;
+                            // No longer need is_final flag
                             
                             // Initialize tracking for this conversation if needed
                             if (conversationId && !messageTracking[conversationId]) {
@@ -1303,7 +1303,7 @@ GET  /output/stream          - Receive SSE events with responses
                                     messageTracking[conversationId]._streamContent = "";
                                     
                                     // Automatically refresh context after receiving final response
-                                    if (document.getElementById('context-toggle').checked && isFinal) {
+                                    if (document.getElementById('context-toggle').checked) {
                                         setTimeout(() => {
                                             getContextPreview();
                                         }, 500);

@@ -107,7 +107,7 @@ async def test_stream_response(response_handler: ResponseHandler) -> None:
             assert event["data"]["sender"]["id"] == "cortex-core"
             assert event["data"]["sender"]["name"] == "Cortex"
             assert event["data"]["sender"]["role"] == "assistant"
-            assert event["metadata"]["is_final"] is False
+            assert "metadata" in event
 
         # Verify done event
         assert done_event["type"] == "message"
@@ -118,7 +118,7 @@ async def test_stream_response(response_handler: ResponseHandler) -> None:
         assert done_event["data"]["sender"]["id"] == "cortex-core"
         assert done_event["data"]["sender"]["name"] == "Cortex"
         assert done_event["data"]["sender"]["role"] == "assistant"
-        assert done_event["metadata"]["is_final"] is True
+        assert "metadata" in done_event
 
         # Reconstruct the message from chunks
         reconstructed = ""
@@ -224,7 +224,7 @@ async def test_handle_message_mock_non_streaming() -> None:
             event_data = json.loads(call_arg)
             assert event_data["message_type"] == "complete"
             assert event_data["data"]["content"] == "This is a mock response"
-            assert event_data["metadata"]["is_final"] is True
+            assert "metadata" in event_data
 
 
 @pytest.mark.asyncio

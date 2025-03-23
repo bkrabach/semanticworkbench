@@ -269,9 +269,7 @@ class ResponseHandler:
                         "role": "assistant"
                     }
                 },
-                "metadata": {
-                    "is_final": False
-                }
+                "metadata": {}
             }
 
             # Send as SSE data event
@@ -295,9 +293,7 @@ class ResponseHandler:
                     "role": "assistant"
                 }
             },
-            "metadata": {
-                "is_final": True
-            }
+            "metadata": {}
         }
 
         await queue.put(json.dumps(final_event))
@@ -611,9 +607,7 @@ class ResponseHandler:
                             "role": "assistant"
                         }
                     },
-                    "metadata": {
-                        "is_final": True
-                    }
+                    "metadata": {}
                 }
                 
                 await queue.put(json.dumps(complete_event))
@@ -646,7 +640,6 @@ class ResponseHandler:
                         }
                     },
                     "metadata": {
-                        "is_final": True,
                         "error": True
                     }
                 }
