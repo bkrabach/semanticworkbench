@@ -215,12 +215,13 @@
                     </select>
                     <button id="refresh-workspaces-btn">Refresh Workspaces</button>
                 </div>
-                <div>
+                <div id="conversation-container" style="display: none;">
                     <label for="conversation-select">Select Conversation:</label>
                     <select id="conversation-select">
                         <option value="">-- Select Conversation --</option>
                     </select>
                     <button id="refresh-conversations-btn">Refresh Conversations</button>
+                    <button id="create-conversation-btn">+ New Conversation</button>
                 </div>
             </div>
         </div>
@@ -363,6 +364,14 @@ GET  /output/stream          - Receive SSE events with responses
         let sseController = null;
         let lastContextResult = null;
         let lastApiResponse = null;
+        
+        // Message tracking for all conversations
+        let messageTracking = {};
+        
+        // Active message elements in the UI - tracks current message IDs by type
+        let activeMessages = {
+            // conversation_id -> { user: messageId, response: messageId, tool: messageId }
+        };
 
         // Base API URL
         const API_URL = 'http://localhost:8000';
@@ -381,6 +390,7 @@ GET  /output/stream          - Receive SSE events with responses
                     loadConversations(selectedWorkspaceId);
                 }
             });
+            document.getElementById('create-conversation-btn').addEventListener('click', showCreateConversationForm);
             
             // Chat tab
             document.getElementById('send-btn').addEventListener('click', sendMessage);
@@ -524,8 +534,26 @@ GET  /output/stream          - Receive SSE events with responses
                     });
                     
                     addMessage('system', `Loaded ${data.workspaces.length} workspaces`);
+                    
+                    // Add create button next to select
+                    if (!document.getElementById('create-workspace-btn')) {
+                        const createBtn = document.createElement('button');
+                        createBtn.id = 'create-workspace-btn';
+                        createBtn.textContent = '+ New Workspace';
+                        createBtn.addEventListener('click', showCreateWorkspaceForm);
+                        workspaceSelect.parentNode.appendChild(createBtn);
+                    }
                 } else {
                     addMessage('system', 'No workspaces found. Create one to get started.');
+                    
+                    // Add create button if it doesn't exist
+                    if (!document.getElementById('create-workspace-btn')) {
+                        const createBtn = document.createElement('button');
+                        createBtn.id = 'create-workspace-btn';
+                        createBtn.textContent = '+ New Workspace';
+                        createBtn.addEventListener('click', showCreateWorkspaceForm);
+                        workspaceSelect.parentNode.appendChild(createBtn);
+                    }
                 }
                 
             } catch (error) {
@@ -537,20 +565,128 @@ GET  /output/stream          - Receive SSE events with responses
         // Handle workspace selection
         function handleWorkspaceSelect() {
             const workspaceSelect = document.getElementById('workspace-select');
-            selectedWorkspaceId = workspaceSelect.value;
+            const selectedValue = workspaceSelect.value;
+            const conversationContainer = document.getElementById('conversation-container');
             
-            if (selectedWorkspaceId) {
+            if (selectedValue) {
+                selectedWorkspaceId = selectedValue;
+                // Show conversation container
+                conversationContainer.style.display = 'block';
                 // Load conversations for this workspace
                 loadConversations(selectedWorkspaceId);
                 
                 // Log
                 const workspaceName = workspaceSelect.options[workspaceSelect.selectedIndex].text;
                 addMessage('system', `Selected workspace: ${workspaceName}`);
+                
+                // Make sure conversation button has the right event listener
+                document.getElementById('create-conversation-btn').addEventListener('click', showCreateConversationForm);
             } else {
+                // Hide conversation container
+                conversationContainer.style.display = 'none';
                 // Reset conversation dropdown and hide MCP panel
                 document.getElementById('conversation-select').innerHTML = '<option value="">-- Select Conversation --</option>';
                 document.getElementById('mcp-panel').style.display = 'none';
                 selectedConversationId = null;
+            }
+        }
+        
+        // Show form to create a new workspace
+        function showCreateWorkspaceForm() {
+            // Create form container
+            const formContainer = document.createElement('div');
+            formContainer.className = 'form-popup';
+            formContainer.id = 'create-workspace-form';
+            formContainer.style.cssText = 'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 20px; border: 1px solid #ddd; border-radius: 5px; box-shadow: 0 0 10px rgba(0,0,0,0.1); z-index: 100;';
+            
+            formContainer.innerHTML = `
+                <h3>Create New Workspace</h3>
+                <label for="new-workspace-name">Workspace Name:</label>
+                <input type="text" id="new-workspace-name" value="My Workspace" style="width: 100%; margin: 10px 0;">
+                <label for="new-workspace-description">Description:</label>
+                <textarea id="new-workspace-description" placeholder="Enter workspace description" style="width: 100%; margin: 10px 0;" rows="3">General workspace for testing</textarea>
+                <div style="display: flex; justify-content: flex-end; gap: 10px;">
+                    <button id="cancel-workspace-btn" style="background-color: #ddd; color: black;">Cancel</button>
+                    <button id="confirm-workspace-btn">Create</button>
+                </div>
+            `;
+            
+            document.body.appendChild(formContainer);
+            
+            // Add event listeners
+            document.getElementById('cancel-workspace-btn').addEventListener('click', () => {
+                document.body.removeChild(formContainer);
+            });
+            
+            document.getElementById('confirm-workspace-btn').addEventListener('click', () => {
+                const workspaceName = document.getElementById('new-workspace-name').value.trim();
+                if (workspaceName) {
+                    createNewWorkspace(workspaceName);
+                    document.body.removeChild(formContainer);
+                }
+            });
+            
+            // Focus the input
+            document.getElementById('new-workspace-name').focus();
+            document.getElementById('new-workspace-name').select();
+        }
+        
+        // Create new workspace
+        async function createNewWorkspace(name) {
+            if (!token) {
+                addMessage('system', 'Not authenticated. Please login first.');
+                return;
+            }
+            
+            // Get description from form
+            const description = document.getElementById('new-workspace-description').value.trim();
+            
+            try {
+                const response = await fetch(`${API_URL}/config/workspace`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        name: name,
+                        description: description
+                    })
+                });
+                
+                lastApiResponse = await response.clone().json();
+                updateLastResponse();
+                
+                if (!response.ok) {
+                    throw new Error(`Failed to create workspace: ${response.status} ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                
+                // Reload workspaces and select the new one
+                await loadWorkspaces();
+                
+                // Find and select the newly created workspace
+                const workspaceSelect = document.getElementById('workspace-select');
+                const options = Array.from(workspaceSelect.options);
+                const newOption = options.find(option => option.textContent === name);
+                
+                if (newOption) {
+                    workspaceSelect.value = newOption.value;
+                    selectedWorkspaceId = newOption.value;
+                    
+                    // Show conversation container
+                    document.getElementById('conversation-container').style.display = 'block';
+                    
+                    // Load conversations for this workspace (will be empty initially)
+                    loadConversations(selectedWorkspaceId);
+                }
+                
+                addMessage('system', `Created new workspace: ${name}`);
+                
+            } catch (error) {
+                addMessage('system', error.message);
+                console.error('Create workspace error:', error);
             }
         }
 
@@ -603,14 +739,24 @@ GET  /output/stream          - Receive SSE events with responses
         // Handle conversation selection
         function handleConversationSelect() {
             const conversationSelect = document.getElementById('conversation-select');
-            selectedConversationId = conversationSelect.value;
+            const selectedValue = conversationSelect.value;
             
-            if (selectedConversationId) {
+            if (selectedValue) {
+                selectedConversationId = selectedValue;
+                
                 // Show MCP panel
                 document.getElementById('mcp-panel').style.display = 'block';
                 
                 // Clear messages
                 clearMessages();
+                
+                // Initialize this conversation's message container
+                if (!activeMessages[selectedConversationId]) {
+                    activeMessages[selectedConversationId] = {};
+                }
+                
+                // Note: History loading is commented out as the endpoint doesn't exist yet
+                // loadConversationHistory(selectedConversationId);
                 
                 // Log
                 const conversationTopic = conversationSelect.options[conversationSelect.selectedIndex].text;
@@ -622,7 +768,111 @@ GET  /output/stream          - Receive SSE events with responses
             } else {
                 // Hide MCP panel if no conversation selected
                 document.getElementById('mcp-panel').style.display = 'none';
+                selectedConversationId = null;
             }
+        }
+        
+        // Show form to create a new conversation
+        function showCreateConversationForm() {
+            if (!selectedWorkspaceId) {
+                addMessage('system', 'Please select a workspace first.');
+                return;
+            }
+            
+            // Create form container
+            const formContainer = document.createElement('div');
+            formContainer.className = 'form-popup';
+            formContainer.id = 'create-conversation-form';
+            formContainer.style.cssText = 'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 20px; border: 1px solid #ddd; border-radius: 5px; box-shadow: 0 0 10px rgba(0,0,0,0.1); z-index: 100;';
+            
+            formContainer.innerHTML = `
+                <h3>Create New Conversation</h3>
+                <label for="new-conversation-topic">Conversation Topic:</label>
+                <input type="text" id="new-conversation-topic" value="New Conversation" style="width: 100%; margin: 10px 0;">
+                <div style="display: flex; justify-content: flex-end; gap: 10px;">
+                    <button id="cancel-conversation-btn" style="background-color: #ddd; color: black;">Cancel</button>
+                    <button id="confirm-conversation-btn">Create</button>
+                </div>
+            `;
+            
+            document.body.appendChild(formContainer);
+            
+            // Add event listeners
+            document.getElementById('cancel-conversation-btn').addEventListener('click', () => {
+                document.body.removeChild(formContainer);
+            });
+            
+            document.getElementById('confirm-conversation-btn').addEventListener('click', () => {
+                const conversationTopic = document.getElementById('new-conversation-topic').value.trim();
+                if (conversationTopic) {
+                    createNewConversation(conversationTopic);
+                    document.body.removeChild(formContainer);
+                }
+            });
+            
+            // Focus the input
+            document.getElementById('new-conversation-topic').focus();
+            document.getElementById('new-conversation-topic').select();
+        }
+        
+        // Create new conversation
+        async function createNewConversation(topic) {
+            if (!token || !selectedWorkspaceId) {
+                addMessage('system', 'Not authenticated or no workspace selected.');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_URL}/config/conversation`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        topic: topic,
+                        workspace_id: selectedWorkspaceId
+                    })
+                });
+                
+                lastApiResponse = await response.clone().json();
+                updateLastResponse();
+                
+                if (!response.ok) {
+                    throw new Error(`Failed to create conversation: ${response.status} ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                
+                // Reload conversations and select the new one
+                await loadConversations(selectedWorkspaceId);
+                
+                // Find and select the newly created conversation
+                const conversationSelect = document.getElementById('conversation-select');
+                const options = Array.from(conversationSelect.options);
+                const newOption = options.find(option => option.textContent === topic);
+                
+                if (newOption) {
+                    conversationSelect.value = newOption.value;
+                    selectedConversationId = newOption.value;
+                    handleConversationSelect();
+                }
+                
+                addMessage('system', `Created new conversation: ${topic}`);
+                
+            } catch (error) {
+                addMessage('system', error.message);
+                console.error('Create conversation error:', error);
+            }
+        }
+        
+        // Note: Message history endpoint doesn't exist yet
+        // This is a placeholder for future implementation
+        // The /config/message endpoint returns a 404 currently
+        async function loadConversationHistory(conversationId) {
+            // This feature will be implemented in the future
+            // For now, we'll just display a message
+            addMessage('system', 'Message history will be implemented in a future phase.');
         }
 
         // Send message with context
@@ -663,6 +913,18 @@ GET  /output/stream          - Receive SSE events with responses
                     messageData.metadata.context = lastContextResult;
                 }
                 
+                // Generate a temporary client-side ID for optimistic UI update
+                const tempMessageId = `user-temp-${Date.now()}`;
+                
+                // Create optimistic UI update first (will be replaced with server ID)
+                updateOrCreateMessage(
+                    selectedConversationId, 
+                    tempMessageId, 
+                    'user', 
+                    content
+                );
+                
+                // Send message to server
                 const response = await fetch(`${API_URL}/input`, {
                     method: 'POST',
                     headers: {
@@ -680,9 +942,17 @@ GET  /output/stream          - Receive SSE events with responses
                 }
                 
                 const data = await response.json();
+                console.log('Message sent successfully:', data);
                 
-                // Display sent message
-                addMessage('input', content);
+                // If server returns a message ID, update our tracking with it
+                // (The actual UI update will happen via SSE events)
+                if (data.message_id) {
+                    // The next SSE event will handle replacing the temporary message
+                    console.log(`Message sent with server ID: ${data.message_id}`);
+                    
+                    // If server responds quickly, we could update here
+                    // For now we'll let the SSE event handler take care of it
+                }
                 
                 // Clear input
                 messageInput.value = '';
@@ -691,8 +961,6 @@ GET  /output/stream          - Receive SSE events with responses
                 if (useContext) {
                     getContextPreview();
                 }
-                
-                console.log('Message sent successfully:', data);
                 
             } catch (error) {
                 addMessage('system', error.message);
@@ -887,44 +1155,192 @@ GET  /output/stream          - Receive SSE events with responses
                         lastApiResponse = data;
                         updateLastResponse();
                         
+                        // Get conversation ID from the event
+                        const conversationId = data.conversation_id || 
+                            (data.data && data.data.conversation_id) || 
+                            selectedConversationId;
+                        
+                        // Initialize tracking for this conversation if needed
+                        if (conversationId && !messageTracking[conversationId]) {
+                            messageTracking[conversationId] = {};
+                        }
+                        
+                        // Track accumulated content for streaming
+                        if (!messageTracking[conversationId]._streamContent) {
+                            messageTracking[conversationId]._streamContent = "";
+                        }
+                        
                         switch (data.type) {
                             case 'connection_established':
                                 addMessage('system', 'SSE Connection established');
                                 break;
+                                
                             case 'input':
-                                // Handle input event
-                                if (data.data && data.data.conversation_id === selectedConversationId) {
-                                    addMessage('input', data.data.content);
+                                // Handle input confirmation from server
+                                if (data.data && conversationId) {
+                                    // Use server-provided message ID if available, or generate one
+                                    const messageId = data.data.message_id || `user-${Date.now()}`;
+                                    
+                                    // Update or create user message with server-provided ID
+                                    updateOrCreateMessage(
+                                        conversationId, 
+                                        messageId, 
+                                        'user', 
+                                        data.data.content
+                                    );
                                 }
                                 break;
-                            case 'output':
-                                // Handle output event
-                                if (data.data && data.data.conversation_id === selectedConversationId) {
-                                    addMessage('output', data.data.content);
+                                
+                            case 'response':
+                                // Handle final response event
+                                if (data.data && conversationId) {
+                                    // Use server-provided message ID and in_reply_to
+                                    const messageId = data.data.message_id;
+                                    const inReplyTo = data.data.in_reply_to;
+                                    
+                                    if (messageId) {
+                                        // Update or create response message with server ID
+                                        updateOrCreateMessage(
+                                            conversationId,
+                                            messageId,
+                                            'assistant',
+                                            data.data.content,
+                                            inReplyTo
+                                        );
+                                        
+                                        // Reset streaming content buffer
+                                        messageTracking[conversationId]._streamContent = "";
+                                    } else {
+                                        // Fallback if no message_id provided
+                                        const fallbackId = `response-${Date.now()}`;
+                                        updateOrCreateMessage(
+                                            conversationId,
+                                            fallbackId,
+                                            'assistant',
+                                            data.data.content,
+                                            inReplyTo
+                                        );
+                                    }
                                 }
                                 break;
+                                
                             case 'response_chunk':
                                 // Handle streaming response chunks
-                                if (data.conversation_id === selectedConversationId) {
-                                    addMessage('output', `[STREAM] ${data.data}`);
+                                if (conversationId) {
+                                    // Get the message ID from the chunk if available
+                                    const messageId = data.message_id;
+                                    
+                                    if (messageId) {
+                                        // Append to accumulated content
+                                        if (!messageTracking[conversationId][messageId]) {
+                                            messageTracking[conversationId]._streamContent = data.data;
+                                        } else {
+                                            messageTracking[conversationId]._streamContent += data.data;
+                                        }
+                                        
+                                        const currentContent = messageTracking[conversationId]._streamContent;
+                                        const inReplyTo = data.in_reply_to;
+                                        
+                                        // Update or create response message with server ID
+                                        updateOrCreateMessage(
+                                            conversationId,
+                                            messageId,
+                                            'assistant',
+                                            currentContent,
+                                            inReplyTo
+                                        );
+                                    } else {
+                                        // Fallback for chunks without message ID 
+                                        console.warn('Received chunk without message_id');
+                                        
+                                        // Append to accumulated content
+                                        messageTracking[conversationId]._streamContent += data.data;
+                                        const currentContent = messageTracking[conversationId]._streamContent;
+                                        
+                                        // Use existing response ID or create a new one
+                                        const responseId = activeMessages[conversationId]?.response || `response-${Date.now()}`;
+                                        updateOrCreateMessage(conversationId, responseId, 'assistant', currentContent);
+                                    }
                                 }
                                 break;
+                                
                             case 'response_complete':
                                 // Handle response completion
-                                if (data.conversation_id === selectedConversationId) {
-                                    addMessage('system', '[SERVER] Response complete');
+                                if (conversationId) {
+                                    const messageId = data.message_id;
+                                    const inReplyTo = data.in_reply_to;
+                                    
+                                    if (messageId) {
+                                        // If we have tracked content, use it to finalize the message
+                                        const currentContent = messageTracking[conversationId]._streamContent;
+                                        if (currentContent) {
+                                            updateOrCreateMessage(
+                                                conversationId,
+                                                messageId,
+                                                'assistant',
+                                                currentContent,
+                                                inReplyTo
+                                            );
+                                        }
+                                        
+                                        // Reset streaming content after completion
+                                        messageTracking[conversationId]._streamContent = "";
+                                        console.log(`Response complete for message ${messageId}`);
+                                    }
                                 }
                                 break;
-                            case 'response':
-                                // Handle full response event
-                                if (data.data && data.data.conversation_id === selectedConversationId) {
-                                    addMessage('output', `[SERVER LLM] ${data.data.content}`);
+                                
+                            case 'tool_execution':
+                                // Handle tool execution notification
+                                if (conversationId) {
+                                    const messageId = data.message_id || `tool-${Date.now()}`;
+                                    const inReplyTo = data.in_reply_to;
+                                    const toolContent = `Executing tool: ${data.tool_name}...`;
+                                    
+                                    // Log tool usage
+                                    addMessage('system', `Using tool: ${data.tool_name}`);
+                                    
+                                    // Update or create tool message with server-provided ID
+                                    updateOrCreateMessage(
+                                        conversationId,
+                                        messageId,
+                                        'tool',
+                                        toolContent,
+                                        inReplyTo
+                                    );
+                                    
+                                    // Reset streaming content buffer
+                                    messageTracking[conversationId]._streamContent = "";
                                 }
                                 break;
+                                
+                            case 'tool_result':
+                                // Handle tool result
+                                if (conversationId) {
+                                    const messageId = data.message_id || `tool-result-${Date.now()}`;
+                                    const inReplyTo = data.in_reply_to;
+                                    
+                                    let resultText = data.result;
+                                    if (typeof resultText === 'object') {
+                                        resultText = JSON.stringify(resultText, null, 2);
+                                    }
+                                    
+                                    // Update or create tool result message with server-provided ID
+                                    updateOrCreateMessage(
+                                        conversationId,
+                                        messageId,
+                                        'tool',
+                                        `Tool result: ${resultText}`,
+                                        inReplyTo
+                                    );
+                                }
+                                break;
+                                
                             case 'heartbeat':
                                 // Log heartbeat quietly but don't display
                                 console.log('Heartbeat received');
                                 break;
+                                
                             default:
                                 console.log('Unknown event type:', data.type);
                                 addMessage('system', `Received event of type: ${data.type}`);
@@ -957,12 +1373,45 @@ GET  /output/stream          - Receive SSE events with responses
                 window.eventSource.close();
                 window.eventSource = null;
                 addMessage('system', 'SSE connection closed');
+                
+                // Keep message tracking data but reset active messages
+                // This allows us to continue displaying messages but not update them
+                if (selectedConversationId && activeMessages[selectedConversationId]) {
+                    // Reset active messages for current conversation only
+                    activeMessages[selectedConversationId] = {
+                        user: null,
+                        response: null,
+                        tool: null
+                    };
+                    
+                    // Reset streaming content
+                    if (messageTracking[selectedConversationId]) {
+                        messageTracking[selectedConversationId]._streamContent = "";
+                    }
+                }
             }
         }
 
         // Clear messages
         function clearMessages() {
             document.getElementById('messages').innerHTML = '';
+            
+            // Reset message tracking for current conversation
+            if (selectedConversationId) {
+                // Clear the message tracking for this conversation but keep the structure
+                messageTracking[selectedConversationId] = {
+                    _streamContent: ""
+                };
+                
+                // Reset active message tracking
+                activeMessages[selectedConversationId] = {
+                    user: null,
+                    response: null,
+                    tool: null
+                };
+                
+                console.log("Cleared messages and reset tracking for conversation:", selectedConversationId);
+            }
         }
 
         // Get context from Cognition Service
@@ -1288,6 +1737,99 @@ GET  /output/stream          - Receive SSE events with responses
             
             // Scroll to bottom
             messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+        
+        // Add or update a message for a specific conversation
+        function updateOrCreateMessage(conversationId, messageId, type, content, inReplyTo = null) {
+            // Store in tracking
+            if (!messageTracking[conversationId]) {
+                messageTracking[conversationId] = {};
+            }
+            
+            // Initialize active messages tracking if not present
+            if (!activeMessages[conversationId]) {
+                activeMessages[conversationId] = {
+                    user: null,
+                    response: null,
+                    tool: null
+                };
+            }
+            
+            // Track active message ID by type
+            if (type === 'user') {
+                activeMessages[conversationId].user = messageId;
+            } else if (type === 'assistant') {
+                activeMessages[conversationId].response = messageId;
+            } else if (type === 'tool') {
+                activeMessages[conversationId].tool = messageId;
+            }
+            
+            // Update or create the message data in tracking
+            const updatingExisting = !!messageTracking[conversationId][messageId];
+            messageTracking[conversationId][messageId] = {
+                type: type,
+                content: content,
+                timestamp: new Date().toISOString(),
+                inReplyTo: inReplyTo
+            };
+            
+            // Update UI
+            let messageDiv = document.getElementById(`msg-${messageId}`);
+            const messagesContainer = document.getElementById('messages');
+            
+            if (!messageDiv) {
+                // Create new element if it doesn't exist
+                messageDiv = document.createElement('div');
+                messageDiv.id = `msg-${messageId}`;
+                messageDiv.dataset.messageId = messageId;
+                messageDiv.dataset.type = type;
+                messageDiv.dataset.conversationId = conversationId;
+                if (inReplyTo) {
+                    messageDiv.dataset.inReplyTo = inReplyTo;
+                }
+                
+                // Set class based on type
+                if (type === 'user') {
+                    messageDiv.className = 'message input-message';
+                    messageDiv.textContent = `You: ${content}`;
+                } else if (type === 'assistant') {
+                    messageDiv.className = 'message output-message';
+                    messageDiv.textContent = `Server: ${content}`;
+                } else if (type === 'tool') {
+                    messageDiv.className = 'message system-message';
+                    messageDiv.textContent = `Tool: ${content}`;
+                } else {
+                    messageDiv.className = 'message system-message';
+                    messageDiv.textContent = `${type}: ${content}`;
+                }
+                
+                // Add to container
+                messagesContainer.appendChild(messageDiv);
+                console.log(`Created new message with ID: ${messageId}, type: ${type}`);
+            } else {
+                // Update existing element
+                if (type === 'user') {
+                    messageDiv.textContent = `You: ${content}`;
+                } else if (type === 'assistant') {
+                    messageDiv.textContent = `Server: ${content}`;
+                } else if (type === 'tool') {
+                    messageDiv.textContent = `Tool: ${content}`;
+                } else {
+                    messageDiv.textContent = `${type}: ${content}`;
+                }
+                
+                // If inReplyTo was provided, update that attribute
+                if (inReplyTo && !messageDiv.dataset.inReplyTo) {
+                    messageDiv.dataset.inReplyTo = inReplyTo;
+                }
+                
+                console.log(`Updated existing message with ID: ${messageId}, type: ${type}`);
+            }
+            
+            // Scroll to bottom
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            
+            return messageId;
         }
 
         // Format timestamp

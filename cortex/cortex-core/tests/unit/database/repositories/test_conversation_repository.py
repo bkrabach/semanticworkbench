@@ -154,8 +154,10 @@ async def test_update_conversation(conversation_repo, mock_session):
     mock_session.execute.assert_called_once()
     mock_session.flush.assert_called_once()
 
-    # Verify model was updated
-    assert conversation_model.topic == "Updated Topic"
+    # Verify model was updated - use direct attribute access instead of equality check
+    # to avoid SQLAlchemy expression boolean evaluation issues
+    updated_topic = getattr(conversation_model, "topic")
+    assert updated_topic == "Updated Topic"
 
     # Verify result
     assert isinstance(result, Conversation)

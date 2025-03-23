@@ -22,15 +22,16 @@ from typing import Protocol, runtime_checkable
 @runtime_checkable
 class MCPClientProtocol(Protocol):
     async def get_resource(
-        self, service_name: str, resource_name: str, params: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]: ...
+        self, service_name: str, resource_name: str, params: Optional[Dict[str, Any]] = None,
+        resource_id: Optional[str] = None, service: Optional[str] = None
+    ) -> Any: ...
 
 # Try to import MCP client, but don't fail if not available
 try:
     from .mcp import get_client
 except ImportError:
     # Mock client for testing without MCP
-    def get_client() -> Optional[MCPClientProtocol]:
+    def get_client() -> Optional['MCPClientProtocol']:
         return None
 
 

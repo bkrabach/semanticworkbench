@@ -60,7 +60,9 @@
         ".git/{info,lfs,logs,refs,objects}/**",
         ".git/{index,*refs,*HEAD}",
         ".vscode",
-        ".vscode-insiders"
+        ".vscode-insiders",
+        "docs",
+        "planning"
     ],
     "cSpell.words": ["esbenp", "fluentui", "reconnections"]
 }

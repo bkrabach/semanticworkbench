@@ -4,11 +4,12 @@ Tests for the response handler module.
 
 import json
 import os
-from unittest.mock import AsyncMock, patch
+import asyncio
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from app.core.exceptions import ToolExecutionException
-from app.core.response_handler import ResponseHandler, get_output_queue, register_tool
+from app.core.response_handler import ResponseHandler, register_tool
 
 # Ensure tests use the mock LLM
 os.environ["USE_MOCK_LLM"] = "true"
@@ -52,42 +53,70 @@ async def test_execute_tool_not_found(response_handler):
 @pytest.mark.asyncio
 async def test_stream_response(response_handler):
     """Test streaming a response to a queue."""
-    # Get a queue for a test conversation
+    # Create a test queue
+    test_queue = asyncio.Queue()
+    # Create test conversation ID
     conversation_id = "test-conversation"
-    queue = get_output_queue(conversation_id)
 
-    # Stream a response
-    message = "This is a test response"
-    await response_handler._stream_response(conversation_id, message)
+    # Mock get_output_queue to return our test queue
+    # Also create a mock message to provide ID for the response
+    mock_message = Mock()
+    mock_message.id = "test-message-id"
+    
+    # Create a mock message repository
+    mock_repo = Mock()
+    mock_repo.list_by_conversation = AsyncMock(return_value=[mock_message])
+    
+    # Create a mock UnitOfWork context manager
+    mock_uow = Mock()
+    mock_uow.repositories = Mock()
+    mock_uow.repositories.get_message_repository.return_value = mock_repo
+    
+    mock_uow_context = AsyncMock()
+    mock_uow_context.__aenter__.return_value = mock_uow
+    
+    with patch('app.core.response_handler.get_output_queue', return_value=test_queue), \
+         patch('app.core.response_handler.UnitOfWork.for_transaction', return_value=mock_uow_context):
 
-    # Read from the queue and verify the response chunks
-    chunks = []
-    done = False
+        # Stream a response
+        message = "This is a test response"
+        await response_handler._stream_response(conversation_id, message)
 
-    while not done:
-        try:
-            event_json = await queue.get()
+        # Calculate expected number of chunks (50 chars per chunk)
+        expected_chunks = (len(message) + 49) // 50  # Ceiling division
+
+        # Read from the queue and verify the response chunks
+        chunks = []
+        for _ in range(expected_chunks + 1):  # +1 for the [DONE] event
+            event_json = await asyncio.wait_for(test_queue.get(), timeout=1.0)
             event = json.loads(event_json)
             chunks.append(event)
 
-            if event.get("is_final") is True:
-                done = True
-        except Exception:  # Queue might be empty
-            break
+        # Verify chunk events
+        chunk_events = chunks[:-1]  # All except last (done) event
+        done_event = chunks[-1]  # Last event is done
+        
+        # Verify all chunk events
+        for event in chunk_events:
+            assert event["type"] == "response_chunk"
+            assert event["conversation_id"] == conversation_id
+            assert event["message_id"] == "test-message-id"
+            assert "data" in event
+            assert event["is_final"] is False
 
-    # Verify we got some chunks and a final message
-    assert len(chunks) > 0
-    assert chunks[-1]["type"] == "response_complete"
-    assert chunks[-1]["is_final"] is True
+        # Verify done event
+        assert done_event["type"] == "response_complete"
+        assert done_event["conversation_id"] == conversation_id
+        assert done_event["message_id"] == "test-message-id"
+        assert done_event["is_final"] is True
 
-    # Reconstruct the message from chunks
-    reconstructed = ""
-    for chunk in chunks[:-1]:  # Skip the final [DONE] event
-        if "data" in chunk:
+        # Reconstruct the message from chunks
+        reconstructed = ""
+        for chunk in chunk_events:
             reconstructed += chunk["data"]
 
-    # Verify the reconstructed message matches the original
-    assert reconstructed == message
+        # Verify the reconstructed message matches the original
+        assert reconstructed == message
 
 
 @pytest.mark.asyncio
@@ -127,15 +156,26 @@ async def test_handle_message_with_tool():
     """Test handling a message with a tool call."""
     # Create a handler with mocked dependencies
     handler = ResponseHandler()
+    
+    # Create test message objects
+    user_message = Mock()
+    user_message.id = "user-message-id"
+    
+    assistant_message = Mock()
+    assistant_message.id = "assistant-message-id"
 
     # Mock the methods we don't want to test here
-    handler._store_message = AsyncMock()
+    handler._store_message = AsyncMock(side_effect=[user_message, assistant_message])
     handler._get_conversation_history = AsyncMock(return_value=[])
     handler._stream_response = AsyncMock()
     handler._execute_tool = AsyncMock(return_value="Tool result")
 
+    # Mock output queue
+    mock_queue = AsyncMock()
+    
     # Set up the LLM adapter to use mock
-    with patch("app.core.llm_adapter.llm_adapter.generate") as mock_generate:
+    with patch("app.core.llm_adapter.llm_adapter.generate") as mock_generate, \
+         patch("app.core.response_handler.get_output_queue", return_value=mock_queue):
         # First call returns a tool request, second call returns content
         mock_generate.side_effect = [
             {"tool": "test_tool", "input": {"param": "value"}},

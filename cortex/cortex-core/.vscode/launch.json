@@ -9,6 +9,17 @@
       "cwd": "${workspaceFolder}",
       "args": ["app.main:app"],
       "jinja": true
+    },
+    {
+      "consoleName": "cortex-core-reset",
+      "name": "cortex-core with reset",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "uvicorn",
+      "cwd": "${workspaceFolder}",
+      "args": ["app.main:app"],
+      "jinja": true,
+      "preLaunchTask": "reset-cortex-core-data"
     }
   ]
 }

@@ -35,7 +35,8 @@ class MCPClient(ABC):
 
     @abstractmethod
     async def get_resource(
-        self, service_name: str, resource_name: str, params: Optional[Dict[str, Any]] = None
+        self, service_name: str, resource_name: str, params: Optional[Dict[str, Any]] = None,
+        resource_id: Optional[str] = None, service: Optional[str] = None
     ) -> ResourceDataType:
         """Get a resource from the specified service.
 
@@ -43,6 +44,8 @@ class MCPClient(ABC):
             service_name: Name of the service
             resource_name: Name of the resource to access
             params: Optional parameters for resource access
+            resource_id: Optional resource ID
+            service: Optional service name (synonym for service_name for API compatibility)
 
         Returns:
             Resource data

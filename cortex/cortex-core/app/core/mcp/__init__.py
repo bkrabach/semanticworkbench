@@ -36,7 +36,7 @@ __all__ = [
 default_client = InProcessMCPClient()
 
 
-def get_client() -> MCPClient:
+def get_client() -> 'MCPClient':
     """Get the default MCP client instance.
 
     Returns:

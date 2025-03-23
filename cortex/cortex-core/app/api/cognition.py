@@ -42,8 +42,11 @@ async def get_user_context(request: GetContextRequest, current_user: dict = Depe
     logger.info(f"Retrieving context for user {user_id}")
 
     try:
+        # Ensure limit has a valid value before passing it to the function
+        limit = 10 if request.limit is None else request.limit
+        
         # Call the get_context tool function
-        result = await get_context(user_id=user_id, query=request.query, limit=request.limit)
+        result = await get_context(user_id=user_id, query=request.query, limit=limit)
 
         # Return the result
         return GetContextResponse(status="success", data=result)
@@ -88,9 +91,12 @@ async def analyze_user_conversation(
     logger.info(f"Analyzing conversation {request.conversation_id} for user {user_id}")
 
     try:
+        # Ensure analysis_type has a valid value
+        analysis_type = "summary" if request.analysis_type is None else request.analysis_type
+        
         # Call the analyze_conversation tool function
         result = await analyze_conversation(
-            user_id=user_id, conversation_id=request.conversation_id, analysis_type=request.analysis_type
+            user_id=user_id, conversation_id=request.conversation_id, analysis_type=analysis_type
         )
 
         # Return the result
@@ -138,12 +144,16 @@ async def search_user_history(request: SearchHistoryRequest, current_user: dict 
     logger.info(f"Searching history for user {user_id} with query '{request.query}'")
 
     try:
+        # Ensure parameters have valid values
+        limit = 10 if request.limit is None else request.limit
+        include_conversations = True if request.include_conversations is None else request.include_conversations
+        
         # Call the search_history tool function
         result = await search_history(
             user_id=user_id,
             query=request.query,
-            limit=request.limit,
-            include_conversations=request.include_conversations,
+            limit=limit,
+            include_conversations=include_conversations,
         )
 
         # Return the result

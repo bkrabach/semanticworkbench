@@ -233,6 +233,19 @@ class ResponseHandler:
         """
         if not final_text:
             final_text = ""
+            
+        # Get the current assistant message ID for this streaming session
+        assistant_message_id = None
+        try:
+            async with UnitOfWork.for_transaction() as uow:
+                message_repo = uow.repositories.get_message_repository()
+                # Get the most recent assistant message for this conversation
+                messages = await message_repo.list_by_conversation(conversation_id, limit=1, role="assistant")
+                if messages and len(messages) > 0:
+                    assistant_message_id = messages[0].id
+        except Exception as e:
+            logger.warning(f"Failed to get assistant message ID for streaming: {e}")
+            # Continue without message ID if we can't get it
 
         # Get the output queue for this conversation
         queue = get_output_queue(conversation_id)
@@ -246,6 +259,7 @@ class ResponseHandler:
                 "type": "response_chunk",
                 "data": chunk,
                 "conversation_id": conversation_id,
+                "message_id": assistant_message_id,  # Include the message ID in chunks
                 "timestamp": datetime.now().isoformat(),
                 "is_final": False,
             }
@@ -260,6 +274,7 @@ class ResponseHandler:
         done_event = {
             "type": "response_complete",
             "conversation_id": conversation_id,
+            "message_id": assistant_message_id,  # Include the message ID in completion
             "timestamp": datetime.now().isoformat(),
             "is_final": True,
         }
@@ -281,14 +296,16 @@ class ResponseHandler:
         logger.info(f"Handling message from user {user_id} in conversation {conversation_id}")
 
         try:
-            # 1. Store the user input
-            await self._store_message(
+            # 1. Store the user input and get the message ID
+            user_message = await self._store_message(
                 conversation_id=conversation_id,
                 sender_id=user_id,
                 content=message_content,
                 role="user",
                 metadata=metadata,
             )
+            # Extract the message ID for tracking
+            user_message_id = user_message.id
 
             # 2. Retrieve conversation history
             history = await self._get_conversation_history(conversation_id)
@@ -362,6 +379,7 @@ class ResponseHandler:
                 logger.debug(f"LLM iteration {iterations} for conversation {conversation_id}")
 
                 # Call the LLM to generate a response
+                logger.info(f"Calling LLM in iteration {iterations} with {len(messages)} messages")
                 result = await llm_adapter.generate(messages)
 
                 if result is None:
@@ -374,6 +392,25 @@ class ResponseHandler:
                     tool_name = result["tool"]
                     tool_args = result.get("input", {})
 
+                    # Stream a notification that we're calling a tool
+                    # This helps the client show a proper UI indication that a tool is being used
+                    
+                    # Get the output queue for this conversation
+                    queue = get_output_queue(conversation_id)
+                    
+                    # Send a tool use notification event
+                    tool_event = {
+                        "type": "tool_execution",
+                        "tool_name": tool_name,
+                        "tool_args": tool_args,
+                        "conversation_id": conversation_id,
+                        "message_id": f"tool-{conversation_id}-{datetime.now().timestamp()}",
+                        "in_reply_to": user_message_id,
+                        "timestamp": datetime.now().isoformat(),
+                        "is_final": False,
+                    }
+                    await queue.put(json.dumps(tool_event))
+                    
                     try:
                         # Execute the requested tool
                         tool_result = await self._execute_tool(tool_name, tool_args, user_id)
@@ -386,18 +423,48 @@ class ResponseHandler:
                                 tool_result_str = str(tool_result)
                         else:
                             tool_result_str = tool_result
+                        
+                        # Generate a unique tool result message ID
+                        tool_result_id = f"tool-result-{conversation_id}-{datetime.now().timestamp()}"
+                        
+                        # Send a tool result notification event
+                        tool_result_event = {
+                            "type": "tool_result",
+                            "tool_name": tool_name,
+                            "result": tool_result,
+                            "conversation_id": conversation_id,
+                            "message_id": tool_result_id,
+                            "in_reply_to": user_message_id,
+                            "timestamp": datetime.now().isoformat(),
+                            "is_final": False,
+                        }
+                        await queue.put(json.dumps(tool_result_event))
 
                         # Insert the tool result into the conversation
-                        tool_message = {"role": "assistant", "content": f"I need to use the {tool_name} tool."}
-                        tool_result_message = {
-                            "role": "user",
-                            "content": f"Tool '{tool_name}' returned: {tool_result_str}",
+                        # Format as an OpenAI-style tool call message
+                        tool_message: Dict[str, Any] = {
+                            "role": "assistant",
+                            "content": None,
+                            "function_call": {
+                                "name": tool_name,
+                                "arguments": json.dumps(tool_args)
+                            }
+                        }
+                        
+                        # Format as OpenAI-style tool result message
+                        tool_result_message: Dict[str, Any] = {
+                            "role": "function",
+                            "name": tool_name,
+                            "content": tool_result_str
                         }
 
                         messages.append(tool_message)
                         messages.append(tool_result_message)
 
                         # Don't store tool interactions in the database to keep history clean
+                                # Log the next step for debugging
+                        logger.info(f"Tool '{tool_name}' executed successfully, continuing to get final response")
+                        
                         # Continue to the next iteration with the tool result
                         continue
 
@@ -412,13 +479,15 @@ class ResponseHandler:
 
                     # Store the assistant's answer in the DB
                     if final_answer:
-                        await self._store_message(
+                        assistant_message = await self._store_message(
                             conversation_id=conversation_id,
                             sender_id="assistant",  # Use a special ID for the assistant
                             content=final_answer,
                             role="assistant",
-                            metadata={"iterations": iterations},
+                            metadata={"iterations": iterations, "in_reply_to": user_message_id},
                         )
+                        # Extract assistant message ID
+                        assistant_message_id = assistant_message.id
 
                         # Publish an event
                         event = {
@@ -426,6 +495,8 @@ class ResponseHandler:
                             "data": {
                                 "content": final_answer,
                                 "conversation_id": conversation_id,
+                                "message_id": assistant_message_id,
+                                "in_reply_to": user_message_id,
                             },
                             "user_id": user_id,
                             "timestamp": datetime.now().isoformat(),
@@ -443,6 +514,8 @@ class ResponseHandler:
                 )
 
             # 5. Stream the final answer via SSE
+            if final_answer:
+                logger.info(f"Streaming final response to client: {final_answer[:50]}...")
             await self._stream_response(
                 conversation_id, final_answer or "I apologize, but I wasn't able to generate a response."
             )

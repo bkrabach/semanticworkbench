@@ -88,7 +88,11 @@ class CognitionService:
 
             # Retrieve user history from Memory Service
             history = []
-            if limit:
+            
+            # Handle potential None memory_service
+            if self.memory_service is None:
+                logger.warning("Memory service is not available, returning empty history")
+            elif limit:
                 # Get double the limit to have more items for ranking
                 history = await self.memory_service.get_limited_history(user_id, str(limit * 2))
             else:
@@ -229,7 +233,11 @@ class CognitionService:
                 }
 
             # Get conversation history from Memory Service
-            conversation_items = await self.memory_service.get_conversation(conversation_id)
+            conversation_items = []
+            if self.memory_service is None:
+                logger.warning("Memory service is not available, cannot retrieve conversation")
+            else:
+                conversation_items = await self.memory_service.get_conversation(conversation_id)
 
             # We have both the user_id and conversation items here
             # Could filter for user's messages if needed in the future
@@ -427,7 +435,11 @@ class CognitionService:
                 return {"results": [], "count": 0, "query": query, "error": "User ID and query are required"}
 
             # Get user history from Memory Service
-            history = await self.memory_service.get_history(user_id)
+            history = []
+            if self.memory_service is None:
+                logger.warning("Memory service is not available, returning empty history")
+            else:
+                history = await self.memory_service.get_history(user_id)
 
             # Filter out error information from each item's metadata
             for item in history:
@@ -480,7 +492,11 @@ class CognitionService:
                 # Fetch conversations and build a lookup map
                 conversation_data = {}
                 for conv_id in conversation_ids:
-                    conversation = await self.memory_service.get_conversation(conv_id)
+                    conversation = None
+                    if self.memory_service is None:
+                        logger.warning("Memory service is not available, cannot retrieve conversation")
+                    else:
+                        conversation = await self.memory_service.get_conversation(conv_id)
                     if conversation:
                         # For each conversation, create a simple summary
                         conversation_data[conv_id] = {

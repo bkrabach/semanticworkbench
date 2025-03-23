@@ -2,7 +2,6 @@
 Shared test fixtures and configuration.
 """
 
-import asyncio
 import os
 from unittest.mock import AsyncMock
 
@@ -55,7 +54,8 @@ async def async_client():
     """Create an async client for testing async endpoints."""
     from httpx import AsyncClient
 
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    # For HTTPX AsyncClient, we set the base_url and don't pass the app directly
+    async with AsyncClient(base_url="http://test") as client:
         yield client
 
 

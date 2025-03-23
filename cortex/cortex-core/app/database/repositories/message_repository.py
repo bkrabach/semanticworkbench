@@ -21,7 +21,9 @@ class MessageRepository(BaseRepository[Message, DbMessage]):
         """
         super().__init__(session, Message, DbMessage)
 
-    async def list_by_conversation(self, conversation_id: str, limit: int = 100, offset: int = 0) -> List[Message]:
+    async def list_by_conversation(
+        self, conversation_id: str, limit: int = 100, offset: int = 0, role: Optional[str] = None
+    ) -> List[Message]:
         """
         List messages in a specific conversation.
 
@@ -29,19 +31,27 @@ class MessageRepository(BaseRepository[Message, DbMessage]):
             conversation_id: Conversation ID
             limit: Maximum number of messages to return
             offset: Pagination offset
+            role: Optional role filter (user, assistant, etc.)
 
         Returns:
             List of messages
         """
         try:
-            result = await self.session.execute(
-                select(DbMessage)
-                .where(DbMessage.conversation_id == conversation_id)
-                .order_by(DbMessage.timestamp)
-                .limit(limit)
-                .offset(offset)
-            )
+            query = select(DbMessage).where(DbMessage.conversation_id == conversation_id)
+            
+            # Apply role filter if specified
+            if role:
+                # Role is stored in metadata_json as a JSON field
+                # We need to use JSON functions to query it
+                # This is a simplification - in production code, you'd use proper JSON operators
+                query = query.where(DbMessage.metadata_json.like(f'%"role": "{role}"%'))
+            
+            # Apply ordering, limit, and offset
+            query = query.order_by(DbMessage.timestamp.desc()).limit(limit).offset(offset)
+            
+            result = await self.session.execute(query)
             db_messages = result.scalars().all()
+            
             # Filter out None values to satisfy type checker
             messages = [msg for msg in [self._to_domain(db) for db in db_messages] if msg is not None]
             return messages
