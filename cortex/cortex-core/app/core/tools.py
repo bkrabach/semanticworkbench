@@ -14,25 +14,7 @@ from pydantic import BaseModel, Field
 
 from ..database.unit_of_work import UnitOfWork
 from .response_handler import register_tool
-
-# Add Protocol and runtime_checkable
-from typing import Protocol, runtime_checkable
-
-# Define a protocol for MCP client
-@runtime_checkable
-class MCPClientProtocol(Protocol):
-    async def get_resource(
-        self, service_name: str, resource_name: str, params: Optional[Dict[str, Any]] = None,
-        resource_id: Optional[str] = None, service: Optional[str] = None
-    ) -> Any: ...
-
-# Try to import MCP client, but don't fail if not available
-try:
-    from .mcp import get_client
-except ImportError:
-    # Mock client for testing without MCP
-    def get_client() -> Optional['MCPClientProtocol']:
-        return None
+from .mcp import get_client
 
 
 logger = logging.getLogger(__name__)
@@ -273,42 +255,20 @@ async def get_context(user_id: str, query: Optional[str] = None, limit: int = 10
     try:
         logger.info(f"Getting context for user {user_id}")
 
-        # Get the MCP client
+        # Get context from cognition service using MCP
         mcp_client = get_client()
+        result = await mcp_client.get_resource(
+            service_name="cognition", 
+            resource_name="context", 
+            params={"user_id": user_id, "query": query, "limit": limit}
+        )
+        
+        # Ensure result is a dictionary
+        if not isinstance(result, dict):
+            result = {"context": [], "user_id": user_id, "query": query, "count": 0, "error": "Invalid response format"}
 
-        if mcp_client:
-            # Get context from cognition service
-            result = await mcp_client.get_resource(
-                service_name="cognition", resource_name="context", params={"user_id": user_id, "query": query, "limit": limit}
-            )
-            # Ensure result is a dictionary
-            if not isinstance(result, dict):
-                result = {"context": [], "user_id": user_id, "query": query, "count": 0, "error": "Invalid response format"}
-
-            logger.info(f"Found {result.get('count', 0)} context items for user {user_id}")
-            return result
-        else:
-            # Fallback to simpler implementation if MCP not available
-            logger.warning("MCP client not available, using fallback for get_context")
-
-            # Get recent messages from database
-            async with UnitOfWork.for_transaction() as uow:
-                message_repo = uow.repositories.get_message_repository()
-                messages = await message_repo.list_by_sender(user_id, limit=limit)
-
-                context_items = []
-                for msg in messages:
-                    if query and query.lower() not in msg.content.lower():
-                        continue
-
-                    context_items.append({
-                        "id": msg.id,
-                        "content": msg.content,
-                        "timestamp": msg.timestamp,
-                        "conversation_id": msg.conversation_id,
-                    })
-
-                return {"context": context_items, "user_id": user_id, "query": query, "count": len(context_items)}
+        logger.info(f"Found {result.get('count', 0)} context items for user {user_id}")
+        return result
     except Exception as e:
         logger.error(f"Error getting context: {e}")
         return {"context": [], "user_id": user_id, "query": query, "count": 0, "error": str(e)}
@@ -347,56 +307,20 @@ async def analyze_conversation(user_id: str, conversation_id: str, analysis_type
     try:
         logger.info(f"Analyzing conversation {conversation_id} for user {user_id}")
 
-        # Get the MCP client
+        # Get analysis from cognition service using MCP
         mcp_client = get_client()
+        result = await mcp_client.get_resource(
+            service_name="cognition",
+            resource_name="analyze_conversation",
+            params={"user_id": user_id, "conversation_id": conversation_id, "analysis_type": analysis_type},
+        )
+        
+        # Ensure result is a dictionary
+        if not isinstance(result, dict):
+            result = {"type": analysis_type, "results": {}, "conversation_id": conversation_id, "error": "Invalid response format"}
 
-        if mcp_client:
-            # Get analysis from cognition service
-            result = await mcp_client.get_resource(
-                service_name="cognition",
-                resource_name="analyze_conversation",
-                params={"user_id": user_id, "conversation_id": conversation_id, "analysis_type": analysis_type},
-            )
-            # Ensure result is a dictionary
-            if not isinstance(result, dict):
-                result = {"type": analysis_type, "results": {}, "conversation_id": conversation_id, "error": "Invalid response format"}
-
-            logger.info(f"Completed {analysis_type} analysis for conversation {conversation_id}")
-            return result
-        else:
-            # Fallback to simpler implementation if MCP not available
-            logger.warning("MCP client not available, using fallback for analyze_conversation")
-
-            # Get conversation from database and do simple analysis
-            async with UnitOfWork.for_transaction() as uow:
-                message_repo = uow.repositories.get_message_repository()
-                messages = await message_repo.list_by_conversation(conversation_id)
-
-                if analysis_type == "summary":
-                    # Simple count-based summary
-                    participant_counts: Dict[str, int] = {}
-                    for msg in messages:
-                        participant_counts[msg.sender_id] = participant_counts.get(msg.sender_id, 0) + 1
-
-                    return {
-                        "type": "summary",
-                        "results": {
-                            "message_count": len(messages),
-                            "participants": len(participant_counts),
-                            "participant_counts": participant_counts,
-                        },
-                        "conversation_id": conversation_id,
-                    }
-                else:
-                    # Simple response for other types
-                    return {
-                        "type": analysis_type,
-                        "results": {
-                            "message_count": len(messages),
-                            "analysis": f"{analysis_type} analysis not available without MCP",
-                        },
-                        "conversation_id": conversation_id,
-                    }
+        logger.info(f"Completed {analysis_type} analysis for conversation {conversation_id}")
+        return result
     except Exception as e:
         logger.error(f"Error analyzing conversation: {e}")
         return {"type": analysis_type, "results": {}, "conversation_id": conversation_id, "error": str(e)}
@@ -439,82 +363,25 @@ async def search_history(
     try:
         logger.info(f"Searching history for user {user_id} with query '{query}'")
 
-        # Get the MCP client
+        # Search history via cognition service using MCP
         mcp_client = get_client()
+        result = await mcp_client.get_resource(
+            service_name="cognition",
+            resource_name="search_history",
+            params={
+                "user_id": user_id,
+                "query": query,
+                "limit": limit,
+                "include_conversations": include_conversations,
+            },
+        )
+        
+        # Ensure result is a dictionary
+        if not isinstance(result, dict):
+            result = {"results": [], "count": 0, "query": query, "error": "Invalid response format"}
 
-        if mcp_client:
-            # Search history via cognition service
-            result = await mcp_client.get_resource(
-                service_name="cognition",
-                resource_name="search_history",
-                params={
-                    "user_id": user_id,
-                    "query": query,
-                    "limit": limit,
-                    "include_conversations": include_conversations,
-                },
-            )
-            # Ensure result is a dictionary
-            if not isinstance(result, dict):
-                result = {"results": [], "count": 0, "query": query, "error": "Invalid response format"}
-
-            logger.info(f"Found {result.get('count', 0)} matches for query '{query}'")
-            return result
-        else:
-            # Fallback to simpler implementation if MCP not available
-            logger.warning("MCP client not available, using fallback for search_history")
-
-            # Search messages directly in database
-            async with UnitOfWork.for_transaction() as uow:
-                message_repo = uow.repositories.get_message_repository()
-                messages = await message_repo.list_by_sender(user_id, limit=100)  # Get a larger set to search through
-
-                # Simple search based on content matches
-                results = []
-                for msg in messages:
-                    if query.lower() in msg.content.lower():
-                        result_item = {
-                            "id": msg.id,
-                            "content": msg.content,
-                            "timestamp": msg.timestamp,
-                            "conversation_id": msg.conversation_id,
-                        }
-
-                        # Add conversation data if requested
-                        if include_conversations and msg.conversation_id:
-                            result_item["_conversation_id"] = msg.conversation_id
-
-                        results.append(result_item)
-
-                        # Stop once we hit the limit
-                        if len(results) >= limit:
-                            break
-
-                # If including conversations, fetch minimal conversation data
-                if include_conversations:
-                    conversation_ids = {r.get("_conversation_id") for r in results if "_conversation_id" in r}
-
-                    for conv_id in conversation_ids:
-                        # Ensure conv_id is a string
-                        if conv_id:
-                            conv_messages = await message_repo.list_by_conversation(str(conv_id), limit=1)
-
-                            # Add simple conversation data
-                            for result_item in results:
-                                if result_item.get("_conversation_id") == conv_id:
-                                    first_message = conv_messages[0].content if conv_messages else ""
-                                    # Cast the dictionary to Dict[str, Any] to make mypy happy
-                                    conv_data: Dict[str, Any] = {
-                                        "message_count": len(conv_messages),
-                                        "first_message": first_message,
-                                    }
-                                    result_item["_conversation_data"] = conv_data
-
-                                    # Remove the temporary field
-                                    if "_conversation_id" in result_item:
-                                        del result_item["_conversation_id"]
-
-                return {"results": results[:limit], "count": len(results[:limit]), "query": query}
+        logger.info(f"Found {result.get('count', 0)} matches for query '{query}'")
+        return result
     except Exception as e:
         logger.error(f"Error searching history: {e}")
         return {"results": [], "count": 0, "query": query, "error": str(e)}
