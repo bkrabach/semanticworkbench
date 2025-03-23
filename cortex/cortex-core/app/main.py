@@ -1,5 +1,4 @@
 import logging
-import os
 import uuid
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator, Dict
@@ -12,9 +11,23 @@ from fastapi.responses import JSONResponse
 from app.api import auth, config, health, input, management, output
 from app.core.event_bus import event_bus
 from app.core.response_handler import create_response_handler
+from app.core.config import (
+    MEMORY_SERVICE_URL, 
+    COGNITION_SERVICE_URL, 
+    SERVER_HOST,
+    SERVER_PORT, 
+    ENVIRONMENT,
+    APP_VERSION,
+    LOG_LEVEL,
+    validate_config
+)
 from app.utils.exceptions import CortexException
 
 # Configure logging
+logging.basicConfig(
+    level=getattr(logging, LOG_LEVEL),
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+)
 logger = logging.getLogger(__name__)
 
 # Store response handler reference
@@ -26,21 +39,24 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Handle application startup and shutdown events."""
     global response_handler
 
-    # Get service URLs from environment variables or use defaults
-    memory_url = os.environ.get("MEMORY_SERVICE_URL", "http://localhost:5001/sse")
-    cognition_url = os.environ.get("COGNITION_SERVICE_URL", "http://localhost:5000/sse")
+    # Validate configuration
+    config_error = validate_config()
+    if config_error:
+        logger.error(f"Configuration error: {config_error}")
+        # We don't exit here to allow the application to start even with config warnings
+        # For critical errors, the validation function will log appropriately
 
     # Initialize components on application startup
     response_handler = await create_response_handler(
-        event_bus=event_bus, memory_url=memory_url, cognition_url=cognition_url
+        event_bus=event_bus, memory_url=MEMORY_SERVICE_URL, cognition_url=COGNITION_SERVICE_URL
     )
 
     # Store response handler in app state for access by health checks
     app.state.response_handler = response_handler
 
-    logger.info("Cortex Core started with services:")
-    logger.info(f"- Memory service: {memory_url}")
-    logger.info(f"- Cognition service: {cognition_url}")
+    logger.info(f"Cortex Core {APP_VERSION} started in {ENVIRONMENT} environment with services:")
+    logger.info(f"- Memory service: {MEMORY_SERVICE_URL}")
+    logger.info(f"- Cognition service: {COGNITION_SERVICE_URL}")
 
     yield
 
@@ -111,4 +127,4 @@ if __name__ == "__main__":
     # This block allows running the app directly for testing/development.
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host=SERVER_HOST, port=SERVER_PORT, log_level=LOG_LEVEL.lower())

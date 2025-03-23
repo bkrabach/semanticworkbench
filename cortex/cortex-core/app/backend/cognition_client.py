@@ -36,14 +36,16 @@ class CognitionClient:
     - Future: Domain-specific analysis and insights
     """
 
-    def __init__(self, service_url: str = "http://localhost:5000/sse"):
+    def __init__(self, service_url: Optional[str] = None):
         """
         Initialize connection parameters for Cognition Service.
 
         Args:
-            service_url: The URL of the SSE endpoint for the Cognition service
+            service_url: The URL of the SSE endpoint for the Cognition service.
+                         If None, uses the value from configuration.
         """
-        self.service_url = service_url
+        from app.core.config import COGNITION_SERVICE_URL
+        self.service_url = service_url or COGNITION_SERVICE_URL
         self.session: Optional[ClientSession] = None
         self.streams_context: Optional[SSEContext] = None
         self.available_tools: List[str] = []

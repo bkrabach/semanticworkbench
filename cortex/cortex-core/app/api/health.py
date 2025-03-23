@@ -1,5 +1,4 @@
 import logging
-import os
 import platform
 import time
 from datetime import datetime
@@ -59,8 +58,8 @@ async def health_check(request: Request) -> HealthResponse:
     app = request.app
     response_handler = app.state.response_handler if hasattr(app.state, "response_handler") else None
 
-    # Get version from environment or default
-    version = os.environ.get("APP_VERSION", "1.0.0")
+    # Get version from config
+    from app.core.config import APP_VERSION, ENVIRONMENT
 
     # Calculate uptime
     uptime_seconds = time.time() - APP_START_TIME
@@ -71,7 +70,7 @@ async def health_check(request: Request) -> HealthResponse:
         platform=f"{platform.system()} {platform.release()}",
         python_version=platform.python_version(),
         uptime_seconds=uptime_seconds,
-        environment=os.environ.get("ENVIRONMENT", "development"),
+        environment=ENVIRONMENT,
     )
 
     logger.debug(f"System info collected: uptime={uptime_seconds:.2f}s")
@@ -165,7 +164,7 @@ async def health_check(request: Request) -> HealthResponse:
     response = HealthResponse(
         status=overall_status,
         timestamp=time.time(),
-        version=version,
+        version=APP_VERSION,
         system=system_info,
         services=services,
     )

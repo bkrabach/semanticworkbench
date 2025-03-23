@@ -1,22 +1,16 @@
 import datetime
 import logging
-import os
 from typing import Any, Dict, Optional
 
 import jwt
 from fastapi import Header
 from jwt.jwks_client import PyJWKClient
 
+from app.core.config import USE_AUTH0, AUTH0_DOMAIN, AUTH0_AUDIENCE, DEV_SECRET
 from app.utils.exceptions import AuthenticationException
 
 # Set up logger
 logger = logging.getLogger(__name__)
-
-# Configuration settings
-USE_AUTH0 = os.getenv("USE_AUTH0", "false").lower() == "true"
-AUTH0_DOMAIN = os.getenv("AUTH0_DOMAIN", "your-auth0-domain.auth0.com")
-AUTH0_AUDIENCE = os.getenv("AUTH0_AUDIENCE", "https://api.example.com")
-DEV_SECRET = os.getenv("DEV_SECRET", "development_secret_key_do_not_use_in_production")
 
 # Initialize JWKS client if in Auth0 mode
 jwks_client = None

@@ -64,7 +64,7 @@ def test_workspace_flow():
 
     # Create a workspace
     response = client.post(
-        "/config/workspace",
+        "/config/workspaces",
         json={"name": "Test Workspace", "description": "Test description"},
         headers={"Authorization": f"Bearer {token}"},
     )
@@ -72,14 +72,14 @@ def test_workspace_flow():
     workspace_id = response.json()["workspace"]["id"]
 
     # List workspaces
-    response = client.get("/config/workspace", headers={"Authorization": f"Bearer {token}"})
+    response = client.get("/config/workspaces", headers={"Authorization": f"Bearer {token}"})
     assert response.status_code == 200
     assert "workspaces" in response.json()
     assert len(response.json()["workspaces"]) > 0
 
     # Create a conversation in the workspace
     response = client.post(
-        "/config/conversation",
+        "/config/conversations",
         json={"workspace_id": workspace_id, "topic": "Test Conversation"},
         headers={"Authorization": f"Bearer {token}"},
     )
@@ -90,7 +90,7 @@ def test_workspace_flow():
 
     # List conversations in the workspace
     response = client.get(
-        f"/config/conversation?workspace_id={workspace_id}", headers={"Authorization": f"Bearer {token}"}
+        f"/config/conversations?workspace_id={workspace_id}", headers={"Authorization": f"Bearer {token}"}
     )
     assert response.status_code == 200
     assert "conversations" in response.json()

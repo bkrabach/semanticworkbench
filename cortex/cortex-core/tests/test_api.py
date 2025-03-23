@@ -56,7 +56,7 @@ def test_input_endpoint():
 
     # Create a workspace and conversation first
     workspace_response = client.post(
-        "/config/workspace",
+        "/config/workspaces",
         json={"name": "Test Workspace", "description": "Test Description", "metadata": {}},
         headers=headers,
     )
@@ -64,7 +64,7 @@ def test_input_endpoint():
     workspace_id = workspace_data["workspace"]["id"]
 
     conversation_response = client.post(
-        "/config/conversation",
+        "/config/conversations",
         json={"workspace_id": workspace_id, "topic": "Test Conversation", "metadata": {}},
         headers=headers,
     )
@@ -104,7 +104,7 @@ def test_workspace_endpoints():
 
     # Create workspace
     response = client.post(
-        "/config/workspace",
+        "/config/workspaces",
         json={"name": "Test Workspace", "description": "Test Description", "metadata": {}},
         headers=headers,
     )
@@ -115,7 +115,7 @@ def test_workspace_endpoints():
     workspace_id = data["workspace"]["id"]
 
     # List workspaces
-    response = client.get("/config/workspace", headers=headers)
+    response = client.get("/config/workspaces", headers=headers)
     assert response.status_code == 200
     data = response.json()
     assert len(data["workspaces"]) > 0
@@ -123,7 +123,7 @@ def test_workspace_endpoints():
 
     # Create conversation
     response = client.post(
-        "/config/conversation",
+        "/config/conversations",
         json={"workspace_id": workspace_id, "topic": "Test Conversation", "metadata": {}},
         headers=headers,
     )
@@ -134,7 +134,7 @@ def test_workspace_endpoints():
     conversation_id = data["conversation"]["id"]
 
     # List conversations
-    response = client.get(f"/config/conversation?workspace_id={workspace_id}", headers=headers)
+    response = client.get(f"/config/conversations?workspace_id={workspace_id}", headers=headers)
     assert response.status_code == 200
     data = response.json()
     assert len(data["conversations"]) > 0

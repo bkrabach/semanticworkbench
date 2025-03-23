@@ -21,13 +21,13 @@ def test_custom_exception_handler():
     # Create a workspace with valid token first
     headers = get_auth_header()
     client.post(
-        "/config/workspace",
+        "/config/workspaces",
         json={"name": "Test Workspace", "description": "Test Description", "metadata": {}},
         headers=headers,
     )
 
     # Try to access a non-existent workspace (should raise ResourceNotFoundException)
-    response = client.get("/config/conversation?workspace_id=non-existent-id", headers=headers)
+    response = client.get("/config/conversations?workspace_id=non-existent-id", headers=headers)
 
     # Check that we get the expected response
     assert response.status_code == status.HTTP_404_NOT_FOUND
@@ -43,7 +43,7 @@ def test_validation_error_handler():
     # Send a request with missing required fields
     headers = get_auth_header()
     response = client.post(
-        "/config/workspace",
+        "/config/workspaces",
         json={"name": "Test Workspace"},  # Missing description field
         headers=headers,
     )
@@ -60,7 +60,7 @@ def test_validation_error_handler():
 def test_authentication_error_handler():
     """Test that authentication errors are handled properly."""
     # Send a request with invalid token
-    response = client.get("/config/workspace", headers={"Authorization": "Bearer invalid-token"})
+    response = client.get("/config/workspaces", headers={"Authorization": "Bearer invalid-token"})
 
     # Check that we get the expected response
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
@@ -78,7 +78,7 @@ def test_permission_denied_error():
 
     # User 1 creates a workspace
     workspace_response = client.post(
-        "/config/workspace",
+        "/config/workspaces",
         json={"name": "User1 Workspace", "description": "Test Description", "metadata": {}},
         headers=headers_user1,
     )
@@ -86,7 +86,7 @@ def test_permission_denied_error():
 
     # Special path for triggering permission denied error in tests
     response = client.get(
-        f"/config/conversation?workspace_id={test_workspace_id}&test_permission_denied=true", headers=headers_user2
+        f"/config/conversations?workspace_id={test_workspace_id}&test_permission_denied=true", headers=headers_user2
     )
 
     # Check that we get the expected response

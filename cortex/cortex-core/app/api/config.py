@@ -147,42 +147,6 @@ async def list_conversations(
 
     return {"conversations": workspace_conversations}
 
-
-# Keep backward compatibility with original endpoints
-@router.post("/workspace")
-async def create_workspace_legacy(
-    workspace_data: api_models.WorkspaceCreateRequest, current_user: Dict[str, Any] = Depends(get_current_user)
-) -> Dict[str, Any]:
-    """Legacy endpoint for backward compatibility."""
-    return await create_workspace(workspace_data, current_user)
-
-
-@router.get("/workspace")
-async def list_workspaces_legacy(
-    current_user: Dict[str, Any] = Depends(get_current_user),
-) -> Dict[str, List[Dict[str, Any]]]:
-    """Legacy endpoint for backward compatibility."""
-    return await list_workspaces(current_user)
-
-
-@router.post("/conversation")
-async def create_conversation_legacy(
-    conversation_data: api_models.ConversationCreateRequest, current_user: Dict[str, Any] = Depends(get_current_user)
-) -> Dict[str, Any]:
-    """Legacy endpoint for backward compatibility."""
-    return await create_conversation(conversation_data, current_user)
-
-
-@router.get("/conversation")
-async def list_conversations_legacy(
-    workspace_id: str = Query(..., description="ID of the workspace to list conversations for"),
-    test_permission_denied: bool = Query(False, description="Special parameter for testing permission denied error"),
-    current_user: Dict[str, Any] = Depends(get_current_user),
-) -> Dict[str, List[Dict[str, Any]]]:
-    """Legacy endpoint for backward compatibility."""
-    return await list_conversations(workspace_id, test_permission_denied, current_user)
-
-
 @router.get("/user/profile", response_model=api_models.UserProfileResponse)
 async def get_user_profile(current_user: Dict[str, Any] = Depends(get_current_user)) -> Dict[str, Any]:
     """

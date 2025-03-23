@@ -26,7 +26,7 @@ async def test_input_to_output_flow():
 
     # Create a workspace first
     workspace_response = client.post(
-        "/config/workspace",
+        "/config/workspaces",
         json={"name": "Integration Test Workspace", "description": "For integration testing", "metadata": {}},
         headers=headers,
     )
@@ -35,7 +35,7 @@ async def test_input_to_output_flow():
 
     # Create a conversation
     conversation_response = client.post(
-        "/config/conversation",
+        "/config/conversations",
         json={"workspace_id": workspace_id, "topic": "Integration Test Conversation", "metadata": {}},
         headers=headers,
     )
