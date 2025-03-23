@@ -23,6 +23,8 @@ This implementation delivers a complete Phase 1 system with in-memory storage, a
 - **In-Memory Storage**: Ephemeral storage with proper user partitioning
 - **Workspace Management**: Basic organization of conversations
 - **Conversation Management**: Grouping related messages together
+- **Cognition Service**: Standalone LLM-powered response generation over MCP/SSE
+- **MCP Integration**: Model Context Protocol for service communication
 - **Type Safety**: Comprehensive type annotations throughout the codebase
 - **Comprehensive Testing**: Unit and integration tests for all components
 
@@ -88,6 +90,16 @@ uv run uvicorn app.main:app
 
 The server will be available at http://localhost:8000.
 
+### Running the Cognition Service
+
+Start the Cognition Service with:
+
+```bash
+python run_cognition_service.py
+```
+
+The Cognition Service will be available at http://localhost:5000 (or the port specified in your environment).
+
 ## Development
 
 ### Core Commands
@@ -119,6 +131,7 @@ See [CLIENT_INTEGRATION.md](docs/CLIENT_INTEGRATION.md) for detailed examples an
 
 - [Architecture Overview](docs/ARCHITECTURE_OVERVIEW.md): High-level system architecture
 - [API Reference](docs/API_REFERENCE.md): Detailed API documentation
+- [Cognition Service](docs/COGNITION_SERVICE.md): LLM-powered response generation service
 - [Development Guide](docs/DEVELOPMENT_GUIDE.md): Guide for developers
 - [Testing Guide](docs/TESTING_GUIDE.md): Testing approach and examples
 - [Client Integration](docs/CLIENT_INTEGRATION.md): Guide for client developers
@@ -158,27 +171,39 @@ cortex-core/
 │   │   ├── input.py        # Input endpoint
 │   │   ├── output.py       # Output streaming endpoint
 │   │   └── config.py       # Configuration endpoints
+│   ├── backend/            # Service client integrations
+│   │   ├── __init__.py
+│   │   ├── cognition_client.py  # Client for Cognition Service
+│   │   └── memory_client.py     # Client for Memory Service
 │   ├── core/               # Core components
 │   │   ├── __init__.py
 │   │   ├── event_bus.py    # Event bus implementation
-│   │   └── storage.py      # In-memory storage
+│   │   └── response_handler.py  # Response orchestration
 │   ├── models/             # Data models
 │   │   ├── __init__.py
-│   │   ├── base.py         # Base models
+│   │   ├── api.py          # API models
 │   │   ├── domain.py       # Domain models
-│   │   └── api/            # API models
-│   │       ├── __init__.py
-│   │       ├── request.py  # Request models
-│   │       └── response.py # Response models
+│   │   └── llm.py          # LLM interaction models
 │   └── utils/              # Utilities
 │       ├── __init__.py
 │       └── auth.py         # Authentication utilities
+├── cognition_service/      # Standalone Cognition Service
+│   ├── __init__.py
+│   ├── main.py             # Service entry point & FastMCP server
+│   ├── config.py           # Service configuration
+│   ├── logic.py            # Core LLM interaction logic
+│   ├── models.py           # Data models for the service
+│   └── memory_client.py    # Client for Memory Service integration
 ├── docs/                   # Documentation
 ├── tests/                  # Test suite
 │   ├── __init__.py
 │   ├── test_api.py         # API tests
 │   ├── test_event_bus.py   # Event bus tests
-│   └── test_integration.py # Integration tests
+│   ├── test_integration.py # Integration tests
+│   └── cognition_service/  # Cognition Service tests
+│       ├── __init__.py
+│       └── test_logic.py   # Logic tests
+├── run_cognition_service.py # Script to run the Cognition Service
 ├── Makefile                # Build and development commands
 ├── pyproject.toml          # Project configuration
 └── requirements.txt        # Project dependencies
