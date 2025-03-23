@@ -244,9 +244,14 @@
                 <div>
                     <label for="message-input">Message:</label>
                     <textarea id="message-input" rows="3"></textarea>
-                    <label for="context-toggle">
-                        <input type="checkbox" id="context-toggle" checked> Use context from Cognition Service
-                    </label>
+                    <div style="display: flex; gap: 10px; margin: 10px 0;">
+                        <label for="context-toggle" style="display: flex; align-items: center;">
+                            <input type="checkbox" id="context-toggle" checked> Use context from Cognition Service
+                        </label>
+                        <label for="streaming-toggle" style="display: flex; align-items: center;">
+                            <input type="checkbox" id="streaming-toggle" checked> Enable streaming preview
+                        </label>
+                    </div>
                     <div class="context-panel" id="context-preview">
                         <h4>Context Preview (will be used for next message)</h4>
                         <div id="context-items">No context retrieved yet</div>
@@ -404,6 +409,10 @@ GET  /output/stream          - Receive SSE events with responses
                 } else {
                     document.getElementById('context-preview').style.display = 'none';
                 }
+            });
+            document.getElementById('streaming-toggle').addEventListener('change', function() {
+                // No visual changes needed, the preference is used when sending messages
+                console.log(`Streaming preference changed to: ${this.checked}`);
             });
             
             // Add Enter and Shift+Enter handling for message input
@@ -931,9 +940,13 @@ GET  /output/stream          - Receive SSE events with responses
             const useContext = document.getElementById('context-toggle').checked;
             
             try {
+                // Get streaming preference
+                const streamingEnabled = document.getElementById('streaming-toggle').checked;
+                
                 const messageData = {
                     content,
                     conversation_id: selectedConversationId,
+                    streaming: streamingEnabled,
                     metadata: {
                         client_id: 'mcp-test-client',
                         client_version: '1.0.0',
@@ -1308,26 +1321,84 @@ GET  /output/stream          - Receive SSE events with responses
                                     const currentContent = messageTracking[conversationId]._streamContent;
                                     
                                     // Update or create response message with server ID
-                                    updateOrCreateMessage(
+                                    // Mark this as a streaming preview by setting data attribute
+                                    const msgElement = updateOrCreateMessage(
                                         conversationId,
                                         messageId,
                                         'assistant',
                                         currentContent,
                                         inReplyTo
                                     );
+                                    
+                                    // Add streaming indicator
+                                    const streamElement = document.getElementById(`msg-${messageId}`);
+                                    if (streamElement) {
+                                        streamElement.dataset.streaming = "true";
+                                        // Add a visual indicator that this is a streaming preview
+                                        if (!streamElement.querySelector('.streaming-indicator')) {
+                                            const indicator = document.createElement('small');
+                                            indicator.className = 'streaming-indicator';
+                                            indicator.textContent = ' (streaming preview)';
+                                            indicator.style.fontStyle = 'italic';
+                                            indicator.style.color = '#999';
+                                            streamElement.appendChild(indicator);
+                                        }
+                                    }
                                     break;
                                     
                                 case 'complete':
-                                    // Handle response completion
-                                    const completedContent = messageTracking[conversationId]._streamContent;
-                                    if (completedContent) {
+                                    // Handle response completion with the full content
+                                    // The content property will contain the complete response
+                                    // First check if we have streamed content
+                                    const streamedContent = messageTracking[conversationId]._streamContent;
+                                    
+                                    // Use the explicit content from the complete event
+                                    // This is the full message that serves as the source of truth
+                                    const finalContent = content || streamedContent;
+                                    
+                                    if (finalContent) {
+                                        // Update or create message with the final content
                                         updateOrCreateMessage(
                                             conversationId,
                                             messageId,
                                             'assistant',
-                                            completedContent,
+                                            finalContent,
                                             inReplyTo
                                         );
+                                        
+                                        // Remove streaming indicator if it exists
+                                        const msgElement = document.getElementById(`msg-${messageId}`);
+                                        if (msgElement) {
+                                            // Remove streaming indicator
+                                            const indicator = msgElement.querySelector('.streaming-indicator');
+                                            if (indicator) {
+                                                msgElement.removeChild(indicator);
+                                            }
+                                            
+                                            // Remove streaming data attribute
+                                            delete msgElement.dataset.streaming;
+                                            
+                                            // Add final message indicator
+                                            if (!msgElement.querySelector('.final-indicator')) {
+                                                const finalIndicator = document.createElement('small');
+                                                finalIndicator.className = 'final-indicator';
+                                                finalIndicator.textContent = ' (complete)';
+                                                finalIndicator.style.fontStyle = 'italic';
+                                                finalIndicator.style.color = '#4CAF50';
+                                                // Add to message but make it fade out after 2 seconds
+                                                msgElement.appendChild(finalIndicator);
+                                                setTimeout(() => {
+                                                    finalIndicator.style.transition = 'opacity 1s';
+                                                    finalIndicator.style.opacity = '0';
+                                                    // Remove after fade out
+                                                    setTimeout(() => {
+                                                        if (finalIndicator.parentNode) {
+                                                            finalIndicator.parentNode.removeChild(finalIndicator);
+                                                        }
+                                                    }, 1000);
+                                                }, 2000);
+                                            }
+                                        }
                                     }
                                     
                                     // Reset streaming content after completion

@@ -130,8 +130,8 @@ async def test_stream_response(response_handler: ResponseHandler) -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_message_mock() -> None:
-    """Test handling a message with mock LLM."""
+async def test_handle_message_mock_streaming() -> None:
+    """Test handling a message with mock LLM and streaming enabled."""
     # Create a handler with mocked dependencies
     handler = ResponseHandler()
 
@@ -153,8 +153,13 @@ async def test_handle_message_mock() -> None:
             # Set up the mock to return a simple response
             mock_generate.return_value = {"content": "This is a mock response"}
 
-            # Call handle_message
-            await handler.handle_message(user_id="test-user", conversation_id="test-conv", message_content="Hello, world!")
+            # Call handle_message with streaming enabled
+            await handler.handle_message(
+                user_id="test-user", 
+                conversation_id="test-conv", 
+                message_content="Hello, world!",
+                streaming=True
+            )
 
             # Verify _store_message was called twice (once for user message, once for response)
             assert store_message_mock.call_count == 2
@@ -164,6 +169,62 @@ async def test_handle_message_mock() -> None:
 
             # Verify _stream_response was called with the expected response
             stream_response_mock.assert_called_once_with("test-conv", "This is a mock response")
+
+
+@pytest.mark.asyncio
+async def test_handle_message_mock_non_streaming() -> None:
+    """Test handling a message with mock LLM and streaming disabled."""
+    # Create a handler with mocked dependencies
+    handler = ResponseHandler()
+
+    # Mock the methods we don't want to test here
+    # Use explicit typing for the mocks
+    store_message_mock = AsyncMock()
+    get_history_mock = AsyncMock(return_value=[])
+    stream_response_mock = AsyncMock()
+    
+    with patch.object(handler, '_store_message', new=store_message_mock), \
+         patch.object(handler, '_get_conversation_history', new=get_history_mock), \
+         patch.object(handler, '_stream_response', new=stream_response_mock):
+
+        # Mock output queue
+        mock_queue = AsyncMock()
+        
+        # Set up the LLM adapter to use mock
+        with (
+            patch("app.core.llm_adapter.llm_adapter.use_mock", True),
+            patch("app.core.mock_llm.mock_llm.generate_mock_response") as mock_generate,
+            patch("app.core.response_handler.get_output_queue", return_value=mock_queue),
+        ):
+            # Set up the mock to return a simple response
+            mock_generate.return_value = {"content": "This is a mock response"}
+
+            # Call handle_message with streaming disabled
+            await handler.handle_message(
+                user_id="test-user", 
+                conversation_id="test-conv", 
+                message_content="Hello, world!",
+                streaming=False
+            )
+
+            # Verify _store_message was called twice (once for user message, once for response)
+            assert store_message_mock.call_count == 2
+
+            # Verify _get_conversation_history was called
+            get_history_mock.assert_called_once()
+
+            # Verify _stream_response was NOT called
+            stream_response_mock.assert_not_called()
+            
+            # Verify queue.put was called once with a complete message
+            mock_queue.put.assert_called_once()
+            # Get the actual call argument
+            call_arg = mock_queue.put.call_args[0][0]
+            # Parse the JSON string to verify its content
+            event_data = json.loads(call_arg)
+            assert event_data["message_type"] == "complete"
+            assert event_data["data"]["content"] == "This is a mock response"
+            assert event_data["metadata"]["is_final"] is True
 
 
 @pytest.mark.asyncio

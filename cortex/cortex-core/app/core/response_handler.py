@@ -280,14 +280,14 @@ class ResponseHandler:
             # Brief pause for realistic streaming
             await asyncio.sleep(0.05)
 
-        # Send the [DONE] marker
-        done_event = {
+        # Send the final message with complete content
+        final_event = {
             "type": "message",
             "message_type": "complete",
             "data": {
-                "content": "",
+                "content": final_text,  # Include the full content in the final message
                 "conversation_id": conversation_id,
-                "message_id": assistant_message_id,  # Include the message ID in completion
+                "message_id": assistant_message_id,
                 "timestamp": datetime.now().isoformat(),
                 "sender": {
                     "id": "cortex-core",
@@ -300,10 +300,15 @@ class ResponseHandler:
             }
         }
 
-        await queue.put(json.dumps(done_event))
+        await queue.put(json.dumps(final_event))
 
     async def handle_message(
-        self, user_id: str, conversation_id: str, message_content: str, metadata: Optional[Dict[str, Any]] = None
+        self, 
+        user_id: str, 
+        conversation_id: str, 
+        message_content: str, 
+        metadata: Optional[Dict[str, Any]] = None, 
+        streaming: bool = True
     ) -> None:
         """
         Process a user message and produce a response (possibly with tool calls).
@@ -564,12 +569,54 @@ class ResponseHandler:
                     f"Reached max iterations ({max_iterations}) without final answer for conversation {conversation_id}"
                 )
 
-            # 5. Stream the final answer via SSE
+            # 5. Send the final answer (streaming or direct)
             if final_answer:
-                logger.info(f"Streaming final response to client: {final_answer[:50]}...")
-            await self._stream_response(
-                conversation_id, final_answer or "I apologize, but I wasn't able to generate a response."
-            )
+                logger.info(f"Sending final response to client: {final_answer[:50]}...")
+            
+            # Use full message or fallback text
+            response_text = final_answer or "I apologize, but I wasn't able to generate a response."
+            
+            # Handle based on streaming preference
+            if streaming:
+                # Stream the response in chunks
+                await self._stream_response(conversation_id, response_text)
+            else:
+                # Send the complete response in a single message
+                # Get assistant message ID
+                assistant_message_id = None
+                try:
+                    async with UnitOfWork.for_transaction() as uow:
+                        message_repo = uow.repositories.get_message_repository()
+                        messages = await message_repo.list_by_conversation(conversation_id, limit=1, role="assistant")
+                        if messages and len(messages) > 0:
+                            assistant_message_id = messages[0].id
+                except Exception as e:
+                    logger.warning(f"Failed to get assistant message ID for non-streaming response: {e}")
+                
+                # Get the output queue for this conversation
+                queue = get_output_queue(conversation_id)
+                
+                # Send complete message directly
+                complete_event = {
+                    "type": "message",
+                    "message_type": "complete",
+                    "data": {
+                        "content": response_text,
+                        "conversation_id": conversation_id,
+                        "message_id": assistant_message_id,
+                        "timestamp": datetime.now().isoformat(),
+                        "sender": {
+                            "id": "cortex-core",
+                            "name": "Cortex",
+                            "role": "assistant"
+                        }
+                    },
+                    "metadata": {
+                        "is_final": True
+                    }
+                }
+                
+                await queue.put(json.dumps(complete_event))
 
         except Exception as e:
             logger.error(f"Error handling message: {str(e)}", exc_info=True)

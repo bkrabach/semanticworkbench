@@ -26,7 +26,9 @@ router = APIRouter(tags=["input"])
     },
 )
 async def receive_input(
-    request: InputRequest, background_tasks: BackgroundTasks, current_user: dict = Depends(get_current_user)
+    request: InputRequest, 
+    background_tasks: BackgroundTasks, 
+    current_user: dict = Depends(get_current_user)
 ) -> InputResponse:
     """
     Receive input from a client and process it with ResponseHandler.
@@ -112,6 +114,7 @@ async def receive_input(
                 conversation_id=request.conversation_id,
                 message_content=request.content,
                 metadata=request.metadata,
+                streaming=request.streaming,
             )
 
             # Return response
