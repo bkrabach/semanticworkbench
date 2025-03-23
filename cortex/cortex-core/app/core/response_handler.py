@@ -1,9 +1,13 @@
 import asyncio
+import logging
 from typing import Optional, Dict, Any
 
 from app.backend.cognition_client import CognitionClient
 from app.backend.memory_client import MemoryClient
 from app.core.event_bus import EventBus
+
+# Set up logger for the response handler
+logger = logging.getLogger(__name__)
 
 
 class ResponseHandler:
@@ -55,7 +59,7 @@ class ResponseHandler:
                 self.input_queue.task_done()
 
             except Exception as e:
-                print(f"Error processing event: {e}")
+                logger.error(f"Error processing event: {e}", exc_info=True)
 
     async def handle_input_event(self, event: Dict[str, Any]):
         """
@@ -73,7 +77,7 @@ class ResponseHandler:
         message_content = message_data.get("content", "")
 
         if not user_id or not conversation_id or not message_content:
-            print("Missing required fields in event")
+            logger.warning(f"Missing required fields in event: {event}")
             return
 
         try:
@@ -119,7 +123,7 @@ class ResponseHandler:
             await self.event_bus.publish_async("assistant_response", output_event)
 
         except Exception as e:
-            print(f"Error handling input event: {e}")
+            logger.error(f"Error handling input event: {e}", exc_info=True)
             # Publish error event
             error_event = {
                 "type": "error",

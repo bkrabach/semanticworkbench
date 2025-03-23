@@ -2,8 +2,8 @@ from typing import Any, Dict
 
 from fastapi import APIRouter, Depends
 
-from app.api.config import conversations
 from app.core.event_bus import event_bus
+from app.core.storage_service import storage_service
 from app.models import api as api_models
 from app.utils.auth import get_current_user
 from app.utils.exceptions import ResourceNotFoundException
@@ -16,7 +16,7 @@ async def receive_input(message: api_models.InputMessage, current_user: Dict[str
     """Receive a user message (conversation input)."""
     # Check if conversation exists
     conversation_id = message.conversation_id
-    if conversation_id not in conversations:
+    if not storage_service.get_conversation(conversation_id):
         raise ResourceNotFoundException(resource_id=conversation_id, resource_type="conversation")
 
     # Use the user ID from the validated token
