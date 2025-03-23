@@ -27,7 +27,7 @@ router = APIRouter(tags=["input"])
 )
 async def receive_input(
     request: InputRequest, background_tasks: BackgroundTasks, current_user: dict = Depends(get_current_user)
-):
+) -> InputResponse:
     """
     Receive input from a client and process it with ResponseHandler.
 
@@ -73,17 +73,23 @@ async def receive_input(
             # Create a timestamp
             timestamp = datetime.now().isoformat()
 
-            # Create event with user ID
+            # Create event with user ID using unified message format
             event = {
-                "type": "input",
+                "type": "message",
+                "message_type": "user",
                 "data": {
                     "content": request.content,
                     "conversation_id": request.conversation_id,
                     "timestamp": timestamp,
+                    # Note: message_id will be added by the response handler
+                    "sender": {
+                        "id": user_id,
+                        "name": current_user.get("name", "User"),
+                        "role": "user"
+                    }
                 },
-                "user_id": user_id,
                 "timestamp": timestamp,
-                "metadata": request.metadata,
+                "metadata": request.metadata or {},
             }
 
             # Commit the database transaction

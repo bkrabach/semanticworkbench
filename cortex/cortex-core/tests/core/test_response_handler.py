@@ -20,19 +20,19 @@ os.environ["USE_MOCK_LLM"] = "true"
 # Also explicitly tell pytest not to collect this function
 @pytest.mark.skip(reason="This is a tool function, not a test")
 @register_tool("test_tool")
-async def sample_tool_for_testing(param1: str, param2: int = 0):
+async def sample_tool_for_testing(param1: str, param2: int = 0) -> dict:
     """Tool for testing purposes."""
     return {"result": f"{param1}-{param2}"}
 
 
 @pytest.fixture
-def response_handler():
+def response_handler() -> ResponseHandler:
     """Create a ResponseHandler instance for testing."""
     return ResponseHandler()
 
 
 @pytest.mark.asyncio
-async def test_execute_tool_success(response_handler):
+async def test_execute_tool_success(response_handler: ResponseHandler) -> None:
     """Test successfully executing a tool."""
     # Execute the test tool
     result = await response_handler._execute_tool("test_tool", {"param1": "test", "param2": 42}, "user123")
@@ -42,7 +42,7 @@ async def test_execute_tool_success(response_handler):
 
 
 @pytest.mark.asyncio
-async def test_execute_tool_not_found(response_handler):
+async def test_execute_tool_not_found(response_handler: ResponseHandler) -> None:
     """Test executing a non-existent tool."""
     with pytest.raises(ToolExecutionException) as exc_info:
         await response_handler._execute_tool("nonexistent_tool", {"param": "value"}, "user123")
@@ -51,10 +51,10 @@ async def test_execute_tool_not_found(response_handler):
 
 
 @pytest.mark.asyncio
-async def test_stream_response(response_handler):
+async def test_stream_response(response_handler: ResponseHandler) -> None:
     """Test streaming a response to a queue."""
     # Create a test queue
-    test_queue = asyncio.Queue()
+    test_queue: asyncio.Queue = asyncio.Queue()
     # Create test conversation ID
     conversation_id = "test-conversation"
 
@@ -98,61 +98,76 @@ async def test_stream_response(response_handler):
         
         # Verify all chunk events
         for event in chunk_events:
-            assert event["type"] == "response_chunk"
-            assert event["conversation_id"] == conversation_id
-            assert event["message_id"] == "test-message-id"
-            assert "data" in event
-            assert event["is_final"] is False
+            assert event["type"] == "message"
+            assert event["message_type"] == "chunk"
+            assert event["data"]["conversation_id"] == conversation_id
+            assert event["data"]["message_id"] == "test-message-id"
+            assert "content" in event["data"]
+            assert "sender" in event["data"]
+            assert event["data"]["sender"]["id"] == "cortex-core"
+            assert event["data"]["sender"]["name"] == "Cortex"
+            assert event["data"]["sender"]["role"] == "assistant"
+            assert event["metadata"]["is_final"] is False
 
         # Verify done event
-        assert done_event["type"] == "response_complete"
-        assert done_event["conversation_id"] == conversation_id
-        assert done_event["message_id"] == "test-message-id"
-        assert done_event["is_final"] is True
+        assert done_event["type"] == "message"
+        assert done_event["message_type"] == "complete"
+        assert done_event["data"]["conversation_id"] == conversation_id
+        assert done_event["data"]["message_id"] == "test-message-id"
+        assert "sender" in done_event["data"]
+        assert done_event["data"]["sender"]["id"] == "cortex-core"
+        assert done_event["data"]["sender"]["name"] == "Cortex"
+        assert done_event["data"]["sender"]["role"] == "assistant"
+        assert done_event["metadata"]["is_final"] is True
 
         # Reconstruct the message from chunks
         reconstructed = ""
         for chunk in chunk_events:
-            reconstructed += chunk["data"]
+            reconstructed += chunk["data"]["content"]
 
         # Verify the reconstructed message matches the original
         assert reconstructed == message
 
 
 @pytest.mark.asyncio
-async def test_handle_message_mock():
+async def test_handle_message_mock() -> None:
     """Test handling a message with mock LLM."""
     # Create a handler with mocked dependencies
     handler = ResponseHandler()
 
     # Mock the methods we don't want to test here
-    handler._store_message = AsyncMock()
-    handler._get_conversation_history = AsyncMock(return_value=[])
-    handler._stream_response = AsyncMock()
+    # Use explicit typing for the mocks
+    store_message_mock = AsyncMock()
+    get_history_mock = AsyncMock(return_value=[])
+    stream_response_mock = AsyncMock()
+    
+    with patch.object(handler, '_store_message', new=store_message_mock), \
+         patch.object(handler, '_get_conversation_history', new=get_history_mock), \
+         patch.object(handler, '_stream_response', new=stream_response_mock):
 
     # Set up the LLM adapter to use mock
-    with (
-        patch("app.core.llm_adapter.llm_adapter.use_mock", True),
-        patch("app.core.mock_llm.mock_llm.generate_mock_response") as mock_generate,
-    ):
-        # Set up the mock to return a simple response
-        mock_generate.return_value = {"content": "This is a mock response"}
+        with (
+            patch("app.core.llm_adapter.llm_adapter.use_mock", True),
+            patch("app.core.mock_llm.mock_llm.generate_mock_response") as mock_generate,
+        ):
+            # Set up the mock to return a simple response
+            mock_generate.return_value = {"content": "This is a mock response"}
 
-        # Call handle_message
-        await handler.handle_message(user_id="test-user", conversation_id="test-conv", message_content="Hello, world!")
+            # Call handle_message
+            await handler.handle_message(user_id="test-user", conversation_id="test-conv", message_content="Hello, world!")
 
-        # Verify _store_message was called twice (once for user message, once for response)
-        assert handler._store_message.call_count == 2
+            # Verify _store_message was called twice (once for user message, once for response)
+            assert store_message_mock.call_count == 2
 
-        # Verify _get_conversation_history was called
-        handler._get_conversation_history.assert_called_once()
+            # Verify _get_conversation_history was called
+            get_history_mock.assert_called_once()
 
-        # Verify _stream_response was called with the expected response
-        handler._stream_response.assert_called_once_with("test-conv", "This is a mock response")
+            # Verify _stream_response was called with the expected response
+            stream_response_mock.assert_called_once_with("test-conv", "This is a mock response")
 
 
 @pytest.mark.asyncio
-async def test_handle_message_with_tool():
+async def test_handle_message_with_tool() -> None:
     """Test handling a message with a tool call."""
     # Create a handler with mocked dependencies
     handler = ResponseHandler()
@@ -165,33 +180,39 @@ async def test_handle_message_with_tool():
     assistant_message.id = "assistant-message-id"
 
     # Mock the methods we don't want to test here
-    handler._store_message = AsyncMock(side_effect=[user_message, assistant_message])
-    handler._get_conversation_history = AsyncMock(return_value=[])
-    handler._stream_response = AsyncMock()
-    handler._execute_tool = AsyncMock(return_value="Tool result")
-
-    # Mock output queue
-    mock_queue = AsyncMock()
+    # Use explicit typing for the mocks
+    store_message_mock = AsyncMock(side_effect=[user_message, assistant_message])
+    get_history_mock = AsyncMock(return_value=[])
+    stream_response_mock = AsyncMock()
+    execute_tool_mock = AsyncMock(return_value="Tool result")
     
-    # Set up the LLM adapter to use mock
-    with patch("app.core.llm_adapter.llm_adapter.generate") as mock_generate, \
-         patch("app.core.response_handler.get_output_queue", return_value=mock_queue):
-        # First call returns a tool request, second call returns content
-        mock_generate.side_effect = [
-            {"tool": "test_tool", "input": {"param": "value"}},
-            {"content": "Final response after tool"},
-        ]
+    with patch.object(handler, '_store_message', new=store_message_mock), \
+         patch.object(handler, '_get_conversation_history', new=get_history_mock), \
+         patch.object(handler, '_stream_response', new=stream_response_mock), \
+         patch.object(handler, '_execute_tool', new=execute_tool_mock):
 
-        # Call handle_message
-        await handler.handle_message(
-            user_id="test-user", conversation_id="test-conv", message_content="Hello, use a tool!"
-        )
+        # Mock output queue
+        mock_queue = AsyncMock()
+        
+        # Set up the LLM adapter to use mock
+        with patch("app.core.llm_adapter.llm_adapter.generate") as mock_generate, \
+             patch("app.core.response_handler.get_output_queue", return_value=mock_queue):
+            # First call returns a tool request, second call returns content
+            mock_generate.side_effect = [
+                {"tool": "test_tool", "input": {"param": "value"}},
+                {"content": "Final response after tool"},
+            ]
 
-        # Verify _execute_tool was called
-        handler._execute_tool.assert_called_once_with("test_tool", {"param": "value"}, "test-user")
+            # Call handle_message
+            await handler.handle_message(
+                user_id="test-user", conversation_id="test-conv", message_content="Hello, use a tool!"
+            )
 
-        # Verify LLM was called twice
-        assert mock_generate.call_count == 2
+            # Verify _execute_tool was called
+            execute_tool_mock.assert_called_once_with("test_tool", {"param": "value"}, "test-user")
 
-        # Verify _stream_response was called with the expected response
-        handler._stream_response.assert_called_once_with("test-conv", "Final response after tool")
+            # Verify LLM was called twice
+            assert mock_generate.call_count == 2
+
+            # Verify _stream_response was called with the expected response
+            stream_response_mock.assert_called_once_with("test-conv", "Final response after tool")

@@ -27,7 +27,7 @@ router = APIRouter(tags=["cognition"])
         500: {"model": ErrorResponse},
     },
 )
-async def get_user_context(request: GetContextRequest, current_user: dict = Depends(get_current_user)):
+async def get_user_context(request: GetContextRequest, current_user: dict = Depends(get_current_user)) -> GetContextResponse:
     """
     Get relevant context for the current user.
 
@@ -76,7 +76,7 @@ async def get_user_context(request: GetContextRequest, current_user: dict = Depe
 )
 async def analyze_user_conversation(
     request: AnalyzeConversationRequest, current_user: dict = Depends(get_current_user)
-):
+) -> AnalyzeConversationResponse:
     """
     Analyze a conversation for patterns and insights.
 
@@ -129,7 +129,7 @@ async def analyze_user_conversation(
         500: {"model": ErrorResponse},
     },
 )
-async def search_user_history(request: SearchHistoryRequest, current_user: dict = Depends(get_current_user)):
+async def search_user_history(request: SearchHistoryRequest, current_user: dict = Depends(get_current_user)) -> SearchHistoryResponse:
     """
     Search user history for specific terms or patterns.
 

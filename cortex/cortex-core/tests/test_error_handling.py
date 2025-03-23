@@ -6,13 +6,15 @@ from fastapi.testclient import TestClient
 client = TestClient(app)
 
 
-def get_auth_header(user_id="test-user", name="Test User", email="test@example.com"):
+def get_auth_header(
+    user_id: str = "test-user", name: str = "Test User", email: str = "test@example.com"
+) -> dict[str, str]:
     """Create authentication header with test token."""
     token = create_access_token({"sub": email, "oid": user_id, "name": name, "email": email})
     return {"Authorization": f"Bearer {token}"}
 
 
-def test_custom_exception_handler():
+def test_custom_exception_handler() -> None:
     """Test that custom exceptions are handled properly."""
     # We need to patch an endpoint to raise our custom exception
     # For this test, we'll use the route handler's internal implementation
@@ -38,7 +40,7 @@ def test_custom_exception_handler():
     assert "entity_id" in data["detail"]["error"]["details"]
 
 
-def test_validation_error_handler():
+def test_validation_error_handler() -> None:
     """Test that validation errors are handled properly."""
     # Send a request with missing required fields
     headers = get_auth_header()
@@ -56,7 +58,7 @@ def test_validation_error_handler():
     assert "validation_errors" in data["error"]["details"]
 
 
-def test_authentication_error_handler():
+def test_authentication_error_handler() -> None:
     """Test that authentication errors are handled properly."""
     # Send a request with invalid token
     response = client.get("/config/workspace", headers={"Authorization": "Bearer invalid-token"})
@@ -68,7 +70,7 @@ def test_authentication_error_handler():
     assert data["error"]["code"] == "invalid_credentials"
 
 
-def test_permission_denied_error():
+def test_permission_denied_error() -> None:
     """Test that permission denied errors are handled properly."""
     # Create two users with different tokens
     headers_user1 = get_auth_header(user_id="user1", email="user1@example.com")

@@ -1,14 +1,15 @@
 import asyncio
+from typing import Any, Dict
 
 import pytest
 from app.core.event_bus import EventBus
 
 
 @pytest.mark.asyncio
-async def test_event_bus_publish_subscribe():
+async def test_event_bus_publish_subscribe() -> None:
     """Test event bus publish and subscribe functionality."""
     bus = EventBus()
-    queue = asyncio.Queue()
+    queue: asyncio.Queue[Dict[str, Any]] = asyncio.Queue()
 
     # Subscribe to events
     bus.subscribe(queue)

@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 
 
 @pytest.mark.asyncio
-async def test_input_to_output_flow():
+async def test_input_to_output_flow() -> None:
     """Test the complete flow from input to output."""
     # This test requires running the application
     # It's more complex to set up in pytest, so we'll use a simpler approach

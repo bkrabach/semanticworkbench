@@ -2,6 +2,7 @@ import logging
 import os
 import uuid
 from contextlib import asynccontextmanager
+from typing import Any, AsyncGenerator, Dict, List
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request, status
@@ -35,7 +36,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-async def ensure_test_users_exist():
+async def ensure_test_users_exist() -> None:
     """
     Development-only function that ensures test users from auth.py exist in the database.
 
@@ -83,7 +84,7 @@ async def ensure_test_users_exist():
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """
     Lifespan context manager for the FastAPI application.
     Handles startup and shutdown events.
@@ -177,7 +178,7 @@ app.add_middleware(
 
 # Exception handlers
 @app.exception_handler(CortexException)
-async def cortex_exception_handler(request: Request, exc: CortexException):
+async def cortex_exception_handler(request: Request, exc: CortexException) -> JSONResponse:
     """
     Global exception handler for CortexException.
     Returns a standardized error response.
@@ -214,7 +215,7 @@ async def cortex_exception_handler(request: Request, exc: CortexException):
 
 
 @app.exception_handler(RequestValidationError)
-async def validation_exception_handler(request: Request, exc: RequestValidationError):
+async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
     """
     Exception handler for Pydantic validation errors.
     Converts validation errors into a standardized format.
@@ -255,7 +256,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 
 
 @app.exception_handler(Exception)
-async def general_exception_handler(request: Request, exc: Exception):
+async def general_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     """
     Catch-all exception handler for unhandled exceptions.
     Provides a standardized response for unexpected errors.
@@ -294,7 +295,7 @@ async def general_exception_handler(request: Request, exc: Exception):
 
 # Root endpoint for health checks
 @app.get("/", tags=["status"])
-async def root():
+async def root() -> dict[str, str]:
     """API status endpoint."""
     return {"status": "online", "service": "Cortex Core"}
 

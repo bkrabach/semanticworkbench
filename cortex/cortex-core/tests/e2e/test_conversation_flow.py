@@ -3,6 +3,7 @@ End-to-end tests for conversation flows.
 """
 
 import uuid
+from typing import Any, Dict
 
 import pytest
 from app.main import app
@@ -11,13 +12,13 @@ from fastapi.testclient import TestClient
 
 
 @pytest.fixture
-def client():
+def client() -> TestClient:
     """Create a test client."""
     return TestClient(app)
 
 
 @pytest.fixture
-def auth_headers():
+def auth_headers() -> Dict[str, str]:
     """Create authentication headers with test token."""
     user_id = f"e2e-user-{uuid.uuid4()}"
     token = create_access_token({
@@ -30,7 +31,7 @@ def auth_headers():
 
 
 @pytest.fixture
-def test_workspace(client, auth_headers):
+def test_workspace(client: TestClient, auth_headers: Dict[str, str]) -> Dict[str, Any]:
     """Create a test workspace."""
     response = client.post(
         "/config/workspace",
@@ -42,11 +43,14 @@ def test_workspace(client, auth_headers):
         headers=auth_headers,
     )
     assert response.status_code == 201
-    return response.json()["workspace"]
+    workspace: Dict[str, Any] = response.json()["workspace"]
+    return workspace
 
 
 @pytest.fixture
-def test_conversation(client, auth_headers, test_workspace):
+def test_conversation(
+    client: TestClient, auth_headers: Dict[str, str], test_workspace: Dict[str, Any]
+) -> Dict[str, Any]:
     """Create a test conversation."""
     response = client.post(
         "/config/conversation",
@@ -58,10 +62,11 @@ def test_conversation(client, auth_headers, test_workspace):
         headers=auth_headers,
     )
     assert response.status_code == 201
-    return response.json()["conversation"]
+    conversation: Dict[str, Any] = response.json()["conversation"]
+    return conversation
 
 
-def test_create_workspace_and_conversation(client, auth_headers):
+def test_create_workspace_and_conversation(client: TestClient, auth_headers: Dict[str, str]) -> None:
     """Test creating a workspace and conversation."""
     # Create workspace
     workspace_response = client.post(
@@ -99,7 +104,9 @@ def test_create_workspace_and_conversation(client, auth_headers):
     assert any(c["id"] == conversation["id"] for c in conversations)
 
 
-def test_send_and_receive_message(client, auth_headers, test_conversation):
+def test_send_and_receive_message(
+    client: TestClient, auth_headers: Dict[str, str], test_conversation: Dict[str, Any]
+) -> None:
     """Test sending a message and getting a response."""
     # Send a message
     input_response = client.post(
@@ -132,18 +139,20 @@ def test_send_and_receive_message(client, auth_headers, test_conversation):
     assert len(messages) >= 2  # At least user message and assistant response
 
     # Find user message by content
-    user_message = next(
-        (m for m in messages if m["content"] == "Hello, this is a test message"), None
-    )
+    user_message = next((m for m in messages if m["content"] == "Hello, this is a test message"), None)
     assert user_message is not None, "User message not found in messages"
 
     # Find assistant response - just find a message that's not from user
     # Since the assistant is the only other sender, any message not matching user's will be from assistant
-    assistant_message = next((m for m in messages if m["content"] != "Hello, this is a test message" and m["content"] is not None), None)
+    assistant_message = next(
+        (m for m in messages if m["content"] != "Hello, this is a test message" and m["content"] is not None), None
+    )
     assert assistant_message is not None, "Assistant message not found in messages"
 
 
-def test_complex_conversation_flow(client, auth_headers, test_conversation):
+def test_complex_conversation_flow(
+    client: TestClient, auth_headers: Dict[str, str], test_conversation: Dict[str, Any]
+) -> None:
     """Test a more complex conversation flow with multiple messages."""
     # Send several messages
     test_messages = [
@@ -182,7 +191,9 @@ def test_complex_conversation_flow(client, auth_headers, test_conversation):
     assert len(assistant_messages) >= len(test_messages), "Not enough assistant responses"
 
 
-def test_update_conversation(client, auth_headers, test_conversation):
+def test_update_conversation(
+    client: TestClient, auth_headers: Dict[str, str], test_conversation: Dict[str, Any]
+) -> None:
     """Test updating a conversation."""
     # Update the conversation
     new_topic = f"Updated Topic {uuid.uuid4()}"
@@ -204,7 +215,7 @@ def test_update_conversation(client, auth_headers, test_conversation):
     assert retrieved_conversation["metadata"]["updated"] is True
 
 
-def test_invalid_requests(client, auth_headers, test_workspace):
+def test_invalid_requests(client: TestClient, auth_headers: Dict[str, str], test_workspace: Dict[str, Any]) -> None:
     """Test handling of invalid requests."""
     # Try to create a conversation with missing workspace_id
     response = client.post("/config/conversation", json={"topic": "Invalid Conversation"}, headers=auth_headers)
@@ -225,7 +236,7 @@ def test_invalid_requests(client, auth_headers, test_workspace):
     assert response.status_code == 404  # Not found
 
 
-def test_unauthorized_access(client, test_conversation):
+def test_unauthorized_access(client: TestClient, test_conversation: Dict[str, Any]) -> None:
     """Test unauthorized access attempts."""
     # Try to access without auth header
     response = client.get("/config/workspace")

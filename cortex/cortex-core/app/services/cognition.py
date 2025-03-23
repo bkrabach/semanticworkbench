@@ -15,7 +15,7 @@ class CognitionService:
     from the Memory Service to enhance user interactions.
     """
 
-    def __init__(self, memory_service=None):
+    def __init__(self, memory_service: Any = None) -> None:
         """
         Initialize the Cognition Service.
 

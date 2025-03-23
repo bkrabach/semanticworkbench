@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 class ToolRegistry:
     """Registry for tools that can be executed by the response handler."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize an empty tool registry."""
         self._tools: Dict[str, Callable] = {}
 
@@ -111,7 +111,7 @@ class ResponseHandler:
     including calling LLMs, executing tools, and streaming responses.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the response handler."""
         self.system_prompt = os.getenv("SYSTEM_PROMPT", "")
         if not self.system_prompt:
@@ -256,12 +256,22 @@ class ResponseHandler:
             chunk = final_text[i : i + chunk_size]
 
             event = {
-                "type": "response_chunk",
-                "data": chunk,
-                "conversation_id": conversation_id,
-                "message_id": assistant_message_id,  # Include the message ID in chunks
-                "timestamp": datetime.now().isoformat(),
-                "is_final": False,
+                "type": "message",
+                "message_type": "chunk",
+                "data": {
+                    "content": chunk,
+                    "conversation_id": conversation_id,
+                    "message_id": assistant_message_id,  # Include the message ID in chunks
+                    "timestamp": datetime.now().isoformat(),
+                    "sender": {
+                        "id": "cortex-core",
+                        "name": "Cortex",
+                        "role": "assistant"
+                    }
+                },
+                "metadata": {
+                    "is_final": False
+                }
             }
 
             # Send as SSE data event
@@ -272,11 +282,22 @@ class ResponseHandler:
 
         # Send the [DONE] marker
         done_event = {
-            "type": "response_complete",
-            "conversation_id": conversation_id,
-            "message_id": assistant_message_id,  # Include the message ID in completion
-            "timestamp": datetime.now().isoformat(),
-            "is_final": True,
+            "type": "message",
+            "message_type": "complete",
+            "data": {
+                "content": "",
+                "conversation_id": conversation_id,
+                "message_id": assistant_message_id,  # Include the message ID in completion
+                "timestamp": datetime.now().isoformat(),
+                "sender": {
+                    "id": "cortex-core",
+                    "name": "Cortex",
+                    "role": "assistant"
+                }
+            },
+            "metadata": {
+                "is_final": True
+            }
         }
 
         await queue.put(json.dumps(done_event))
@@ -399,15 +420,26 @@ class ResponseHandler:
                     queue = get_output_queue(conversation_id)
                     
                     # Send a tool use notification event
+                    tool_message_id = f"tool-{conversation_id}-{datetime.now().timestamp()}"
                     tool_event = {
-                        "type": "tool_execution",
-                        "tool_name": tool_name,
-                        "tool_args": tool_args,
-                        "conversation_id": conversation_id,
-                        "message_id": f"tool-{conversation_id}-{datetime.now().timestamp()}",
-                        "in_reply_to": user_message_id,
-                        "timestamp": datetime.now().isoformat(),
-                        "is_final": False,
+                        "type": "message",
+                        "message_type": "tool",
+                        "data": {
+                            "content": f"Executing tool: {tool_name}",
+                            "conversation_id": conversation_id,
+                            "message_id": tool_message_id,
+                            "timestamp": datetime.now().isoformat(),
+                            "sender": {
+                                "id": "tool_executor",
+                                "name": "Tool Executor",
+                                "role": "tool"
+                            }
+                        },
+                        "metadata": {
+                            "tool_name": tool_name,
+                            "tool_args": tool_args,
+                            "is_final": False
+                        }
                     }
                     await queue.put(json.dumps(tool_event))
                     
@@ -429,14 +461,25 @@ class ResponseHandler:
                         
                         # Send a tool result notification event
                         tool_result_event = {
-                            "type": "tool_result",
-                            "tool_name": tool_name,
-                            "result": tool_result,
-                            "conversation_id": conversation_id,
-                            "message_id": tool_result_id,
-                            "in_reply_to": user_message_id,
-                            "timestamp": datetime.now().isoformat(),
-                            "is_final": False,
+                            "type": "message",
+                            "message_type": "tool_result",
+                            "data": {
+                                "content": str(tool_result),
+                                "conversation_id": conversation_id,
+                                "message_id": tool_result_id,
+                                "timestamp": datetime.now().isoformat(),
+                                "sender": {
+                                    "id": f"tool_{tool_name}",
+                                    "name": f"Tool: {tool_name}",
+                                    "role": "tool"
+                                }
+                            },
+                            "metadata": {
+                                "tool_name": tool_name,
+                                "tool_message_id": tool_message_id,
+                                "result": tool_result,
+                                "is_final": False
+                            }
                         }
                         await queue.put(json.dumps(tool_result_event))
 
@@ -491,16 +534,24 @@ class ResponseHandler:
 
                         # Publish an event
                         event = {
-                            "type": "response",
+                            "type": "message",
+                            "message_type": "assistant",
                             "data": {
                                 "content": final_answer,
                                 "conversation_id": conversation_id,
                                 "message_id": assistant_message_id,
-                                "in_reply_to": user_message_id,
+                                "timestamp": datetime.now().isoformat(),
+                                "sender": {
+                                    "id": "cortex-core",
+                                    "name": "Cortex",
+                                    "role": "assistant"
+                                }
                             },
-                            "user_id": user_id,
-                            "timestamp": datetime.now().isoformat(),
-                            "metadata": {"iterations": iterations},
+                            
+                            "metadata": {
+                                "iterations": iterations,
+                                "is_final": True
+                            }
                         }
 
                         await event_bus.publish(event)
@@ -535,10 +586,22 @@ class ResponseHandler:
             # At least try to publish an event
             try:
                 error_event = {
-                    "type": "error",
-                    "data": {"message": error_msg, "conversation_id": conversation_id},
-                    "user_id": user_id,
-                    "timestamp": datetime.now().isoformat(),
+                    "type": "message",
+                    "message_type": "error",
+                    "data": {
+                        "content": error_msg,
+                        "conversation_id": conversation_id,
+                        "timestamp": datetime.now().isoformat(),
+                        "sender": {
+                            "id": "system_error",
+                            "name": "System Error",
+                            "role": "system"
+                        }
+                    },
+                    "metadata": {
+                        "is_final": True,
+                        "error": True
+                    }
                 }
                 await event_bus.publish(error_event)
             except Exception:

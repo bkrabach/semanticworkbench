@@ -11,7 +11,7 @@ class InMemoryStorage:
     Simple in-memory storage for development use.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.users: Dict[str, Dict[str, Any]] = {}
         self.workspaces: Dict[str, Dict[str, Any]] = {}
         self.conversations: Dict[str, Dict[str, Any]] = {}

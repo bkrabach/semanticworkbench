@@ -51,12 +51,12 @@ class _TestService:
 
 
 @pytest.fixture
-def test_service():
+def test_service() -> _TestService:
     """Create test service instance."""
     return _TestService()
 
 
-def test_tool_decorator_metadata():
+def test_tool_decorator_metadata() -> None:
     """Test that tool decorator adds correct metadata."""
     # Access the wrapped method with metadata
     method = _TestService.test_tool
@@ -82,7 +82,7 @@ def test_tool_decorator_metadata():
     assert len(tool_def.schema["required"]) == 2  # name and value
 
 
-def test_tool_with_custom_name():
+def test_tool_with_custom_name() -> None:
     """Test tool decorator with custom name."""
     # Access the wrapped method with metadata
     method = _TestService.tool_with_model
@@ -95,7 +95,7 @@ def test_tool_with_custom_name():
     assert tool_def.name == "custom_tool"
 
 
-def test_tool_with_input_model():
+def test_tool_with_input_model() -> None:
     """Test tool decorator with input model."""
     # Access the wrapped method with metadata
     method = _TestService.tool_with_model
@@ -113,7 +113,7 @@ def test_tool_with_input_model():
     assert "optional" in tool_def.schema["properties"]
 
 
-def test_resource_decorator_metadata():
+def test_resource_decorator_metadata() -> None:
     """Test that resource decorator adds correct metadata."""
     # Access the wrapped method with metadata
     method = _TestService.test_resource
@@ -139,7 +139,7 @@ def test_resource_decorator_metadata():
     assert len(resource_def.schema["required"]) >= 1  # At least id is required
 
 
-def test_resource_with_custom_name():
+def test_resource_with_custom_name() -> None:
     """Test resource decorator with custom name."""
     # Access the wrapped method with metadata
     method = _TestService.resource_with_model
@@ -152,7 +152,7 @@ def test_resource_with_custom_name():
     assert resource_def.name == "custom_resource"
 
 
-def test_resource_with_params_model():
+def test_resource_with_params_model() -> None:
     """Test resource decorator with params model."""
     # Access the wrapped method with metadata
     method = _TestService.resource_with_model
@@ -170,7 +170,7 @@ def test_resource_with_params_model():
 
 
 @pytest.mark.asyncio
-async def test_tool_execution(test_service):
+async def test_tool_execution(test_service: _TestService) -> None:
     """Test tool execution with the decorator."""
     result = await test_service.test_tool(name="test", value=42)
     
@@ -179,7 +179,7 @@ async def test_tool_execution(test_service):
 
 
 @pytest.mark.asyncio
-async def test_tool_execution_with_model(test_service):
+async def test_tool_execution_with_model(test_service: _TestService) -> None:
     """Test tool execution with input model validation."""
     # Valid input
     result = await test_service.tool_with_model(name="test", value=42)
@@ -191,20 +191,20 @@ async def test_tool_execution_with_model(test_service):
     
     # Invalid input (missing required parameter)
     with pytest.raises(ValidationError) as exc:
-        await test_service.tool_with_model(name="test")
+        await test_service.tool_with_model(name="test")  # type: ignore[call-arg]
     
     # Check that validation error occurred - don't check specific message
     assert "validation failed" in str(exc.value)
     
     # Invalid input (wrong type)
     with pytest.raises(ValidationError) as exc:
-        await test_service.tool_with_model(name="test", value="not_an_int")
+        await test_service.tool_with_model(name="test", value="not_an_int")  # type: ignore[arg-type]
     
     assert "validation failed" in str(exc.value)
 
 
 @pytest.mark.asyncio
-async def test_resource_execution(test_service):
+async def test_resource_execution(test_service: _TestService) -> None:
     """Test resource execution with the decorator."""
     result = await test_service.test_resource(id="test123")
     
@@ -217,7 +217,7 @@ async def test_resource_execution(test_service):
 
 
 @pytest.mark.asyncio
-async def test_resource_execution_with_model(test_service):
+async def test_resource_execution_with_model(test_service: _TestService) -> None:
     """Test resource execution with params model validation."""
     # Valid params
     result = await test_service.resource_with_model(id="test123")
@@ -229,19 +229,19 @@ async def test_resource_execution_with_model(test_service):
     
     # Invalid params (missing required parameter)
     with pytest.raises(ValidationError) as exc:
-        await test_service.resource_with_model()
+        await test_service.resource_with_model()  # type: ignore[call-arg]
     
     # Check that validation error occurred - don't check specific message
     assert "validation failed" in str(exc.value)
     
     # Invalid params (wrong type)
     with pytest.raises(ValidationError) as exc:
-        await test_service.resource_with_model(id="test123", limit="not_an_int")
+        await test_service.resource_with_model(id="test123", limit="not_an_int")  # type: ignore[arg-type]
     
     assert "validation failed" in str(exc.value)
 
 
-def test_wrapping_preserves_metadata():
+def test_wrapping_preserves_metadata() -> None:
     """Test that decorator preserves function metadata."""
     # Original signatures should be preserved
     tool_sig = inspect.signature(_TestService.test_tool)

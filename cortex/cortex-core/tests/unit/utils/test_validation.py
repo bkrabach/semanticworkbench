@@ -8,7 +8,7 @@ import pytest
 from app.utils.validation import is_valid_uuid, is_valid_email, validate_pagination
 
 
-def test_is_valid_uuid():
+def test_is_valid_uuid() -> None:
     """Test the is_valid_uuid function."""
     # Valid UUIDs
     valid_uuid = str(uuid.uuid4())
@@ -27,7 +27,7 @@ def test_is_valid_uuid():
     assert is_valid_uuid("550e8400-e29b-41d4-a716_446655440000") is False  # Wrong format
 
 
-def test_is_valid_email():
+def test_is_valid_email() -> None:
     """Test the is_valid_email function."""
     # Valid emails
     assert is_valid_email("test@example.com") is True
@@ -44,21 +44,21 @@ def test_is_valid_email():
     assert is_valid_email("test@example") is False  # Missing TLD
 
 
-def test_validate_pagination_defaults():
+def test_validate_pagination_defaults() -> None:
     """Test validate_pagination with default values."""
     limit, offset = validate_pagination()
     assert limit == 100
     assert offset == 0
 
 
-def test_validate_pagination_custom_values():
+def test_validate_pagination_custom_values() -> None:
     """Test validate_pagination with custom values."""
     limit, offset = validate_pagination(limit=50, offset=10)
     assert limit == 50
     assert offset == 10
 
 
-def test_validate_pagination_sanitizes_values():
+def test_validate_pagination_sanitizes_values() -> None:
     """Test validate_pagination sanitizes values."""
     # Limit below 1 should become 1
     limit, _ = validate_pagination(limit=0)
@@ -73,7 +73,7 @@ def test_validate_pagination_sanitizes_values():
     assert offset == 0
 
 
-def test_validate_pagination_mixed_values():
+def test_validate_pagination_mixed_values() -> None:
     """Test validate_pagination with mixed valid and invalid values."""
     # Valid limit, invalid offset
     limit, offset = validate_pagination(limit=50, offset=-10)

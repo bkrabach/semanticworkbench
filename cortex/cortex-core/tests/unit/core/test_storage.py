@@ -8,12 +8,12 @@ from app.models.core_domain import Conversation, Message, User, Workspace
 
 
 @pytest.fixture
-def memory_storage():
+def memory_storage() -> InMemoryStorage:
     """Create an in-memory storage instance for testing."""
     return InMemoryStorage()
 
 
-def test_user_operations(memory_storage):
+def test_user_operations(memory_storage: InMemoryStorage) -> None:
     """Test user creation and retrieval."""
     # Create test user
     user = User(
@@ -36,7 +36,7 @@ def test_user_operations(memory_storage):
     assert memory_storage.get_user("nonexistent") is None
 
 
-def test_workspace_operations(memory_storage):
+def test_workspace_operations(memory_storage: InMemoryStorage) -> None:
     """Test workspace creation, retrieval and listing."""
     # Create test workspaces
     workspace1 = Workspace(
@@ -65,6 +65,7 @@ def test_workspace_operations(memory_storage):
     
     # Get workspace by ID
     retrieved = memory_storage.get_workspace("workspace1")
+    assert retrieved is not None
     assert retrieved["id"] == "workspace1"
     assert retrieved["name"] == "Workspace 1"
     
@@ -79,7 +80,7 @@ def test_workspace_operations(memory_storage):
     assert owner2_workspaces[0]["id"] == "workspace3"
 
 
-def test_conversation_operations(memory_storage):
+def test_conversation_operations(memory_storage: InMemoryStorage) -> None:
     """Test conversation creation, retrieval and listing."""
     # Create test conversations
     conversation1 = Conversation(
@@ -108,6 +109,7 @@ def test_conversation_operations(memory_storage):
     
     # Get conversation by ID
     retrieved = memory_storage.get_conversation("conv1")
+    assert retrieved is not None
     assert retrieved["id"] == "conv1"
     assert retrieved["topic"] == "Conversation Topic 1"
     
@@ -122,7 +124,7 @@ def test_conversation_operations(memory_storage):
     assert ws2_conversations[0]["id"] == "conv3"
 
 
-def test_message_operations(memory_storage):
+def test_message_operations(memory_storage: InMemoryStorage) -> None:
     """Test message creation, retrieval and listing."""
     # Create test messages
     message1 = Message(
@@ -151,6 +153,7 @@ def test_message_operations(memory_storage):
     
     # Get message by ID
     retrieved = memory_storage.get_message("msg1")
+    assert retrieved is not None
     assert retrieved["id"] == "msg1"
     assert retrieved["content"] == "Hello"
     

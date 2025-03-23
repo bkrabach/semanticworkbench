@@ -5,12 +5,13 @@ Unit tests for the cognition-related tools.
 from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from datetime import datetime
+from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple, Union
 
 from app.core.tools import get_context, analyze_conversation, search_history
 
 
 @pytest.fixture
-def mock_client():
+def mock_client() -> AsyncMock:
     """Create a mocked MCP client."""
     mock = AsyncMock()
     mock.get_resource = AsyncMock(return_value={})
@@ -18,7 +19,7 @@ def mock_client():
 
 
 @pytest.fixture
-def mock_uow():
+def mock_uow() -> tuple[MagicMock, AsyncMock]:
     """Create a mocked UnitOfWork."""
     mock = MagicMock()
     mock.__aenter__ = AsyncMock(return_value=mock)
@@ -33,7 +34,7 @@ def mock_uow():
 
 @pytest.mark.asyncio
 @patch("app.core.tools.get_client")
-async def test_get_context_with_mcp(mock_get_client, mock_client):
+async def test_get_context_with_mcp(mock_get_client: MagicMock, mock_client: AsyncMock) -> None:
     """Test get_context with MCP client available."""
     # Setup mocked MCP client
     mock_get_client.return_value = mock_client
@@ -67,7 +68,7 @@ async def test_get_context_with_mcp(mock_get_client, mock_client):
 @pytest.mark.asyncio
 @patch("app.core.tools.get_client")
 @patch("app.core.tools.UnitOfWork")
-async def test_get_context_without_mcp(mock_uow_class, mock_get_client, mock_uow):
+async def test_get_context_without_mcp(mock_uow_class: MagicMock, mock_get_client: MagicMock, mock_uow: tuple[MagicMock, AsyncMock]) -> None:
     """Test get_context with no MCP client (fallback)."""
     mock_uow_instance, mock_msg_repo = mock_uow
     mock_uow_class.for_transaction.return_value = mock_uow_instance
@@ -107,7 +108,7 @@ async def test_get_context_without_mcp(mock_uow_class, mock_get_client, mock_uow
 
 @pytest.mark.asyncio
 @patch("app.core.tools.get_client")
-async def test_analyze_conversation_with_mcp(mock_get_client, mock_client):
+async def test_analyze_conversation_with_mcp(mock_get_client: MagicMock, mock_client: AsyncMock) -> None:
     """Test analyze_conversation with MCP client available."""
     # Setup mocked MCP client
     mock_get_client.return_value = mock_client
@@ -141,7 +142,7 @@ async def test_analyze_conversation_with_mcp(mock_get_client, mock_client):
 @pytest.mark.asyncio
 @patch("app.core.tools.get_client")
 @patch("app.core.tools.UnitOfWork")
-async def test_analyze_conversation_without_mcp(mock_uow_class, mock_get_client, mock_uow):
+async def test_analyze_conversation_without_mcp(mock_uow_class: MagicMock, mock_get_client: MagicMock, mock_uow: tuple[MagicMock, AsyncMock]) -> None:
     """Test analyze_conversation with no MCP client (fallback)."""
     mock_uow_instance, mock_msg_repo = mock_uow
     mock_uow_class.for_transaction.return_value = mock_uow_instance
@@ -173,7 +174,7 @@ async def test_analyze_conversation_without_mcp(mock_uow_class, mock_get_client,
 
 @pytest.mark.asyncio
 @patch("app.core.tools.get_client")
-async def test_search_history_with_mcp(mock_get_client, mock_client):
+async def test_search_history_with_mcp(mock_get_client: MagicMock, mock_client: AsyncMock) -> None:
     """Test search_history with MCP client available."""
     # Setup mocked MCP client
     mock_get_client.return_value = mock_client
@@ -210,7 +211,7 @@ async def test_search_history_with_mcp(mock_get_client, mock_client):
 @pytest.mark.asyncio
 @patch("app.core.tools.get_client")
 @patch("app.core.tools.UnitOfWork")
-async def test_search_history_without_mcp(mock_uow_class, mock_get_client, mock_uow):
+async def test_search_history_without_mcp(mock_uow_class: MagicMock, mock_get_client: MagicMock, mock_uow: tuple[MagicMock, AsyncMock]) -> None:
     """Test search_history with no MCP client (fallback)."""
     mock_uow_instance, mock_msg_repo = mock_uow
     mock_uow_class.for_transaction.return_value = mock_uow_instance

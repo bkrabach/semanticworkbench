@@ -3,27 +3,30 @@ Shared test fixtures and configuration.
 """
 
 import os
+from typing import AsyncGenerator, Generator
 from unittest.mock import AsyncMock
 
 import pytest
+from app.core.event_bus import EventBus
 from app.database.connection import get_session
 from app.main import app
 from app.utils.auth import create_access_token
 from fastapi.testclient import TestClient
-
+from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
 
 # Let pytest-asyncio handle the event loop management
 # Use the mark.asyncio decorator with scope="session" where needed
 
 
 @pytest.fixture
-def client():
+def client() -> TestClient:
     """Return a FastAPI TestClient."""
     return TestClient(app)
 
 
 @pytest.fixture
-def mock_env_vars():
+def mock_env_vars() -> Generator[None, None, None]:
     """Set test environment variables."""
     original = os.environ.copy()
     os.environ["USE_MOCK_LLM"] = "true"
@@ -33,7 +36,7 @@ def mock_env_vars():
 
 
 @pytest.fixture
-def test_token():
+def test_token() -> str:
     """Create a test JWT token."""
     return create_access_token({
         "sub": "test@example.com",
@@ -44,15 +47,14 @@ def test_token():
 
 
 @pytest.fixture
-def auth_headers(test_token):
+def auth_headers(test_token: str) -> dict[str, str]:
     """Create authorization headers with test token."""
     return {"Authorization": f"Bearer {test_token}"}
 
 
 @pytest.fixture
-async def async_client():
+async def async_client() -> AsyncGenerator[AsyncClient, None]:
     """Create an async client for testing async endpoints."""
-    from httpx import AsyncClient
 
     # For HTTPX AsyncClient, we set the base_url and don't pass the app directly
     async with AsyncClient(base_url="http://test") as client:
@@ -60,7 +62,7 @@ async def async_client():
 
 
 @pytest.fixture
-def mock_event_bus():
+def mock_event_bus() -> EventBus:
     """Create a mock event bus."""
     from app.core.event_bus import EventBus
 
@@ -70,7 +72,7 @@ def mock_event_bus():
 
 
 @pytest.fixture
-async def mock_db_session():
+async def mock_db_session() -> AsyncMock:
     """Create a mock database session."""
     session = AsyncMock()
     # Configure common mock behavior
@@ -78,20 +80,20 @@ async def mock_db_session():
 
 
 @pytest.fixture
-async def db_session():
+async def db_session() -> AsyncGenerator[AsyncSession, None]:
     """Create a real database session for integration tests."""
     async with get_session() as session:
         yield session
 
 
 @pytest.fixture
-def user_data():
+def user_data() -> dict[str, object]:
     """Sample user data for tests."""
     return {"id": "test-user-id", "name": "Test User", "email": "test@example.com", "metadata": {"test": True}}
 
 
 @pytest.fixture
-def workspace_data(user_data):
+def workspace_data(user_data: dict[str, object]) -> dict[str, object]:
     """Sample workspace data for tests."""
     return {
         "id": "test-workspace-id",
@@ -103,7 +105,7 @@ def workspace_data(user_data):
 
 
 @pytest.fixture
-def conversation_data(workspace_data):
+def conversation_data(workspace_data: dict[str, object]) -> dict[str, object]:
     """Sample conversation data for tests."""
     return {
         "id": "test-conversation-id",
@@ -115,7 +117,7 @@ def conversation_data(workspace_data):
 
 
 @pytest.fixture
-def message_data(conversation_data):
+def message_data(conversation_data: dict[str, object]) -> dict[str, object]:
     """Sample message data for tests."""
     return {
         "id": "test-message-id",

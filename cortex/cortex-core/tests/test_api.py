@@ -1,4 +1,6 @@
 # We need pytest for test discovery, even if not directly used
+from typing import Dict
+
 from app.main import app
 from app.utils.auth import create_access_token
 from fastapi.testclient import TestClient
@@ -6,20 +8,22 @@ from fastapi.testclient import TestClient
 client = TestClient(app)
 
 
-def get_auth_header(user_id="test-user", name="Test User", email="test@example.com"):
+def get_auth_header(
+    user_id: str = "test-user", name: str = "Test User", email: str = "test@example.com"
+) -> Dict[str, str]:
     """Create authentication header with test token."""
     token = create_access_token({"sub": email, "oid": user_id, "name": name, "email": email})
     return {"Authorization": f"Bearer {token}"}
 
 
-def test_root_endpoint():
+def test_root_endpoint() -> None:
     """Test root endpoint."""
     response = client.get("/")
     assert response.status_code == 200
     assert response.json() == {"status": "online", "service": "Cortex Core"}
 
 
-def test_login_endpoint():
+def test_login_endpoint() -> None:
     """Test login endpoint."""
     response = client.post("/auth/login", data={"username": "user@example.com", "password": "password123"})
     assert response.status_code == 200
@@ -28,13 +32,13 @@ def test_login_endpoint():
     assert data["token_type"] == "bearer"
 
 
-def test_invalid_login():
+def test_invalid_login() -> None:
     """Test login with invalid credentials."""
     response = client.post("/auth/login", data={"username": "wrong@example.com", "password": "wrong"})
     assert response.status_code == 401
 
 
-def test_verify_token():
+def test_verify_token() -> None:
     """Test token verification."""
     headers = get_auth_header()
     response = client.get("/auth/verify", headers=headers)
@@ -43,7 +47,7 @@ def test_verify_token():
     assert data["user_id"] == "test-user"
 
 
-def test_input_endpoint():
+def test_input_endpoint() -> None:
     """Test input endpoint."""
     headers = get_auth_header()
 
@@ -75,7 +79,7 @@ def test_input_endpoint():
     assert data["data"]["conversation_id"] == conversation_id
 
 
-def test_input_endpoint_missing_conversation_id():
+def test_input_endpoint_missing_conversation_id() -> None:
     """Test input endpoint with missing conversation_id."""
     headers = get_auth_header()
 
@@ -91,7 +95,7 @@ def test_input_endpoint_missing_conversation_id():
     assert any("conversation_id" in str(error) for error in data["error"]["details"]["validation_errors"])
 
 
-def test_workspace_endpoints():
+def test_workspace_endpoints() -> None:
     """Test workspace creation and listing."""
     headers = get_auth_header()
 

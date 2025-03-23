@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 class MockLLMAgent:
     """Mock Agent implementation for testing."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the mock agent."""
         self.response_templates = [
             "I understand you're asking about {topic}. Let me help with that.",
@@ -35,7 +35,7 @@ class MockLLMAgent:
             "Let me address your question about {topic} with some helpful information.",
         ]
 
-    def model_config(self):
+    def model_config(self) -> Dict[str, Any]:
         """Define the model configuration for the agent."""
         return {
             "model": "mock-model",
@@ -91,7 +91,7 @@ class MockLLMAgent:
 class MockLLM:
     """Mock LLM implementation that returns predefined responses."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the mock LLM with predefined responses."""
         self.agent = MockLLMAgent()
         self.response_templates = [

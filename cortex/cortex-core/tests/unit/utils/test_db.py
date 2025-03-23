@@ -6,7 +6,7 @@ import pytest
 from app.utils.db import serialize_json, deserialize_json, serialize_json_list, deserialize_json_list
 
 
-def test_serialize_json():
+def test_serialize_json() -> None:
     """Test serializing dictionaries to JSON."""
     # Test with a regular dictionary
     data = {"name": "Test", "value": 42, "nested": {"key": "value"}}
@@ -22,7 +22,7 @@ def test_serialize_json():
     assert serialize_json({}) == "{}"
 
 
-def test_deserialize_json():
+def test_deserialize_json() -> None:
     """Test deserializing JSON to dictionaries."""
     # Test with a regular JSON string
     json_str = '{"name": "Test", "value": 42, "nested": {"key": "value"}}'
@@ -49,7 +49,7 @@ def test_deserialize_json():
     assert deserialize_json("[1, 2, 3]") == {}
 
 
-def test_serialize_json_list():
+def test_serialize_json_list() -> None:
     """Test serializing lists to JSON."""
     # Test with a regular list
     data = [1, 2, {"name": "Test"}, [4, 5, 6]]
@@ -63,7 +63,7 @@ def test_serialize_json_list():
     assert serialize_json_list([]) == "[]"
 
 
-def test_deserialize_json_list():
+def test_deserialize_json_list() -> None:
     """Test deserializing JSON to lists."""
     # Test with a regular JSON array
     json_str = '[1, 2, {"name": "Test"}, [4, 5, 6]]'
@@ -91,7 +91,7 @@ def test_deserialize_json_list():
     assert deserialize_json_list('{"key": "value"}') == []
 
 
-def test_roundtrip_json():
+def test_roundtrip_json() -> None:
     """Test JSON serialization and deserialization roundtrip."""
     # Dictionary roundtrip
     data = {"name": "Roundtrip", "values": [1, 2, 3], "nested": {"key": "value"}}

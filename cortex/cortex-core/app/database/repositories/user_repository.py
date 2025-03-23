@@ -21,7 +21,7 @@ class UserRepository(BaseRepository[User, DbUser]):
         """
         super().__init__(session, User, DbUser)
 
-    async def list_all(self, limit: int = 100, offset: int = 0):
+    async def list_all(self, limit: int = 100, offset: int = 0) -> list[User]:
         """
         List all users.
 

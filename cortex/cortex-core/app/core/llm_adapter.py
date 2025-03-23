@@ -23,7 +23,7 @@ ChatMessage = Dict[str, str]
 
 # Define a protocol for model interfaces
 class ModelProtocol(Protocol):
-    async def generate(self, *args, **kwargs): ...
+    async def generate(self, *args: Any, **kwargs: Any) -> Any: ...
 
 
 class PydAIBaseModel:
@@ -31,13 +31,13 @@ class PydAIBaseModel:
 
 
 class OpenAIModel(PydAIBaseModel):
-    def __init__(self, model_name, api_key=None):
+    def __init__(self, model_name: str, api_key: Optional[str] = None) -> None:
         self.model_name = model_name
         self.api_key = api_key
 
 
 class OpenAICompatibleModel(PydAIBaseModel):
-    def __init__(self, model_name, api_key=None, base_url=None, api_version=None, azure_deployment=None):
+    def __init__(self, model_name: str, api_key: Optional[str] = None, base_url: Optional[str] = None, api_version: Optional[str] = None, azure_deployment: Optional[str] = None) -> None:
         self.model_name = model_name
         self.api_key = api_key
         self.base_url = base_url
@@ -46,7 +46,7 @@ class OpenAICompatibleModel(PydAIBaseModel):
 
 
 class AnthropicModel(PydAIBaseModel):
-    def __init__(self, model_name, api_key=None):
+    def __init__(self, model_name: str, api_key: Optional[str] = None) -> None:
         self.model_name = model_name
         self.api_key = api_key
 
@@ -57,7 +57,7 @@ logger = logging.getLogger(__name__)
 class CortexLLMAgent:
     """Agent implementation using Pydantic AI for LLM interactions."""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: Dict[str, Any]) -> None:
         """Initialize the Pydantic AI agent with configuration."""
         self.config = config
         self.model_name = config.get("model")
@@ -84,7 +84,7 @@ class CortexLLMAgent:
         elif provider == "azure_openai":
             api_key = os.getenv("AZURE_OPENAI_KEY")
             base_url = os.getenv("AZURE_OPENAI_BASE_URL")
-            deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT")
+            deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-35-turbo")
             api_version = os.getenv("AZURE_OPENAI_API_VERSION", "2023-05-15")
 
             # Azure OpenAI is handled as a compatible model with Azure-specific config
@@ -105,7 +105,7 @@ class CortexLLMAgent:
             model_name = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
             return OpenAIModel(model_name, api_key=api_key)
 
-    def model_config(self):
+    def model_config(self) -> Dict[str, Any]:
         """Define the model configuration for the agent."""
         return {
             "model": self.model_name,
@@ -309,7 +309,7 @@ class CortexLLMAgent:
 class LLMAdapter:
     """Adapter for interacting with LLMs through the Pydantic AI framework."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the LLM adapter based on environment variables."""
         self.provider = os.getenv("LLM_PROVIDER", "openai").lower()
         self.use_mock = os.getenv("USE_MOCK_LLM", "false").lower() == "true"
@@ -408,7 +408,7 @@ class LLMAdapter:
             )
 
             # Log that we're calling the real LLM
-            provider = self.config.get("provider", "openai").lower()
+            provider = str(self.config.get("provider", "openai")).lower()
             model_name = self.config.get("model", "unknown")
             logger.info(f"Calling real LLM provider: {provider}, model: {model_name}")
 

@@ -15,7 +15,7 @@ client = TestClient(app)
 
 
 @pytest.fixture
-def user_context():
+def user_context() -> dict:
     """Create a mock user context."""
     return {
         "user_id": "test-user-id", 
@@ -25,14 +25,14 @@ def user_context():
 
 
 @pytest.fixture
-def auth_headers(test_token):
+def auth_headers(test_token: str) -> dict:
     """Create mock authentication headers."""
     return {"Authorization": f"Bearer {test_token}"}
 
 
 @patch("app.api.cognition.get_current_user")
 @patch("app.api.cognition.get_context")
-async def test_get_user_context(mock_get_context, mock_get_current_user, user_context, auth_headers):
+async def test_get_user_context(mock_get_context: AsyncMock, mock_get_current_user: AsyncMock, user_context: dict, auth_headers: dict) -> None:
     """Test getting user context API endpoint."""
     # Mock get_current_user
     mock_get_current_user.return_value = user_context
@@ -74,7 +74,7 @@ async def test_get_user_context(mock_get_context, mock_get_current_user, user_co
 
 @patch("app.api.cognition.get_current_user")
 @patch("app.api.cognition.analyze_conversation")
-async def test_analyze_user_conversation(mock_analyze_conversation, mock_get_current_user, user_context, auth_headers):
+async def test_analyze_user_conversation(mock_analyze_conversation: AsyncMock, mock_get_current_user: AsyncMock, user_context: dict, auth_headers: dict) -> None:
     """Test analyzing a conversation API endpoint."""
     # Mock get_current_user
     mock_get_current_user.return_value = user_context
@@ -116,7 +116,7 @@ async def test_analyze_user_conversation(mock_analyze_conversation, mock_get_cur
 
 @patch("app.api.cognition.get_current_user")
 @patch("app.api.cognition.search_history")
-async def test_search_user_history(mock_search_history, mock_get_current_user, user_context, auth_headers):
+async def test_search_user_history(mock_search_history: AsyncMock, mock_get_current_user: AsyncMock, user_context: dict, auth_headers: dict) -> None:
     """Test searching user history API endpoint."""
     # Mock get_current_user
     mock_get_current_user.return_value = user_context

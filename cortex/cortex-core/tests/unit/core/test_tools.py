@@ -19,7 +19,7 @@ from app.models import Conversation, Message, User, Workspace
 
 
 @pytest.mark.asyncio
-async def test_get_current_time():
+async def test_get_current_time() -> None:
     """Test the get_current_time tool."""
     # Execute the tool
     result = await get_current_time()
@@ -41,7 +41,7 @@ async def test_get_current_time():
 
 
 @pytest.mark.asyncio
-async def test_get_user_info():
+async def test_get_user_info() -> None:
     """Test the get_user_info tool with mock repository."""
     # Mock the UnitOfWork and repository
     mock_user = User(user_id="test-user", name="Test User", email="test@example.com")
@@ -70,7 +70,7 @@ async def test_get_user_info():
 
 
 @pytest.mark.asyncio
-async def test_get_user_info_not_found():
+async def test_get_user_info_not_found() -> None:
     """Test the get_user_info tool with a non-existent user."""
     with patch("app.core.tools.UnitOfWork.for_transaction") as mock_uow:
         # Set up the mock repositories
@@ -96,7 +96,7 @@ async def test_get_user_info_not_found():
 
 
 @pytest.mark.asyncio
-async def test_list_workspaces():
+async def test_list_workspaces() -> None:
     """Test the list_workspaces tool."""
     # Create mock workspaces
     mock_workspaces = [
@@ -128,7 +128,7 @@ async def test_list_workspaces():
 
 
 @pytest.mark.asyncio
-async def test_get_conversation_summary():
+async def test_get_conversation_summary() -> None:
     """Test the get_conversation_summary tool."""
     # Mock data
     mock_conversation = Conversation(
@@ -171,7 +171,7 @@ async def test_get_conversation_summary():
 
 
 @pytest.mark.asyncio
-async def test_get_conversation_summary_not_found():
+async def test_get_conversation_summary_not_found() -> None:
     """Test the get_conversation_summary tool with a non-existent conversation."""
     with patch("app.core.tools.UnitOfWork.for_transaction") as mock_uow:
         # Set up the mock repositories

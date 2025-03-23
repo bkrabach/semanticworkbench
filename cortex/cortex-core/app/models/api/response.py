@@ -5,6 +5,13 @@ from pydantic import BaseModel, Field
 from ...models import Conversation, Workspace
 
 
+class ResultSegment(BaseModel):
+    """Result segment model for streaming responses."""
+    
+    content: str = Field(..., description="The segment content")
+    final: bool = Field(False, description="Whether this is the final segment")
+
+
 class LoginResponse(BaseModel):
     """Login response model."""
 

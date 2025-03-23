@@ -10,7 +10,7 @@ class EventBus:
     Simple in-memory event bus for internal communication.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.subscribers: List[asyncio.Queue[Dict[str, Any]]] = []
         self._active_tasks: Set[asyncio.Task[Any]] = set()
 

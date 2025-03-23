@@ -5,8 +5,10 @@ Integration tests for database repositories.
 import asyncio
 import os
 from datetime import datetime
+from typing import Any, Generator, AsyncGenerator
 
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
 from app.database.connection import get_session
 from app.database.unit_of_work import UnitOfWork
 from app.models import Conversation, Message, User, Workspace
@@ -17,7 +19,7 @@ pytestmark = pytest.mark.asyncio(scope="session")
 
 
 @pytest.fixture(scope="session")
-async def db_session():
+async def db_session() -> AsyncGenerator[AsyncSession, None]:
     """Create a database session for testing."""
     # Use in-memory SQLite for testing
     os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///:memory:"
@@ -36,7 +38,7 @@ async def db_session():
 
 
 @pytest.fixture
-async def test_user():
+async def test_user() -> User:
     """Create a test user for database tests."""
     import uuid
     unique_id = str(uuid.uuid4())
@@ -48,7 +50,7 @@ async def test_user():
 
 
 @pytest.fixture
-async def test_workspace(test_user):
+async def test_workspace(test_user: User) -> Workspace:
     """Create a test workspace for database tests."""
     return Workspace(
         id="test-workspace-id", name="Test Workspace", description="A test workspace", owner_id=test_user.user_id
@@ -56,7 +58,7 @@ async def test_workspace(test_user):
 
 
 @pytest.fixture
-async def test_conversation(test_workspace):
+async def test_conversation(test_workspace: Workspace) -> Conversation:
     """Create a test conversation for database tests."""
     return Conversation(
         id="test-conversation-id",
@@ -67,7 +69,7 @@ async def test_conversation(test_workspace):
 
 
 @pytest.fixture
-async def test_message(test_conversation):
+async def test_message(test_conversation: Conversation) -> Message:
     """Create a test message for database tests."""
     return Message(
         id="test-message-id",
@@ -79,7 +81,7 @@ async def test_message(test_conversation):
 
 
 @pytest.mark.asyncio
-async def test_user_repository_operations(test_user):
+async def test_user_repository_operations(test_user: User) -> None:
     """Test user repository operations."""
     async with UnitOfWork.for_transaction() as uow:
         user_repository = uow.repositories.get_user_repository()
@@ -111,7 +113,7 @@ async def test_user_repository_operations(test_user):
 
 
 @pytest.mark.asyncio
-async def test_workspace_repository_operations(test_workspace, test_user):
+async def test_workspace_repository_operations(test_workspace: Workspace, test_user: User) -> None:
     """Test workspace repository operations."""
     async with UnitOfWork.for_transaction() as uow:
         workspace_repository = uow.repositories.get_workspace_repository()
@@ -139,7 +141,7 @@ async def test_workspace_repository_operations(test_workspace, test_user):
 
 
 @pytest.mark.asyncio
-async def test_conversation_repository_operations(test_conversation):
+async def test_conversation_repository_operations(test_conversation: Conversation) -> None:
     """Test conversation repository operations."""
     async with UnitOfWork.for_transaction() as uow:
         conversation_repository = uow.repositories.get_conversation_repository()
@@ -167,7 +169,7 @@ async def test_conversation_repository_operations(test_conversation):
 
 
 @pytest.mark.asyncio
-async def test_message_repository_operations(test_message):
+async def test_message_repository_operations(test_message: Message) -> None:
     """Test message repository operations."""
     async with UnitOfWork.for_transaction() as uow:
         message_repository = uow.repositories.get_message_repository()

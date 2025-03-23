@@ -10,6 +10,7 @@ import asyncio
 import os
 import pytest
 from unittest.mock import patch, AsyncMock, MagicMock
+from typing import Any, Dict, List, Tuple, Generator, Optional, cast
 
 from app.core.response_handler import response_handler
 from app.core.llm_adapter import llm_adapter
@@ -22,7 +23,7 @@ from app.core.mcp import registry
 
 
 @pytest.fixture(scope="module")
-def event_loop():
+def event_loop() -> Generator[asyncio.AbstractEventLoop, None, None]:
     """Create an event loop for tests."""
     loop = asyncio.get_event_loop_policy().new_event_loop()
     yield loop
@@ -30,7 +31,7 @@ def event_loop():
 
 
 @pytest.fixture(scope="module")
-async def mock_repository_manager():
+async def mock_repository_manager() -> Tuple[MagicMock, MagicMock]:
     """Create a mock repository manager with basic functionality."""
     repo_manager = MagicMock(spec=RepositoryManager)
     
@@ -46,7 +47,7 @@ async def mock_repository_manager():
     return repo_manager, messages_repo
     
 @pytest.fixture(scope="module")
-async def setup_mcp_services(mock_repository_manager):
+async def setup_mcp_services(mock_repository_manager: Tuple[MagicMock, MagicMock]) -> Tuple[MemoryService, CognitionService, MagicMock]:
     """Set up MCP services for testing."""
     repo_manager, messages_repo = mock_repository_manager
     
@@ -67,7 +68,7 @@ async def setup_mcp_services(mock_repository_manager):
     return memory_service, cognition_service, messages_repo
 
 @pytest.fixture(scope="module")
-async def setup_test_data(mock_repository_manager, setup_mcp_services):
+async def setup_test_data(mock_repository_manager: Tuple[MagicMock, MagicMock], setup_mcp_services: Tuple[MemoryService, CognitionService, MagicMock]) -> Dict[str, Any]:
     """Set up test data for cognition flow tests."""
     # Use in-memory SQLite for testing
     os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///:memory:"
@@ -138,7 +139,7 @@ async def setup_test_data(mock_repository_manager, setup_mcp_services):
 
 
 @pytest.mark.asyncio
-async def test_get_context_directly(setup_test_data):
+async def test_get_context_directly(setup_test_data: Dict[str, Any]) -> None:
     """
     Test the Cognition Service's get_context method directly.
     """
@@ -172,7 +173,7 @@ async def test_get_context_directly(setup_test_data):
 
 
 @pytest.mark.asyncio
-async def test_analyze_conversation_directly(setup_test_data):
+async def test_analyze_conversation_directly(setup_test_data: Dict[str, Any]) -> None:
     """
     Test the Cognition Service's analyze_conversation method directly.
     """
@@ -203,7 +204,7 @@ async def test_analyze_conversation_directly(setup_test_data):
 
 
 @pytest.mark.asyncio
-async def test_search_history_directly(setup_test_data):
+async def test_search_history_directly(setup_test_data: Dict[str, Any]) -> None:
     """
     Test the Cognition Service's search_history method directly.
     """
@@ -236,7 +237,7 @@ async def test_search_history_directly(setup_test_data):
 
 
 @pytest.mark.asyncio
-async def test_get_context_mcp_integration(setup_test_data):
+async def test_get_context_mcp_integration(setup_test_data: Dict[str, Any]) -> None:
     """
     Test that the get_context tool can retrieve context through MCP services.
     """
@@ -274,7 +275,7 @@ async def test_get_context_mcp_integration(setup_test_data):
 
 
 @pytest.mark.asyncio
-async def test_context_fallback_on_error(setup_test_data):
+async def test_context_fallback_on_error(setup_test_data: Dict[str, Any]) -> None:
     """
     Test that tools and services handle errors gracefully.
     """

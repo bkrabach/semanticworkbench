@@ -48,7 +48,7 @@ class ServiceDefinition:
 class ServiceRegistry:
     """Registry for MCP services, their tools and resources."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.services: Dict[str, ServiceDefinition] = {}
         self._lock = asyncio.Lock()
 

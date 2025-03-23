@@ -2,7 +2,7 @@ import asyncio
 import json
 import logging
 from datetime import datetime
-from typing import Any, Dict
+from typing import Any, AsyncGenerator, Dict
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
@@ -21,7 +21,7 @@ router = APIRouter(tags=["output"])
     "/output/stream",
     responses={401: {"model": ErrorResponse}, 500: {"model": ErrorResponse}, 503: {"model": ErrorResponse}},
 )
-async def output_stream(request: Request, conversation_id: str, current_user: dict = Depends(get_current_user)):
+async def output_stream(request: Request, conversation_id: str, current_user: dict = Depends(get_current_user)) -> StreamingResponse:
     """
     Server-Sent Events (SSE) endpoint for streaming output to clients.
 
@@ -48,7 +48,7 @@ async def output_stream(request: Request, conversation_id: str, current_user: di
         logger.error(f"Failed to subscribe to event bus: {e}")
         raise ServiceUnavailableException(message="Unable to establish event stream", service_name="event_bus")
 
-    async def event_generator():
+    async def event_generator() -> AsyncGenerator[str, None]:
         """Generate SSE events from both conversation queue and event bus."""
         try:
             # Send initial connection established event

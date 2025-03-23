@@ -31,7 +31,7 @@ USERS = {
 
 
 @router.post("/login", response_model=LoginResponse)
-async def login(form_data: OAuth2PasswordRequestForm = Depends()):
+async def login(form_data: OAuth2PasswordRequestForm = Depends()) -> LoginResponse:
     """
     Authenticate a user and return a JWT token.
 
@@ -66,7 +66,7 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
 
 
 @router.get("/verify")
-async def verify_token(current_user: dict = Depends(get_current_user)):
+async def verify_token(current_user: dict = Depends(get_current_user)) -> dict:
     """
     Verify a JWT token and return the user data.
 

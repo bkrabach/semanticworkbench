@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import uuid
 from datetime import datetime
+from typing import Any, Dict, List, Tuple, Generator
 
 from app.services.memory import MemoryService
 
@@ -11,7 +12,7 @@ class TestMemoryService:
     """Tests for the Memory Service."""
 
     @pytest.fixture
-    def mock_repository_manager(self):
+    def mock_repository_manager(self) -> Tuple[MagicMock, MagicMock, MagicMock, MagicMock]:
         """Create a mock repository manager."""
         manager = MagicMock()
 
@@ -30,7 +31,7 @@ class TestMemoryService:
         return manager, message_repo, workspace_repo, conversation_repo
 
     @pytest.mark.asyncio
-    async def test_initialize(self, mock_repository_manager):
+    async def test_initialize(self, mock_repository_manager: Tuple[MagicMock, MagicMock, MagicMock, MagicMock]) -> None:
         """Test service initialization."""
         manager, _, _, _ = mock_repository_manager
         service = MemoryService(manager)
@@ -41,7 +42,7 @@ class TestMemoryService:
         assert manager.get_repository.call_count == 3
 
     @pytest.mark.asyncio
-    async def test_store_input(self, mock_repository_manager):
+    async def test_store_input(self, mock_repository_manager: Tuple[MagicMock, MagicMock, MagicMock, MagicMock]) -> None:
         """Test storing input."""
         manager, message_repo, _, _ = mock_repository_manager
         message_repo.create = AsyncMock(return_value="message_id")
@@ -73,7 +74,7 @@ class TestMemoryService:
         assert result["item_id"] == "message_id"
 
     @pytest.mark.asyncio
-    async def test_update_message(self, mock_repository_manager):
+    async def test_update_message(self, mock_repository_manager: Tuple[MagicMock, MagicMock, MagicMock, MagicMock]) -> None:
         """Test updating a message."""
         manager, message_repo, _, _ = mock_repository_manager
         message_repo.find_one = AsyncMock(return_value={
@@ -111,7 +112,7 @@ class TestMemoryService:
         assert result["message_id"] == "msg123"
 
     @pytest.mark.asyncio
-    async def test_get_conversation(self, mock_repository_manager):
+    async def test_get_conversation(self, mock_repository_manager: Tuple[MagicMock, MagicMock, MagicMock, MagicMock]) -> None:
         """Test getting conversation messages."""
         manager, message_repo, _, _ = mock_repository_manager
         messages = [

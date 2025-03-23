@@ -15,7 +15,7 @@ class RepositoryManager:
     to access repositories through the Unit of Work pattern.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the repository manager."""
         logger.info("Repository manager created")
 

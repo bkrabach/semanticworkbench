@@ -1,5 +1,6 @@
 import logging
 import uuid
+from typing import NoReturn
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
@@ -27,9 +28,10 @@ router = APIRouter(prefix="/config", tags=["config"])
 
 
 # Helper for error handling
-def handle_repository_error(error: Exception):
+def handle_repository_error(error: Exception) -> NoReturn:
     """
     Handle repository exceptions and convert to FastAPI HTTPExceptions.
+    This function always raises an exception, so it never returns normally.
 
     Args:
         error: The exception to handle
@@ -105,7 +107,7 @@ def handle_repository_error(error: Exception):
     status_code=status.HTTP_201_CREATED,
     responses={400: {"model": ErrorResponse}, 401: {"model": ErrorResponse}, 500: {"model": ErrorResponse}},
 )
-async def create_workspace(request: WorkspaceCreate, current_user: dict = Depends(get_current_user)):
+async def create_workspace(request: WorkspaceCreate, current_user: dict = Depends(get_current_user)) -> WorkspaceResponse:
     """
     Create a new workspace.
 
@@ -138,7 +140,7 @@ async def create_workspace(request: WorkspaceCreate, current_user: dict = Depend
 
         return WorkspaceResponse(status="workspace created", workspace=created_workspace)
     except Exception as e:
-        handle_repository_error(e)
+        handle_repository_error(e)  # This never returns as it always raises an exception
 
 
 @router.get(
@@ -146,7 +148,7 @@ async def create_workspace(request: WorkspaceCreate, current_user: dict = Depend
     response_model=WorkspacesListResponse,
     responses={401: {"model": ErrorResponse}, 500: {"model": ErrorResponse}},
 )
-async def list_workspaces(pagination: PaginationParams = Depends(), current_user: dict = Depends(get_current_user)):
+async def list_workspaces(pagination: PaginationParams = Depends(), current_user: dict = Depends(get_current_user)) -> WorkspacesListResponse:
     """
     List workspaces for the current user.
 
@@ -173,7 +175,7 @@ async def list_workspaces(pagination: PaginationParams = Depends(), current_user
 
         return WorkspacesListResponse(workspaces=workspaces, total=total)
     except Exception as e:
-        handle_repository_error(e)
+        handle_repository_error(e)  # This never returns as it always raises an exception
 
 
 @router.get(
@@ -186,7 +188,7 @@ async def list_workspaces(pagination: PaginationParams = Depends(), current_user
         500: {"model": ErrorResponse},
     },
 )
-async def get_workspace(workspace_id: str, current_user: dict = Depends(get_current_user)):
+async def get_workspace(workspace_id: str, current_user: dict = Depends(get_current_user)) -> WorkspaceResponse:
     """
     Get a workspace by ID.
 
@@ -215,7 +217,7 @@ async def get_workspace(workspace_id: str, current_user: dict = Depends(get_curr
 
         return WorkspaceResponse(status="workspace retrieved", workspace=workspace)
     except Exception as e:
-        handle_repository_error(e)
+        handle_repository_error(e)  # This never returns as it always raises an exception
 
 
 @router.put(
@@ -229,7 +231,7 @@ async def get_workspace(workspace_id: str, current_user: dict = Depends(get_curr
         500: {"model": ErrorResponse},
     },
 )
-async def update_workspace(workspace_id: str, request: WorkspaceUpdate, current_user: dict = Depends(get_current_user)):
+async def update_workspace(workspace_id: str, request: WorkspaceUpdate, current_user: dict = Depends(get_current_user)) -> WorkspaceResponse:
     """
     Update a workspace.
 
@@ -274,7 +276,7 @@ async def update_workspace(workspace_id: str, request: WorkspaceUpdate, current_
 
         return WorkspaceResponse(status="workspace updated", workspace=updated_workspace)
     except Exception as e:
-        handle_repository_error(e)
+        handle_repository_error(e)  # This never returns as it always raises an exception
 
 
 @router.delete(
@@ -287,7 +289,7 @@ async def update_workspace(workspace_id: str, request: WorkspaceUpdate, current_
         500: {"model": ErrorResponse},
     },
 )
-async def delete_workspace(workspace_id: str, current_user: dict = Depends(get_current_user)):
+async def delete_workspace(workspace_id: str, current_user: dict = Depends(get_current_user)) -> None:
     """
     Delete a workspace.
 
@@ -322,8 +324,9 @@ async def delete_workspace(workspace_id: str, current_user: dict = Depends(get_c
                 )
 
         logger.info(f"Deleted workspace {workspace_id} for user {user_id}")
+        return None
     except Exception as e:
-        handle_repository_error(e)
+        handle_repository_error(e)  # This never returns as it always raises an exception
 
 
 # Conversation endpoints
@@ -341,7 +344,7 @@ async def delete_workspace(workspace_id: str, current_user: dict = Depends(get_c
         500: {"model": ErrorResponse},
     },
 )
-async def create_conversation(request: ConversationCreate, current_user: dict = Depends(get_current_user)):
+async def create_conversation(request: ConversationCreate, current_user: dict = Depends(get_current_user)) -> ConversationResponse:
     """
     Create a new conversation in a workspace.
 
@@ -394,7 +397,7 @@ async def create_conversation(request: ConversationCreate, current_user: dict = 
 
         return ConversationResponse(status="conversation created", conversation=conversation_dict)
     except Exception as e:
-        handle_repository_error(e)
+        handle_repository_error(e)  # This never returns as it always raises an exception
 
 
 @router.get(
@@ -411,7 +414,7 @@ async def list_conversations(
     workspace_id: str = Query(..., description="The workspace ID"),
     pagination: PaginationParams = Depends(),
     current_user: dict = Depends(get_current_user),
-):
+) -> ConversationsListResponse:
     """
     List conversations in a workspace.
 
@@ -450,7 +453,7 @@ async def list_conversations(
 
         return ConversationsListResponse(conversations=conversations, total=total)
     except Exception as e:
-        handle_repository_error(e)
+        handle_repository_error(e)  # This never returns as it always raises an exception
 
 
 @router.get(
@@ -463,7 +466,7 @@ async def list_conversations(
         500: {"model": ErrorResponse},
     },
 )
-async def get_conversation(conversation_id: str, current_user: dict = Depends(get_current_user)):
+async def get_conversation(conversation_id: str, current_user: dict = Depends(get_current_user)) -> ConversationResponse:
     """
     Get a conversation by ID.
 
@@ -521,7 +524,7 @@ async def get_conversation(conversation_id: str, current_user: dict = Depends(ge
 
         return ConversationResponse(status="conversation retrieved", conversation=conversation_dict)
     except Exception as e:
-        handle_repository_error(e)
+        handle_repository_error(e)  # This never returns as it always raises an exception
 
 
 @router.put(
@@ -537,7 +540,7 @@ async def get_conversation(conversation_id: str, current_user: dict = Depends(ge
 )
 async def update_conversation(
     conversation_id: str, request: ConversationUpdate, current_user: dict = Depends(get_current_user)
-):
+) -> ConversationResponse:
     """
     Update a conversation.
 
@@ -614,7 +617,7 @@ async def update_conversation(
 
         return ConversationResponse(status="conversation updated", conversation=conversation_dict)
     except Exception as e:
-        handle_repository_error(e)
+        handle_repository_error(e)  # This never returns as it always raises an exception
 
 
 @router.delete(
@@ -627,7 +630,7 @@ async def update_conversation(
         500: {"model": ErrorResponse},
     },
 )
-async def delete_conversation(conversation_id: str, current_user: dict = Depends(get_current_user)):
+async def delete_conversation(conversation_id: str, current_user: dict = Depends(get_current_user)) -> None:
     """
     Delete a conversation.
 
@@ -686,5 +689,6 @@ async def delete_conversation(conversation_id: str, current_user: dict = Depends
                 )
 
         logger.info(f"Deleted conversation {conversation_id}")
+        return None
     except Exception as e:
-        handle_repository_error(e)
+        handle_repository_error(e)  # This never returns as it always raises an exception

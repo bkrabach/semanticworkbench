@@ -13,29 +13,29 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 
 @pytest.fixture
-def mock_session():
+def mock_session() -> AsyncMock:
     """Create a mock SQLAlchemy session."""
     session = AsyncMock(spec=AsyncSession)
     return session
 
 
 @pytest.fixture
-def conversation_repo(mock_session):
+def conversation_repo(mock_session: AsyncMock) -> ConversationRepository:
     """Create a ConversationRepository with a mock session."""
     return ConversationRepository(mock_session)
 
 
-def test_model_class(conversation_repo):
+def test_model_class(conversation_repo: ConversationRepository) -> None:
     """Test that the repository uses the correct model class."""
     assert conversation_repo.db_model_type == ConversationModel
 
 
-def test_domain_model_class(conversation_repo):
+def test_domain_model_class(conversation_repo: ConversationRepository) -> None:
     """Test that the repository uses the correct domain model class."""
     assert conversation_repo.model_type == Conversation
 
 
-def create_conversation_model(conversation_id="test-conv-id", workspace_id="test-ws-id"):
+def create_conversation_model(conversation_id: str = "test-conv-id", workspace_id: str = "test-ws-id") -> ConversationModel:
     """Create a conversation model for testing."""
     return ConversationModel(
         id=conversation_id, 
@@ -45,7 +45,7 @@ def create_conversation_model(conversation_id="test-conv-id", workspace_id="test
     )
 
 
-def create_conversation_domain(conversation_id="test-conv-id", workspace_id="test-ws-id"):
+def create_conversation_domain(conversation_id: str = "test-conv-id", workspace_id: str = "test-ws-id") -> Conversation:
     """Create a conversation domain model for testing."""
     return Conversation(
         id=conversation_id, 
@@ -56,7 +56,7 @@ def create_conversation_domain(conversation_id="test-conv-id", workspace_id="tes
 
 
 @pytest.mark.asyncio
-async def test_create_conversation(conversation_repo, mock_session):
+async def test_create_conversation(conversation_repo: ConversationRepository, mock_session: AsyncMock) -> None:
     """Test creating a conversation."""
     # Setup mock session behavior
     mock_session.add = MagicMock()
@@ -80,7 +80,7 @@ async def test_create_conversation(conversation_repo, mock_session):
 
 
 @pytest.mark.asyncio
-async def test_get_by_id(conversation_repo, mock_session):
+async def test_get_by_id(conversation_repo: ConversationRepository, mock_session: AsyncMock) -> None:
     """Test getting a conversation by ID."""
     # Setup mock session behavior
     conversation_model = create_conversation_model()
@@ -108,7 +108,7 @@ async def test_get_by_id(conversation_repo, mock_session):
 
 
 @pytest.mark.asyncio
-async def test_get_by_id_not_found(conversation_repo, mock_session):
+async def test_get_by_id_not_found(conversation_repo: ConversationRepository, mock_session: AsyncMock) -> None:
     """Test getting a non-existent conversation by ID."""
     # Setup mock session behavior to return None
     mock_scalars = MagicMock()
@@ -127,7 +127,7 @@ async def test_get_by_id_not_found(conversation_repo, mock_session):
 
 
 @pytest.mark.asyncio
-async def test_update_conversation(conversation_repo, mock_session):
+async def test_update_conversation(conversation_repo: ConversationRepository, mock_session: AsyncMock) -> None:
     """Test updating a conversation."""
     # Setup mock session behavior
     conversation_model = create_conversation_model()
@@ -165,7 +165,7 @@ async def test_update_conversation(conversation_repo, mock_session):
 
 
 @pytest.mark.asyncio
-async def test_update_not_found(conversation_repo, mock_session):
+async def test_update_not_found(conversation_repo: ConversationRepository, mock_session: AsyncMock) -> None:
     """Test updating a non-existent conversation."""
     # Setup mock session behavior to return None
     mock_scalars = MagicMock()
@@ -188,7 +188,7 @@ async def test_update_not_found(conversation_repo, mock_session):
 
 
 @pytest.mark.asyncio
-async def test_delete_conversation(conversation_repo, mock_session):
+async def test_delete_conversation(conversation_repo: ConversationRepository, mock_session: AsyncMock) -> None:
     """Test deleting a conversation."""
     # Setup mock session behavior
     conversation_model = create_conversation_model()
@@ -218,7 +218,7 @@ async def test_delete_conversation(conversation_repo, mock_session):
 
 
 @pytest.mark.asyncio
-async def test_delete_not_found(conversation_repo, mock_session):
+async def test_delete_not_found(conversation_repo: ConversationRepository, mock_session: AsyncMock) -> None:
     """Test deleting a non-existent conversation."""
     # Setup mock session behavior to return None
     mock_scalars = MagicMock()
@@ -237,7 +237,7 @@ async def test_delete_not_found(conversation_repo, mock_session):
 
 
 @pytest.mark.asyncio
-async def test_list_by_workspace(conversation_repo, mock_session):
+async def test_list_by_workspace(conversation_repo: ConversationRepository, mock_session: AsyncMock) -> None:
     """Test listing conversations by workspace ID."""
     # Setup mock session behavior
     conversation_models = [

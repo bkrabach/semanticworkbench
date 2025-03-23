@@ -3,6 +3,7 @@ Unit tests for the LLM adapter module.
 """
 
 import os
+from typing import Generator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -10,7 +11,7 @@ from app.core.llm_adapter import LLMAdapter
 
 
 @pytest.fixture
-def mock_env_openai():
+def mock_env_openai() -> Generator[None, None, None]:
     """Set environment variables for OpenAI provider."""
     original = os.environ.copy()
     os.environ["LLM_PROVIDER"] = "openai"
@@ -21,7 +22,7 @@ def mock_env_openai():
 
 
 @pytest.fixture
-def mock_env_mock_llm():
+def mock_env_mock_llm() -> Generator[None, None, None]:
     """Set environment variables for mock LLM."""
     original = os.environ.copy()
     os.environ["LLM_PROVIDER"] = "openai"
@@ -32,7 +33,7 @@ def mock_env_mock_llm():
 
 
 @pytest.mark.asyncio
-async def test_llm_adapter_initialization_mock():
+async def test_llm_adapter_initialization_mock() -> None:
     """Test LLM adapter initialization with mock LLM."""
     with patch.dict("os.environ", {"USE_MOCK_LLM": "true"}):
         adapter = LLMAdapter()
@@ -40,7 +41,7 @@ async def test_llm_adapter_initialization_mock():
 
 
 @pytest.mark.asyncio
-async def test_llm_adapter_initialization_openai():
+async def test_llm_adapter_initialization_openai() -> None:
     """Test LLM adapter initialization with OpenAI provider."""
     with patch.dict("os.environ", {"LLM_PROVIDER": "openai", "USE_MOCK_LLM": "false"}):
         # Create a mock for the CortexLLMAgent
@@ -57,7 +58,7 @@ async def test_llm_adapter_initialization_openai():
 
 
 @pytest.mark.asyncio
-async def test_mock_llm_generation():
+async def test_mock_llm_generation() -> None:
     """Test generation with mock LLM."""
     with patch.dict("os.environ", {"USE_MOCK_LLM": "true"}):
         with patch("app.core.mock_llm.mock_llm.generate_mock_response") as mock_generate:
@@ -72,7 +73,7 @@ async def test_mock_llm_generation():
 
 
 @pytest.mark.asyncio
-async def test_openai_generation():
+async def test_openai_generation() -> None:
     """Test OpenAI generation with mocked response."""
     with patch.dict("os.environ", {"LLM_PROVIDER": "openai", "USE_MOCK_LLM": "false"}):
         # Create mock objects for the chain of calls
@@ -98,7 +99,7 @@ async def test_openai_generation():
 
 
 @pytest.mark.asyncio
-async def test_generation_with_tool_call():
+async def test_generation_with_tool_call() -> None:
     """Test generation with tool call in response."""
     with patch.dict("os.environ", {"LLM_PROVIDER": "openai", "USE_MOCK_LLM": "false"}):
         # Create a mock agent with tool call
@@ -132,7 +133,7 @@ async def test_generation_with_tool_call():
 
 
 @pytest.mark.asyncio
-async def test_generation_with_anthropic_model():
+async def test_generation_with_anthropic_model() -> None:
     """Test generation with Anthropic provider."""
     with patch.dict("os.environ", {"LLM_PROVIDER": "anthropic", "USE_MOCK_LLM": "false"}):
         # Create mock objects for the chain of calls
@@ -158,7 +159,7 @@ async def test_generation_with_anthropic_model():
 
 
 @pytest.mark.asyncio
-async def test_error_handling():
+async def test_error_handling() -> None:
     """Test error handling during generation."""
     with patch.dict("os.environ", {"LLM_PROVIDER": "openai", "USE_MOCK_LLM": "false"}):
         # Create a mock agent that raises an exception
@@ -181,7 +182,7 @@ async def test_error_handling():
 
 
 @pytest.mark.asyncio
-async def test_adapter_initialization_failure_fallback():
+async def test_adapter_initialization_failure_fallback() -> None:
     """Test adapter initialization failure with fallback to mock."""
     with patch.dict("os.environ", {"LLM_PROVIDER": "openai", "USE_MOCK_LLM": "false"}):
         # Create a mock for the CortexLLMAgent that raises an exception
