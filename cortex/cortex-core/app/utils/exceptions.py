@@ -1,6 +1,10 @@
+import logging
 from typing import Any, Dict, List, Optional
 
 from fastapi import HTTPException, status
+
+# Set up logger
+logger = logging.getLogger(__name__)
 
 
 class CortexException(HTTPException):
@@ -10,6 +14,13 @@ class CortexException(HTTPException):
         self.error_code = error_code
         self.error_message = message
         self.error_details = details or {}
+        
+        # Log the exception
+        logger.warning(
+            f"CortexException: {error_code} - {message}",
+            extra={"status_code": status_code, "details": self.error_details}
+        )
+        
         super().__init__(
             status_code=status_code,
             detail={"error": {"code": error_code, "message": message, "details": self.error_details}},

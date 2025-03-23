@@ -1,3 +1,4 @@
+import logging
 import os
 import uuid
 from contextlib import asynccontextmanager
@@ -11,6 +12,9 @@ from app.api import auth, config, health, input, management, output
 from app.core.event_bus import event_bus
 from app.core.response_handler import create_response_handler
 from app.utils.exceptions import CortexException
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 # Store response handler reference
 response_handler = None
@@ -35,9 +39,9 @@ async def lifespan(app: FastAPI):
     # Store response handler in app state for access by health checks
     app.state.response_handler = response_handler
     
-    print("Cortex Core started with services:")
-    print(f"- Memory service: {memory_url}")
-    print(f"- Cognition service: {cognition_url}")
+    logger.info("Cortex Core started with services:")
+    logger.info(f"- Memory service: {memory_url}")
+    logger.info(f"- Cognition service: {cognition_url}")
 
     yield
 
@@ -45,7 +49,7 @@ async def lifespan(app: FastAPI):
     if response_handler:
         await response_handler.stop()
     app.state.response_handler = None
-    print("Cortex Core shutting down, resources cleaned up")
+    logger.info("Cortex Core shutting down, resources cleaned up")
 
 
 app = FastAPI(title="Cortex Core MVP", lifespan=lifespan)

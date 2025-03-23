@@ -1,3 +1,4 @@
+import logging
 from typing import Any, Dict
 
 from fastapi import APIRouter, Depends, Query
@@ -7,6 +8,9 @@ from app.models import api as api_models
 from app.models import domain as domain_models
 from app.utils.auth import get_current_user
 from app.utils.exceptions import PermissionDeniedException, ValidationErrorException
+
+# Set up logger
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/config", tags=["config"])
 
@@ -25,18 +29,23 @@ async def create_workspace(
     Returns:
         The created workspace information
     """
+    user_id = current_user["id"]
+    logger.info(f"Create workspace request from user: {user_id}, name: {workspace_data.name}")
+    
     # Validate required fields
     if workspace_data.description is None:
+        logger.warning("Validation error in workspace creation: missing description field")
         raise ValidationErrorException(["Required field 'description' is missing"])
 
     # Create the workspace using the storage service
     workspace = storage_service.create_workspace(
         name=workspace_data.name,
         description=workspace_data.description,
-        owner_id=current_user["id"],
+        owner_id=user_id,
         metadata=workspace_data.metadata
     )
-
+    
+    logger.info(f"Workspace created: {workspace['id']} for user: {user_id}")
     # Match the format expected by tests
     return {"status": "workspace created", "workspace": workspace}
 
@@ -52,9 +61,13 @@ async def list_workspaces(current_user: Dict[str, Any] = Depends(get_current_use
     Returns:
         List of workspaces owned by the user
     """
+    user_id = current_user["id"]
+    logger.info(f"Listing workspaces for user: {user_id}")
+    
     # Get workspaces for the current user
-    user_workspaces = storage_service.get_workspaces_by_user(current_user["id"])
-
+    user_workspaces = storage_service.get_workspaces_by_user(user_id)
+    
+    logger.debug(f"Found {len(user_workspaces)} workspaces for user: {user_id}")
     # Match the expected test format
     return {"workspaces": user_workspaces}
 
@@ -73,18 +86,26 @@ async def create_conversation(
     Returns:
         The created conversation information
     """
-    # Verify workspace exists and user has access
+    user_id = current_user["id"]
     workspace_id = conversation_data.workspace_id
-    storage_service.verify_workspace_access(workspace_id, current_user["id"])
+    logger.info(f"Create conversation request from user: {user_id} in workspace: {workspace_id}")
+    
+    try:
+        # Verify workspace exists and user has access
+        storage_service.verify_workspace_access(workspace_id, user_id)
+    except Exception as e:
+        logger.warning(f"Access verification failed for conversation creation: {str(e)}")
+        raise
 
     # Create the conversation
     new_conversation = storage_service.create_conversation(
         workspace_id=workspace_id,
         topic=conversation_data.topic or "New Conversation",
-        owner_id=current_user["id"],
+        owner_id=user_id,
         metadata=conversation_data.metadata
     )
-
+    
+    logger.info(f"Conversation created: {new_conversation['id']} in workspace: {workspace_id}")
     return {"status": "conversation created", "conversation": new_conversation}
 
 
@@ -105,15 +126,24 @@ async def list_conversations(
     Returns:
         List of conversations in the workspace
     """
-    # Verify workspace exists and user has access
-    storage_service.verify_workspace_access(workspace_id, current_user["id"])
+    user_id = current_user["id"]
+    logger.info(f"Listing conversations in workspace: {workspace_id} for user: {user_id}")
+    
+    try:
+        # Verify workspace exists and user has access
+        storage_service.verify_workspace_access(workspace_id, user_id)
+    except Exception as e:
+        logger.warning(f"Workspace access verification failed: {str(e)}")
+        raise
 
     # Special parameter for tests - directly triggers permission denied
     if test_permission_denied:
+        logger.debug("Test permission denied flag active, forcing permission denied error")
         raise PermissionDeniedException(resource_id=workspace_id)
 
     # Get conversations for the workspace
     workspace_conversations = storage_service.get_conversations_by_workspace(workspace_id)
+    logger.debug(f"Found {len(workspace_conversations)} conversations in workspace: {workspace_id}")
 
     return {"conversations": workspace_conversations}
 

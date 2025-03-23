@@ -1,3 +1,4 @@
+import logging
 from typing import Any, Dict
 
 from fastapi import APIRouter, Depends
@@ -8,6 +9,9 @@ from app.models import api as api_models
 from app.utils.auth import get_current_user
 from app.utils.exceptions import ResourceNotFoundException
 
+# Set up logger
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/input", tags=["input"])
 
 
@@ -16,11 +20,14 @@ async def receive_input(message: api_models.InputMessage, current_user: Dict[str
     """Receive a user message (conversation input)."""
     # Check if conversation exists
     conversation_id = message.conversation_id
-    if not storage_service.get_conversation(conversation_id):
-        raise ResourceNotFoundException(resource_id=conversation_id, resource_type="conversation")
-
-    # Use the user ID from the validated token
     user_id = current_user["id"]
+    
+    logger.info(f"Received message for conversation: {conversation_id} from user: {user_id}")
+    logger.debug(f"Message length: {len(message.content)} chars, has metadata: {message.metadata is not None}")
+    
+    if not storage_service.get_conversation(conversation_id):
+        logger.warning(f"Message received for non-existent conversation: {conversation_id}")
+        raise ResourceNotFoundException(resource_id=conversation_id, resource_type="conversation")
 
     # Create an event for the message
     input_event = {
@@ -30,8 +37,10 @@ async def receive_input(message: api_models.InputMessage, current_user: Dict[str
     }
 
     # Publish the event to the event bus
+    logger.debug(f"Publishing user_message event for conversation: {conversation_id}")
     event_bus.publish("user_message", input_event)
 
+    logger.info(f"Message from user: {user_id} for conversation: {conversation_id} acknowledged")
     # Return immediate acknowledgment
     return api_models.MessageAck(
         status="received",

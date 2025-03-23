@@ -1,8 +1,12 @@
-from datetime import datetime
+import logging
 import uuid
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from app.utils.exceptions import PermissionDeniedException, ResourceNotFoundException
+
+# Set up logger
+logger = logging.getLogger(__name__)
 
 
 class StorageService:
@@ -46,6 +50,7 @@ class StorageService:
         
         # Store in memory
         self._workspaces[workspace_id] = workspace
+        logger.info(f"Created new workspace: {workspace_id} for user: {owner_id}")
         return workspace
 
     def get_workspaces_by_user(self, user_id: str) -> List[Dict[str, Any]]:
@@ -89,9 +94,11 @@ class StorageService:
         """
         workspace = self.get_workspace(workspace_id)
         if not workspace:
+            logger.warning(f"Workspace not found: {workspace_id}")
             raise ResourceNotFoundException(resource_id=workspace_id, resource_type="workspace")
             
         if workspace.get("owner_id") != user_id:
+            logger.warning(f"Permission denied for user: {user_id} accessing workspace: {workspace_id}")
             raise PermissionDeniedException(
                 resource_id=workspace_id, 
                 message="You don't have permission to access this workspace"
@@ -129,6 +136,7 @@ class StorageService:
         
         # Store in memory
         self._conversations[conversation_id] = conversation
+        logger.info(f"Created new conversation: {conversation_id} in workspace: {workspace_id} for user: {owner_id}")
         return conversation
 
     def get_conversations_by_workspace(self, workspace_id: str) -> List[Dict[str, Any]]:
@@ -175,9 +183,11 @@ class StorageService:
         """
         conversation = self.get_conversation(conversation_id)
         if not conversation:
+            logger.warning(f"Conversation not found: {conversation_id}")
             raise ResourceNotFoundException(resource_id=conversation_id, resource_type="conversation")
             
         if conversation.get("owner_id") != user_id:
+            logger.warning(f"Permission denied for user: {user_id} accessing conversation: {conversation_id}")
             raise PermissionDeniedException(
                 resource_id=conversation_id, 
                 message="You don't have permission to access this conversation"

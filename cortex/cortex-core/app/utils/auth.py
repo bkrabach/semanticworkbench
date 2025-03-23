@@ -1,4 +1,5 @@
 import datetime
+import logging
 import os
 from typing import Any, Dict, Optional
 
@@ -7,6 +8,9 @@ from fastapi import Header
 from jwt.jwks_client import PyJWKClient
 
 from app.utils.exceptions import AuthenticationException
+
+# Set up logger
+logger = logging.getLogger(__name__)
 
 # Configuration settings
 USE_AUTH0 = os.getenv("USE_AUTH0", "false").lower() == "true"
@@ -84,20 +88,29 @@ def verify_jwt(token: str) -> Dict[str, Any]:
     Raises ValueError or jwt.PyJWTError if token is invalid.
     """
     if not token:
+        logger.warning("Token verification failed: No token provided")
         raise ValueError("No token provided")
 
     try:
         if USE_AUTH0:
             # Production mode: verify with Auth0 JWKS
             if auth0_verifier is None:
+                logger.error("Auth0 verifier not initialized but USE_AUTH0 is True")
                 raise ValueError("Auth0 verifier not initialized")
-            return auth0_verifier.verify(token)
+                
+            logger.debug("Verifying token with Auth0 JWKS")
+            payload = auth0_verifier.verify(token)
+            logger.debug(f"Auth0 token verified successfully for subject: {payload.get('sub')}")
+            return payload
         else:
             # Development mode: verify with local secret
+            logger.debug("Verifying development token with local secret")
             decoded_token = jwt.decode(token, DEV_SECRET, algorithms=["HS256"])
             # Explicitly cast to ensure typing is correct
+            logger.debug(f"Development token verified successfully for subject: {decoded_token.get('sub')}")
             return dict(decoded_token)
     except jwt.PyJWTError as e:
+        logger.warning(f"Token verification failed: {str(e)}")
         # Always raise exceptions for invalid tokens
         raise ValueError(f"Invalid token: {str(e)}")
 
@@ -115,17 +128,20 @@ def get_current_user(authorization: Optional[str] = Header(None)) -> Dict[str, A
     """
     # Check if Authorization header is present
     if not authorization:
+        logger.warning("Authentication failed: Authorization header missing")
         raise AuthenticationException("Authorization header missing")
 
     # Check if it has the correct format (Bearer token)
     parts = authorization.split()
     if parts[0].lower() != "bearer" or len(parts) != 2:
+        logger.warning("Authentication failed: Invalid Authorization header format")
         raise AuthenticationException("Invalid Authorization header format")
 
     token = parts[1]
-
+    
     try:
         # Verify the token using our helper function
+        logger.debug("Attempting to verify JWT token")
         payload = verify_jwt(token)
 
         # Extract user info from token claims
@@ -133,8 +149,11 @@ def get_current_user(authorization: Optional[str] = Header(None)) -> Dict[str, A
 
         # Ensure we have a user ID
         if not user["id"]:
+            logger.warning("Authentication failed: Token payload missing 'sub' claim")
             raise AuthenticationException("Token payload missing 'sub' claim")
 
+        logger.debug(f"User authenticated successfully: {user['id']}")
         return user
     except (ValueError, jwt.PyJWTError) as e:
+        logger.warning(f"Authentication failed: {str(e)}")
         raise AuthenticationException(str(e))
