@@ -3,9 +3,7 @@ Tests for the Cognition Service logic.
 """
 import asyncio
 import pytest
-from unittest.mock import patch, MagicMock
-
-from pydantic_ai.models.test import TestModel
+from unittest.mock import patch
 
 from cognition_service.logic import agent, generate_ai_response
 from cognition_service.models import Message, MessageRole

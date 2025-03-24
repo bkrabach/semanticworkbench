@@ -148,7 +148,7 @@ class ResponseHandler:
                     elif 'answer' in parsed_data:
                         final_answer = FinalAnswer(**parsed_data)
                         final_response = final_answer.answer
-                        logger.info(f"Received structured final answer")
+                        logger.info("Received structured final answer")
             except Exception as e:
                 # If parsing fails, just use the original response
                 logger.debug(f"Response not structured or parsing failed: {e}")
