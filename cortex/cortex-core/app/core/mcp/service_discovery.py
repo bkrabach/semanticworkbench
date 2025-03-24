@@ -149,16 +149,27 @@ class ServiceDiscovery:
     async def close(self) -> None:
         """Clean up resources."""
         if self._health_check_task:
-            self._health_check_task.cancel()
+            # Check if task is a real asyncio.Task or a mock
+            is_mock = hasattr(self._health_check_task, 'mock_calls')
             
-            # Only await the task if it's not a mock (for testing)
-            if not hasattr(self._health_check_task, 'mock_calls'):
-                try:
-                    await self._health_check_task
-                except asyncio.CancelledError:
-                    pass
-                    
-            self._health_check_task = None
+            try:
+                # Always cancel the task
+                if hasattr(self._health_check_task, 'cancel'):
+                    self._health_check_task.cancel()
+                
+                # Only await real tasks, not mocks
+                if not is_mock:
+                    try:
+                        await self._health_check_task
+                    except asyncio.CancelledError:
+                        # This is expected when cancelling a task
+                        pass
+            except Exception as e:
+                # Log any issues but continue cleanup
+                logger.warning(f"Error while closing health check task: {e}")
+            finally:
+                # Always clear the task reference
+                self._health_check_task = None
             
             
 # Global instance
