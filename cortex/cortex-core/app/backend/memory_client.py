@@ -4,8 +4,8 @@ from typing import Any, Dict, List, Optional, Tuple
 from mcp.client.session import ClientSession
 from mcp.client.sse import sse_client
 
-# Import shared exceptions and types
-from app.backend.cognition_client import MCPConnectionError, MCPServiceError, SSEContext
+# Import shared types
+from app.backend.cognition_client import SSEContext
 
 # Set up logger for the client
 logger = logging.getLogger(__name__)
@@ -74,14 +74,14 @@ class MemoryClient:
         Ensure that the client is connected to the service.
 
         Raises:
-            MCPConnectionError: If the connection cannot be established
+            ConnectionError: If the connection cannot be established
         """
         if self.session is not None:
             return
 
         success, error_msg = await self.connect()
         if not success:
-            raise MCPConnectionError(error_msg)
+            raise ConnectionError(f"Failed to connect to memory service: {error_msg}")
 
     async def store_message(
         self,
@@ -105,8 +105,8 @@ class MemoryClient:
             True if the message was stored successfully
 
         Raises:
-            MCPConnectionError: If the connection cannot be established
-            MCPServiceError: If there is an error calling the service
+            ConnectionError: If the connection cannot be established
+            RuntimeError: If there is an error calling the service
         """
         try:
             await self.ensure_connected()
@@ -127,13 +127,13 @@ class MemoryClient:
                 "new_messages": [message_data]
             })
             return True
-        except MCPConnectionError:
+        except ConnectionError:
             # Re-raise connection errors
             raise
         except Exception as e:
             error_msg = f"Error storing message in memory: {e}"
             logger.error(error_msg)
-            raise MCPServiceError(error_msg)
+            raise RuntimeError(error_msg)
 
     async def get_recent_messages(self, user_id: str, conversation_id: str, limit: int = 10) -> List[Dict[str, Any]]:
         """
@@ -148,8 +148,8 @@ class MemoryClient:
             A list of messages (most recent first)
 
         Raises:
-            MCPConnectionError: If the connection cannot be established
-            MCPServiceError: If there is an error calling the service
+            ConnectionError: If the connection cannot be established
+            RuntimeError: If there is an error calling the service
         """
         try:
             await self.ensure_connected()
@@ -183,13 +183,13 @@ class MemoryClient:
 
             logger.warning("Empty response received from memory service")
             return []
-        except MCPConnectionError:
+        except ConnectionError:
             # Re-raise connection errors
             raise
         except Exception as e:
             error_msg = f"Error retrieving messages from memory: {e}"
             logger.error(error_msg)
-            raise MCPServiceError(error_msg)
+            raise RuntimeError(error_msg)
 
     async def close(self) -> None:
         """

@@ -15,18 +15,6 @@ SSEContext = Any
 logger = logging.getLogger(__name__)
 
 
-class MCPConnectionError(Exception):
-    """Exception raised when there is an error connecting to an MCP service."""
-
-    pass
-
-
-class MCPServiceError(Exception):
-    """Exception raised when there is an error calling an MCP service method."""
-
-    pass
-
-
 class CognitionClient:
     """
     Client for the Cognition Service (LLM and analysis).
@@ -94,14 +82,14 @@ class CognitionClient:
         Ensure that the client is connected to the service.
 
         Raises:
-            MCPConnectionError: If the connection cannot be established
+            ConnectionError: If the connection cannot be established
         """
         if self.session is not None:
             return
 
         success, error_msg = await self.connect()
         if not success:
-            raise MCPConnectionError(error_msg)
+            raise ConnectionError(f"Failed to connect to cognition service: {error_msg}")
 
     async def evaluate_context(
         self,
@@ -163,25 +151,25 @@ class CognitionClient:
 
             logger.error("Empty response received from cognition service")
             return "No response received from cognition service."
-        except MCPConnectionError:
+        except ConnectionError:
             # Re-raise connection errors
             raise
         except asyncio.TimeoutError as e:
             error_msg = f"Timeout while calling evaluate_context: {e}"
             logger.error(error_msg)
-            raise MCPServiceError(error_msg)
+            raise TimeoutError(error_msg)
         except AttributeError as e:
             error_msg = f"Unexpected response structure from cognition service: {e}"
             logger.error(error_msg)
-            raise MCPServiceError(error_msg)
+            raise ValueError(error_msg)
         except AssertionError as e:
             error_msg = f"Invalid session state in cognition client: {e}"
             logger.error(error_msg)
-            raise MCPServiceError(error_msg)
+            raise RuntimeError(error_msg)
         except Exception as e:
             error_msg = f"Error calling evaluate_context: {e}"
             logger.error(error_msg)
-            raise MCPServiceError(error_msg)
+            raise RuntimeError(error_msg)
 
     async def generate_reply(self, user_id: str, conversation_id: str, message: str) -> str:
         """

@@ -4,7 +4,7 @@ Tests for the backend clients that communicate with external services.
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.backend.cognition_client import CognitionClient, MCPConnectionError, MCPServiceError
+from app.backend.cognition_client import CognitionClient
 from app.backend.memory_client import MemoryClient
 
 
@@ -197,7 +197,7 @@ class TestCognitionClient:
         client = CognitionClient("http://test-url")
         
         # Call ensure_connected and verify it raises the right exception
-        with pytest.raises(MCPConnectionError) as excinfo:
+        with pytest.raises(ConnectionError) as excinfo:
             await client.ensure_connected()
         
         assert "Connection error" in str(excinfo.value)
@@ -270,7 +270,7 @@ class TestCognitionClient:
         # Make call_tool raise an exception
         mock_client_session.call_tool.side_effect = Exception("Tool error")
         
-        with pytest.raises(MCPServiceError) as excinfo:
+        with pytest.raises(RuntimeError) as excinfo:
             await client.evaluate_context("user123", "conv456", "Hello")
         
         assert "Error calling evaluate_context" in str(excinfo.value)
@@ -478,7 +478,7 @@ class TestMemoryClient:
         client = MemoryClient("http://test-memory-url")
         
         # Call ensure_connected and verify it raises the right exception
-        with pytest.raises(MCPConnectionError) as excinfo:
+        with pytest.raises(ConnectionError) as excinfo:
             await client.ensure_connected()
         
         assert "Memory connection error" in str(excinfo.value)
@@ -542,7 +542,7 @@ class TestMemoryClient:
         # Make call_tool raise an exception
         mock_client_session.call_tool.side_effect = Exception("Storage error")
         
-        with pytest.raises(MCPServiceError) as excinfo:
+        with pytest.raises(RuntimeError) as excinfo:
             await client.store_message("user123", "conv456", "Hello")
         
         assert "Error storing message in memory" in str(excinfo.value)
@@ -612,7 +612,7 @@ class TestMemoryClient:
         # Make call_tool raise an exception
         mock_client_session.call_tool.side_effect = Exception("Retrieval error")
         
-        with pytest.raises(MCPServiceError) as excinfo:
+        with pytest.raises(RuntimeError) as excinfo:
             await client.get_recent_messages("user123", "conv456")
         
         assert "Error retrieving messages from memory" in str(excinfo.value)
