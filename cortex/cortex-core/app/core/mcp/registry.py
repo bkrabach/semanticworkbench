@@ -44,6 +44,13 @@ class ServiceDefinition:
                 resource_def = attr_value._mcp_resource
                 self.resources[resource_def.name] = resource_def
 
+    async def shutdown(self) -> None:
+        """
+        Shutdown the service if the service instance has a shutdown method.
+        """
+        if hasattr(self.service_instance, "shutdown") and callable(self.service_instance.shutdown):
+            self.service_instance.shutdown()
+
 
 class ServiceRegistry:
     """Registry for MCP services, their tools and resources."""

@@ -1,0 +1,59 @@
+version: '3.8'
+
+services:
+  # Core application with in-memory database
+  cortex-core:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: cortex-core:latest
+    container_name: cortex-core
+    environment:
+      - PORT=8000
+      - CORTEX_DISTRIBUTED_MODE=true
+      - MEMORY_SERVICE_URL=http://memory-service:9000
+      - COGNITION_SERVICE_URL=http://cognition-service:9100
+      - ALLOW_ORIGINS=*
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./cortex.db:/app/cortex.db
+    depends_on:
+      - memory-service
+      - cognition-service
+    restart: always
+
+  # Standalone Memory Service
+  memory-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: cortex-core:latest
+    container_name: memory-service
+    command: python -m app.services.standalone_memory_service
+    environment:
+      - MEMORY_SERVICE_PORT=9000
+      - ALLOW_ORIGINS=*
+    ports:
+      - "9000:9000"
+    volumes:
+      - ./cortex.db:/app/cortex.db
+    restart: always
+
+  # Standalone Cognition Service
+  cognition-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: cortex-core:latest
+    container_name: cognition-service
+    command: python -m app.services.standalone_cognition_service
+    environment:
+      - COGNITION_SERVICE_PORT=9100
+      - MEMORY_SERVICE_URL=http://memory-service:9000
+      - ALLOW_ORIGINS=*
+    ports:
+      - "9100:9100"
+    depends_on:
+      - memory-service
+    restart: always

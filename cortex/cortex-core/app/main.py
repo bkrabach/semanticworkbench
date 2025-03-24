@@ -2,7 +2,7 @@ import logging
 import os
 import uuid
 from contextlib import asynccontextmanager
-from typing import Any, AsyncGenerator, Dict, List
+from typing import AsyncGenerator
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request, status
@@ -18,6 +18,7 @@ from app.api.input import router as input_router
 from app.api.output import router as output_router
 from app.core.event_bus import event_bus
 from app.core.exceptions import CortexException
+from app.core.mcp.factory import close_mcp_client, get_mcp_client
 from app.core.mcp.registry import registry as mcp_registry
 from app.core.repository import RepositoryManager
 from app.database.unit_of_work import UnitOfWork
@@ -121,36 +122,63 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception as e:
         logger.warning(f"Failed to initialize LLM adapter: {str(e)}. Will use mock responses.")
 
-    # Initialize and register MCP services
-    logger.info("Initializing MCP services...")
+    # Check if we're in distributed mode
+    distributed_mode = os.getenv("CORTEX_DISTRIBUTED_MODE", "false").lower() in ("true", "1", "yes")
 
-    # Create repository manager
-    repository_manager = RepositoryManager()
-    await repository_manager.initialize()
+    if distributed_mode:
+        # Distributed mode - use network MCP client
+        logger.info("Running in distributed mode - using network MCP client")
+        # Initialize MCP client that will connect to remote services
+        logger.info("Initializing network MCP client...")
+        await get_mcp_client()
+        logger.info("Network MCP client initialized")
+    else:
+        # In-process mode - register local MCP services
+        logger.info("Running in in-process mode - registering local MCP services")
 
-    # Create and register Memory Service
-    memory_service = MemoryService(repository_manager)
-    await memory_service.initialize()
-    await mcp_registry.register_service("memory", memory_service)
-    logger.info("Memory Service registered with MCP registry")
+        # Create repository manager
+        repository_manager = RepositoryManager()
+        await repository_manager.initialize()
 
-    # Create and register Cognition Service
-    cognition_service = CognitionService(memory_service=memory_service)
-    await cognition_service.initialize()
-    await mcp_registry.register_service("cognition", cognition_service)
-    logger.info("Cognition Service registered with MCP registry")
+        # Create and register Memory Service
+        memory_service = MemoryService(repository_manager)
+        await memory_service.initialize()
+        await mcp_registry.register_service("memory", memory_service)
+        logger.info("Memory Service registered with MCP registry")
+
+        # Create and register Cognition Service
+        cognition_service = CognitionService(memory_service=memory_service)
+        await cognition_service.initialize()
+        await mcp_registry.register_service("cognition", cognition_service)
+        logger.info("Cognition Service registered with MCP registry")
 
     yield
 
     # Shutdown
     logger.info("Application shutting down")
 
-    # Shutdown MCP services
-    logger.info("Shutting down MCP services...")
-    if cognition_service:
-        await cognition_service.shutdown()
-    if memory_service:
-        await memory_service.shutdown()
+    if distributed_mode:
+        # Close network MCP client
+        logger.info("Closing network MCP client...")
+        await close_mcp_client()
+    else:
+        # Shutdown in-process MCP services
+        logger.info("Shutting down MCP services...")
+
+        # Get services from registry and shut them down
+        try:
+            cognition_def = mcp_registry.get_service("cognition")
+            if cognition_def:
+                await cognition_def.shutdown()
+        except Exception as e:
+            logger.error(f"Error shutting down cognition service: {e}")
+            
+        try:
+            memory_def = mcp_registry.get_service("memory")
+            if memory_def:
+                await memory_def.shutdown()
+        except Exception as e:
+            logger.error(f"Error shutting down memory service: {e}")
 
     # Shutdown event bus
     await event_bus.shutdown()
@@ -296,6 +324,13 @@ async def general_exception_handler(request: Request, exc: Exception) -> JSONRes
 async def root() -> dict[str, str]:
     """API status endpoint."""
     return {"status": "online", "service": "Cortex Core"}
+
+
+# Health check endpoint for service discovery
+@app.get("/health", tags=["status"])
+async def health() -> dict[str, str]:
+    """Health check endpoint for service discovery."""
+    return {"status": "healthy"}
 
 
 # Include routers

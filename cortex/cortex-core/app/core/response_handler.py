@@ -18,6 +18,7 @@ from ..models import Message
 from .event_bus import event_bus
 from .exceptions import ToolExecutionException
 from .llm_adapter import llm_adapter
+from .mcp.factory import get_mcp_client
 
 logger = logging.getLogger(__name__)
 
@@ -233,21 +234,50 @@ class ResponseHandler:
         """
         logger.info(f"Executing tool: {tool_name} with args: {tool_args}")
 
+        # Try local tool registry first
         tool_fn = tool_registry.get(tool_name)
-        if not tool_fn:
-            raise ToolExecutionException(message=f"Tool not found: {tool_name}", tool_name=tool_name)
-
+        if tool_fn:
+            try:
+                # Always include user_id in the arguments
+                # All tools should accept user_id, even if they don't use it
+                tool_args_with_user = {"user_id": user_id, **tool_args}
+                result = await tool_fn(**tool_args_with_user)
+                logger.info(f"Tool {tool_name} executed successfully using local registry")
+                return result
+            except Exception as e:
+                logger.error(f"Local tool execution failed: {tool_name} - {str(e)}")
+                # Don't raise here, try MCP client next
+        
+        # Try MCP client - distributed mode support
         try:
             # Always include user_id in the arguments
-            # All tools should accept user_id, even if they don't use it
             tool_args_with_user = {"user_id": user_id, **tool_args}
-            result = await tool_fn(**tool_args_with_user)
+            
+            mcp_client = await get_mcp_client()
+            result = await mcp_client.call_tool(
+                service_name="cognition" if tool_name.startswith("get_") else "memory",
+                tool_name=tool_name,
+                input_data=tool_args_with_user
+            )
+            logger.info(f"Tool {tool_name} executed successfully using MCP client")
             return result
         except Exception as e:
-            logger.error(f"Tool execution failed: {tool_name} - {str(e)}")
-            raise ToolExecutionException(
-                message=f"Error executing {tool_name}: {str(e)}", tool_name=tool_name, details={"error": str(e)}
-            )
+            logger.error(f"MCP tool execution failed: {tool_name} - {str(e)}")
+            
+            # If we get here, both local and MCP tool execution failed
+            if not tool_fn:
+                # Tool not found in either local registry or MCP
+                raise ToolExecutionException(
+                    message=f"Tool not found: {tool_name}", 
+                    tool_name=tool_name
+                )
+            else:
+                # Tool found in local registry but execution failed, and MCP execution also failed
+                raise ToolExecutionException(
+                    message=f"Error executing {tool_name}: {str(e)}", 
+                    tool_name=tool_name, 
+                    details={"error": str(e)}
+                )
 
     async def _handle_tool_execution(self, conversation_id: str, tool_name: str, 
                                 tool_args: Dict[str, Any], user_id: str) -> Optional[Any]:
@@ -461,7 +491,9 @@ class ResponseHandler:
             List of context items or empty list if none found
         """
         try:
-            # Get tool function by name
+            # Try both approaches - local tool registry and MCP client
+            
+            # 1. Try local tool registry first
             context_tool = tool_registry.get("get_context")
             if context_tool:
                 # Try to get context with user query
@@ -474,8 +506,31 @@ class ResponseHandler:
                 # If we have context items, return them
                 if context_result and "context" in context_result and context_result["context"]:
                     context_items = context_result["context"]
-                    logger.info(f"Retrieved {len(context_items)} context items from Cognition Service")
+                    logger.info(f"Retrieved {len(context_items)} context items from local Cognition Service")
                     return list(context_items)
+            
+            # 2. Try MCP client - distributed mode support
+            try:
+                mcp_client = await get_mcp_client()
+                context_result = await mcp_client.call_tool(
+                    service_name="cognition",
+                    tool_name="get_context",
+                    input_data={
+                        "user_id": user_id,
+                        "query": query,
+                        "limit": 5  # Limit context items to avoid overwhelming the LLM
+                    }
+                )
+                
+                # If we have context items, return them
+                if context_result and "context" in context_result and context_result["context"]:
+                    context_items = context_result["context"]
+                    logger.info(f"Retrieved {len(context_items)} context items from distributed Cognition Service")
+                    return list(context_items)
+                    
+            except Exception as e:
+                logger.warning(f"Failed to retrieve context from MCP Cognition Service: {e}")
+                
         except Exception as e:
             logger.warning(f"Failed to retrieve context from Cognition Service: {e}")
         

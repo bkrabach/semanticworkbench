@@ -127,3 +127,8 @@ class TransportError(MCPError):
 
         super().__init__(message, details)
         self.original_error = original_error
+
+
+class CircuitOpenError(TransportError):
+    """Error due to circuit breaker being open."""
+    pass
