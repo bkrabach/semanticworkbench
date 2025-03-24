@@ -75,8 +75,10 @@ def test_memory_entry_model():
     assert entry.last_updated == "2023-01-01T12:00:00"
     
     # Test validation failure - missing required fields
+    # Using model_validate with incomplete data to trigger ValidationError
+    data = {"conversation_id": "test-conversation", "memory_content": "Test content"}  # missing last_updated
     with pytest.raises(ValidationError):
-        MemoryEntry(conversation_id="test-conversation")
+        MemoryEntry.model_validate(data)
 
 
 def test_memory_update_request():
@@ -97,8 +99,10 @@ def test_memory_update_request():
     assert request.new_messages[0]["content"] == "Hello"
     
     # Test validation failure - missing required fields
+    # Using model_validate with incomplete data to trigger ValidationError
+    data = {"conversation_id": "test-conversation"}  # missing new_messages
     with pytest.raises(ValidationError):
-        MemoryUpdateRequest(conversation_id="test-conversation")
+        MemoryUpdateRequest.model_validate(data)
 
 
 def test_memory_update_response():
@@ -116,8 +120,10 @@ def test_memory_update_response():
     assert response.success is True
     
     # Test validation failure - missing required fields
+    # Using model_validate with incomplete data to trigger ValidationError
+    data = {"conversation_id": "test-conversation", "updated_memory": "test"}  # missing success
     with pytest.raises(ValidationError):
-        MemoryUpdateResponse(conversation_id="test-conversation", updated_memory="test")
+        MemoryUpdateResponse.model_validate(data)
 
 
 def test_memory_retrieval_request():
@@ -129,8 +135,10 @@ def test_memory_retrieval_request():
     assert request.conversation_id == "test-conversation"
     
     # Test validation failure - missing required fields
+    # Using model_validate with empty dict to trigger ValidationError
+    data = {}  # missing conversation_id
     with pytest.raises(ValidationError):
-        MemoryRetrievalRequest()
+        MemoryRetrievalRequest.model_validate(data)
 
 
 def test_memory_retrieval_response():
@@ -159,5 +167,7 @@ def test_memory_retrieval_response():
     assert response_not_exists.exists is False
     
     # Test validation failure - missing required fields
+    # Using model_validate with incomplete data to trigger ValidationError
+    data = {"conversation_id": "test-conversation"}  # missing exists
     with pytest.raises(ValidationError):
-        MemoryRetrievalResponse(conversation_id="test-conversation")
+        MemoryRetrievalResponse.model_validate(data)
