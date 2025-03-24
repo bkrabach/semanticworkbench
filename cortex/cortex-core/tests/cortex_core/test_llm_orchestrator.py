@@ -167,7 +167,7 @@ async def test_orchestrator_handle_basic_query():
     """Test that orchestrator correctly handles a basic query (directly answerable)."""
     # Setup mocks
     mock_event_bus = MagicMock(spec=EventBus)
-    mock_event_bus.publish_async = AsyncMock()
+    mock_event_bus.publish = AsyncMock()
     
     mock_memory_client = AsyncMock()
     mock_memory_client.ensure_connected = AsyncMock()
@@ -208,12 +208,12 @@ async def test_orchestrator_handle_basic_query():
         mock_agent.run.assert_called_once()
         
         # Verify correct response was published
-        mock_event_bus.publish_async.assert_called_once()
-        call_args = mock_event_bus.publish_async.call_args
-        assert call_args[0][0] == "assistant_response"  # First arg is event type
+        mock_event_bus.publish.assert_called_once()
+        call_args = mock_event_bus.publish.call_args
+        assert call_args[0][0] == "output"  # First arg is event type
         assert call_args[0][1]["user_id"] == "test-user"  # Second arg is event data
         assert call_args[0][1]["conversation_id"] == "test-conv"
-        assert call_args[0][1]["data"]["content"] == "Paris is the capital of France."
+        assert call_args[0][1]["content"] == "Paris is the capital of France."
 
 
 @pytest.mark.asyncio
@@ -221,7 +221,7 @@ async def test_orchestrator_handle_tool_request():
     """Test that orchestrator correctly handles a query requiring a tool call."""
     # Setup mocks
     mock_event_bus = MagicMock(spec=EventBus)
-    mock_event_bus.publish_async = AsyncMock()
+    mock_event_bus.publish = AsyncMock()
     
     mock_memory_client = AsyncMock()
     mock_memory_client.ensure_connected = AsyncMock()
@@ -283,7 +283,7 @@ async def test_orchestrator_handle_tool_request():
         assert mock_memory_client.store_message.call_count == 2  # Once for user, once for assistant
         
         # Verify correct response was published
-        mock_event_bus.publish_async.assert_called_once()
-        call_args = mock_event_bus.publish_async.call_args
-        assert call_args[0][0] == "assistant_response"  # First arg is event type
-        assert "We discussed machine learning earlier." in call_args[0][1]["data"]["content"]
+        mock_event_bus.publish.assert_called_once()
+        call_args = mock_event_bus.publish.call_args
+        assert call_args[0][0] == "output"  # First arg is event type
+        assert "We discussed machine learning earlier." in call_args[0][1]["content"]

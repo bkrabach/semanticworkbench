@@ -495,14 +495,19 @@ class TestMemoryClient:
         
         assert result is True
         mock_client_session.call_tool.assert_called_with(
-            "store_memory",
+            "update_memory",
             {
-                "user_id": "user123",
                 "conversation_id": "conv456",
-                "content": "Hello",
-                "role": "user",
-                "metadata": {},
-                "timestamp": None,
+                "new_messages": [
+                    {
+                        "user_id": "user123",
+                        "conversation_id": "conv456",
+                        "content": "Hello",
+                        "role": "user",
+                        "metadata": {},
+                        "timestamp": None,
+                    }
+                ]
             }
         )
         
@@ -512,14 +517,19 @@ class TestMemoryClient:
         
         assert result is True
         mock_client_session.call_tool.assert_called_with(
-            "store_memory",
+            "update_memory",
             {
-                "user_id": "user123",
                 "conversation_id": "conv456",
-                "content": "Hello",
-                "role": "assistant",
-                "metadata": metadata,
-                "timestamp": None,
+                "new_messages": [
+                    {
+                        "user_id": "user123",
+                        "conversation_id": "conv456",
+                        "content": "Hello", 
+                        "role": "assistant",
+                        "metadata": metadata,
+                        "timestamp": None,
+                    }
+                ]
             }
         )
     
@@ -546,29 +556,38 @@ class TestMemoryClient:
         client.session = mock_client_session
         
         # Set up the response
-        memories = [
-            {"role": "user", "content": "Hello", "timestamp": "2023-01-01T12:00:00"},
-            {"role": "assistant", "content": "Hi there", "timestamp": "2023-01-01T12:01:00"}
-        ]
-        response = MockToolResponse({"memories": memories})
+        memory_content = "User asked about Python. Assistant provided information."
+        response = MockToolResponse({
+            "memory_content": memory_content,
+            "exists": True
+        })
         mock_client_session.call_tool.return_value = response
         
         # Test with default limit
         result = await client.get_recent_messages("user123", "conv456")
         
-        assert result == memories
+        expected_result = [
+            {
+                "role": "system",
+                "content": f"Memory summary: {memory_content}"
+            }
+        ]
+        assert result == expected_result
         mock_client_session.call_tool.assert_called_with(
-            "retrieve_memory",
-            {"user_id": "user123", "conversation_id": "conv456", "limit": 10}
+            "get_memory", 
+            {"conversation_id": "conv456"}
         )
         
-        # Test with custom limit
+        # Test with custom limit - note that limit is ignored in current implementation
+        # as the memory service returns a summary, not individual messages
         result = await client.get_recent_messages("user123", "conv456", 5)
         
-        assert result == memories
+        # The result should be the same as before, since the memory service 
+        # returns a summary regardless of the limit parameter
+        assert result == expected_result
         mock_client_session.call_tool.assert_called_with(
-            "retrieve_memory",
-            {"user_id": "user123", "conversation_id": "conv456", "limit": 5}
+            "get_memory",
+            {"conversation_id": "conv456"}
         )
     
     @pytest.mark.asyncio

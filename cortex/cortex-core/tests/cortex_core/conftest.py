@@ -1,18 +1,15 @@
 """
 Common test fixtures for Cortex Core tests.
 """
-import asyncio
 import pytest
 from datetime import datetime
-from enum import Enum, auto
+from enum import Enum
 from typing import Any, Dict, List, Optional
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pydantic import BaseModel, Field
 
-from app.models.domain import Conversation
 from app.core.event_bus import EventBus
 from app.core.response_handler import ResponseHandler
 from app.backend.cognition_client import CognitionClient
@@ -102,7 +99,11 @@ def mock_memory_client() -> MemoryClient:
 
 
 @pytest.fixture
-def mock_response_handler(mock_event_bus, mock_cognition_client, mock_memory_client) -> ResponseHandler:
+def mock_response_handler(
+    mock_event_bus: EventBus, 
+    mock_cognition_client: CognitionClient, 
+    mock_memory_client: MemoryClient
+) -> ResponseHandler:
     """Fixture to provide a mocked response handler."""
     handler = MagicMock(spec=ResponseHandler)
     handler.event_bus = mock_event_bus

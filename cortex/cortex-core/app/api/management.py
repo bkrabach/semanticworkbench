@@ -1,10 +1,8 @@
 import logging
 from typing import Any, Dict, List
 
-from fastapi import APIRouter, Body, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from pydantic import BaseModel
-
-from app.core.event_bus import EventData, event_bus
 from app.models.api import UserProfileResponse
 from app.models.domain import User
 from app.utils.auth import get_current_user
@@ -49,6 +47,7 @@ async def system_status(current_user: Dict[str, Any] = Depends(get_current_user)
 
 @router.post("/events/publish")
 async def publish_system_event(
+    request: Request,
     event_type: str = Body(..., embed=True),
     payload: Dict[str, Any] = Body(..., embed=True),
     current_user: Dict[str, Any] = Depends(get_current_user),
@@ -70,12 +69,18 @@ async def publish_system_event(
             status_code=400, detail=f"Event type {event_type} is not allowed. Allowed types: {allowed_event_types}"
         )
 
+    # Get the event bus from app state
+    event_bus = request.app.state.event_bus
+    
     # Add user_id to the event payload
-    event_payload = EventData({"user_id": user_id, "data": payload})
+    event_payload = {
+        "user_id": user_id,
+        "data": payload
+    }
 
     # Publish the event
     logger.debug(f"Publishing system event: {event_type}")
-    event_bus.publish(event_type, event_payload)
+    await event_bus.publish(event_type, event_payload)
     logger.info(f"System event published: {event_type} by user: {user_id}")
 
     return {"status": "published", "event_type": event_type}

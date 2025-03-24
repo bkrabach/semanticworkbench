@@ -5,13 +5,14 @@ import pytest
 from unittest.mock import AsyncMock, patch
 
 from cognition_service.logic import (
-    agent, 
+    # agent removed as unused
+    
     generate_ai_response, 
     evaluate_context, 
     get_conversation_history,
     convert_to_pydantic_ai_messages
 )
-from cognition_service.models import Message, MessageRole
+from cognition_service.models import Message
 from cognition_service.memory_client import MemoryServiceError
 from tests.cognition_service.conftest import MockPydanticAIResult
 

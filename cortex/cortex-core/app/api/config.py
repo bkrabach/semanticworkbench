@@ -160,4 +160,4 @@ async def get_user_profile(current_user: Dict[str, Any] = Depends(get_current_us
     """
     user = domain_models.User(id=current_user["id"], name=current_user["name"], email=current_user["email"])
     response = api_models.UserProfileResponse(profile=user)
-    return response.dict()
+    return response.model_dump()

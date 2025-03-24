@@ -2,7 +2,7 @@
 Common test fixtures for the Cognition Service tests.
 """
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 from cognition_service.models import Message, MessageRole
 from cognition_service.config import Settings

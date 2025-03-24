@@ -63,7 +63,7 @@ class ResponseHandler:
 
 
 async def create_response_handler(
-    event_bus: Optional[EventBus] = None,
+    event_bus: EventBus,
     memory_url: str = "http://localhost:5001/sse",
     cognition_url: str = "http://localhost:5000/sse",
 ) -> ResponseHandler:
@@ -71,18 +71,13 @@ async def create_response_handler(
     Factory function to create and start a response handler.
 
     Args:
-        event_bus: Optional event bus instance. If None, a new one will be created.
+        event_bus: The event bus instance to use.
         memory_url: URL for the memory service SSE endpoint
         cognition_url: URL for the cognition service SSE endpoint
 
     Returns:
         An initialized and started ResponseHandler instance
     """
-    from app.core.event_bus import event_bus as global_event_bus
-
-    if event_bus is None:
-        event_bus = global_event_bus
-
     memory_client = MemoryClient(service_url=memory_url)
     cognition_client = CognitionClient(service_url=cognition_url)
 

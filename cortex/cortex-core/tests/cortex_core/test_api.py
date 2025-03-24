@@ -1,9 +1,19 @@
 # We need pytest for test discovery, even if not directly used
+# The noqa comment tells linters to ignore the unused import
+import pytest  # noqa: F401
+from unittest.mock import AsyncMock, MagicMock
 from app.main import app
 from app.utils.auth import create_access_token
 from fastapi.testclient import TestClient
+from app.core.event_bus import EventBus
 
+# Create a client and add event_bus to app.state for testing
 client = TestClient(app)
+
+# Add event_bus to app.state
+mock_event_bus = MagicMock(spec=EventBus)
+mock_event_bus.publish = AsyncMock()
+app.state.event_bus = mock_event_bus
 
 
 def get_auth_header(user_id="test-user", name="Test User", email="test@example.com"):

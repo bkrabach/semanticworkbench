@@ -1,11 +1,10 @@
 """
 Tests for the models and configuration of the Cognition Service.
 """
-import os
+# os import removed as unused
 from datetime import datetime
 
-import pytest
-from pydantic import ValidationError
+# pytest and ValidationError imports removed as unused
 
 from cognition_service.config import settings, Settings
 from cognition_service.models import (

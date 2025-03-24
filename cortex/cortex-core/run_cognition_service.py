@@ -6,21 +6,21 @@ Usage:
     python run_cognition_service.py
 """
 
-import os
-import sys
 import logging
+import sys
 
 # Set up logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[logging.StreamHandler(sys.stdout)]
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[logging.StreamHandler(sys.stdout)],
 )
 logger = logging.getLogger("run_cognition")
 
 # Import and run the Cognition Service
 try:
     from cognition_service.main import run
+
     logger.info("Starting Cognition Service...")
     run()
 except ImportError as e:

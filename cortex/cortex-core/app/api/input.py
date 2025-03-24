@@ -1,9 +1,7 @@
 import logging
 from typing import Any, Dict
 
-from fastapi import APIRouter, Depends
-
-from app.core.event_bus import EventData, event_bus
+from fastapi import APIRouter, Depends, Request
 from app.core.storage_service import storage_service
 from app.models import api as api_models
 from app.utils.auth import get_current_user
@@ -17,7 +15,9 @@ router = APIRouter(prefix="/input", tags=["input"])
 
 @router.post("/", response_model=api_models.MessageAck)
 async def receive_input(
-    message: api_models.InputMessage, current_user: Dict[str, Any] = Depends(get_current_user)
+    message: api_models.InputMessage, 
+    request: Request,
+    current_user: Dict[str, Any] = Depends(get_current_user)
 ) -> api_models.MessageAck:
     """
     Receive a user message and publish it to the event bus.
@@ -43,16 +43,21 @@ async def receive_input(
         logger.warning(f"Message received for non-existent conversation: {conversation_id}")
         raise ResourceNotFoundException(resource_id=conversation_id, resource_type="conversation")
 
+    # Get the event bus from app state
+    event_bus = request.app.state.event_bus
+    
     # Create an event for the message
-    input_event = EventData({
+    input_event = {
         "user_id": user_id,
         "conversation_id": conversation_id,
-        "data": {"content": message.content, "metadata": message.metadata if message.metadata else {}, "role": "user"},
-    })
+        "content": message.content,
+        "metadata": message.metadata if message.metadata else {},
+        "role": "user"
+    }
 
     # Publish the event to the event bus
-    logger.debug(f"Publishing user_message event for conversation: {conversation_id}")
-    event_bus.publish("user_message", input_event)
+    logger.debug(f"Publishing input event for conversation: {conversation_id}")
+    await event_bus.publish("input", input_event)
 
     logger.info(f"Message from user: {user_id} for conversation: {conversation_id} acknowledged")
     # Return immediate acknowledgment

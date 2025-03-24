@@ -15,7 +15,7 @@ from pydantic_ai import Agent
 from pydantic_ai.messages import ToolCallPart
 
 from app.backend.memory_client import MemoryClient
-from app.core.event_bus import EventBus, EventData
+from app.core.event_bus import EventBus
 from app.core.config import LLM_MODEL
 
 # Configure logger
@@ -397,14 +397,15 @@ class LLMOrchestrator:
             )
             
             # 5. Publish the output event
-            output_event = EventData({
+            output_event = {
                 "user_id": user_id,
                 "conversation_id": conversation_id,
-                "data": {"content": answer_text, "role": "assistant"},
-            })
+                "content": answer_text,
+                "role": "assistant"
+            }
             
-            # Use the same event type as the existing response handler
-            await self.event_bus.publish_async("assistant_response", output_event)
+            # Use the standard event type
+            await self.event_bus.publish("output", output_event)
             logger.info(f"Published response for user {user_id} in conversation {conversation_id}")
             
             # Log tool uses if any
@@ -423,34 +424,28 @@ class LLMOrchestrator:
             logger.error(f"Error handling input event: {e}", exc_info=True)
             
             # Publish error event
-            error_event = EventData({
-                "type": "error",
+            error_event = {
                 "user_id": user_id,
                 "conversation_id": conversation_id,
-                "data": {"message": f"Error processing message: {str(e)}"},
-            })
-            await self.event_bus.publish_async("error", error_event)
+                "message": f"Error processing message: {str(e)}"
+            }
+            await self.event_bus.publish("error", error_event)
         finally:
             # Ensure memory client is closed
             await self.memory_client.close()
 
 
 # Factory function to create and start an LLM orchestrator
-async def create_llm_orchestrator(event_bus: Optional[EventBus] = None) -> LLMOrchestrator:
+async def create_llm_orchestrator(event_bus: EventBus) -> LLMOrchestrator:
     """
     Factory function to create and start an LLM orchestrator.
     
     Args:
-        event_bus: Optional event bus instance. If None, a global one will be used.
+        event_bus: The event bus instance to use.
         
     Returns:
         An initialized and started LLMOrchestrator instance
     """
-    from app.core.event_bus import event_bus as global_event_bus
-    
-    if event_bus is None:
-        event_bus = global_event_bus
-    
     orchestrator = LLMOrchestrator(event_bus=event_bus)
     
     # Start the orchestrator

@@ -122,7 +122,10 @@ class MemoryClient:
 
             # Call the tool - session must be non-None here after ensure_connected()
             assert self.session is not None, "Session unexpectedly None after ensure_connected"
-            await self.session.call_tool("store_memory", message_data)
+            await self.session.call_tool("update_memory", {
+                "conversation_id": conversation_id,
+                "new_messages": [message_data]
+            })
             return True
         except MCPConnectionError:
             # Re-raise connection errors
@@ -151,19 +154,30 @@ class MemoryClient:
         try:
             await self.ensure_connected()
 
-            query = {"user_id": user_id, "conversation_id": conversation_id, "limit": limit}
-
             # Call the tool - session must be non-None here after ensure_connected()
             assert self.session is not None, "Session unexpectedly None after ensure_connected"
-            response = await self.session.call_tool("retrieve_memory", query)
+            response = await self.session.call_tool("get_memory", {
+                "conversation_id": conversation_id
+            })
 
-            # Extract memories from response
+            # Extract memory content from response
             # CallToolResult stores custom data in model_extra
             if response:
                 # Access model_extra which contains the dynamic fields added via **extra_data
                 extra_data = getattr(response, "model_extra", {})
-                if extra_data and "memories" in extra_data:
-                    return list(extra_data["memories"])
+                if extra_data:
+                    memory_content = extra_data.get("memory_content")
+                    exists = extra_data.get("exists", False)
+                    
+                    if exists and memory_content:
+                        # In a real implementation, we would parse this into messages
+                        # For now, return a simple representation
+                        return [
+                            {
+                                "role": "system",
+                                "content": f"Memory summary: {memory_content}"
+                            }
+                        ]
 
                 logger.warning(f"Unexpected response format from memory service: {extra_data}")
 

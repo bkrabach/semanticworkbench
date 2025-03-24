@@ -37,6 +37,13 @@ LLM_STREAMING = os.getenv("CORTEX_LLM_STREAMING", "false").lower() == "true"
 # Logging configuration
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 
+# CORS configuration
+ALLOWED_CORS_ORIGINS_STR = os.getenv("ALLOWED_CORS_ORIGINS", "*")
+if ALLOWED_CORS_ORIGINS_STR == "*":
+    ALLOWED_CORS_ORIGINS = ["*"]
+else:
+    ALLOWED_CORS_ORIGINS = [origin.strip() for origin in ALLOWED_CORS_ORIGINS_STR.split(",")]
+
 
 def get_settings() -> Dict[str, Any]:
     """
@@ -70,6 +77,9 @@ def get_settings() -> Dict[str, Any]:
         },
         "logging": {
             "level": LOG_LEVEL
+        },
+        "cors": {
+            "allowed_origins": ALLOWED_CORS_ORIGINS
         }
     }
 

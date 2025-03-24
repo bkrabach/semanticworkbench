@@ -1,16 +1,20 @@
 import logging
+import os
 import uuid
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator, Dict
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Depends
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 
 # Import routers from the API submodules
 from app.api import auth, config, health, input, management, output
-from app.core.event_bus import event_bus
+from app.core.event_bus import EventBus
 from app.core.response_handler import create_response_handler
+from app.backend.memory_client import MemoryClient
+from app.backend.cognition_client import CognitionClient
 from app.core.config import (
     MEMORY_SERVICE_URL, 
     COGNITION_SERVICE_URL, 
@@ -19,9 +23,11 @@ from app.core.config import (
     ENVIRONMENT,
     APP_VERSION,
     LOG_LEVEL,
+    ALLOWED_CORS_ORIGINS,
     validate_config
 )
 from app.utils.exceptions import CortexException
+from app.utils.auth import get_current_user
 
 # Configure logging
 logging.basicConfig(
@@ -30,29 +36,51 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Store response handler reference
-response_handler = None
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Handle application startup and shutdown events."""
-    global response_handler
-
-    # Validate configuration
+    # Validate configuration - fail fast for critical errors
     config_error = validate_config()
-    if config_error:
-        logger.error(f"Configuration error: {config_error}")
-        # We don't exit here to allow the application to start even with config warnings
-        # For critical errors, the validation function will log appropriately
-
-    # Initialize components on application startup
-    response_handler = await create_response_handler(
-        event_bus=event_bus, memory_url=MEMORY_SERVICE_URL, cognition_url=COGNITION_SERVICE_URL
+    if config_error and "required" in config_error.lower():
+        raise RuntimeError(f"Critical configuration error: {config_error}")
+    elif config_error:
+        logger.error(f"Configuration warning: {config_error}")
+    
+    # Initialize event bus for internal pub/sub
+    app.state.event_bus = EventBus()
+    logger.info("Event bus initialized")
+    
+    # Initialize service clients explicitly
+    app.state.memory_client = MemoryClient(MEMORY_SERVICE_URL)
+    app.state.cognition_client = CognitionClient(COGNITION_SERVICE_URL)
+    
+    # Connect to services
+    try:
+        memory_connected, memory_error = await app.state.memory_client.connect()
+        cognition_connected, cognition_error = await app.state.cognition_client.connect()
+        
+        if not memory_connected:
+            logger.error(f"Failed to connect to memory service: {memory_error}")
+        
+        if not cognition_connected:
+            logger.error(f"Failed to connect to cognition service: {cognition_error}")
+            
+    except Exception as e:
+        logger.error(f"Error connecting to services: {e}")
+        # Log but continue - health check will show degraded status
+    
+    # Initialize and start response handler
+    app.state.response_handler = await create_response_handler(
+        event_bus=app.state.event_bus,
+        memory_url=MEMORY_SERVICE_URL,
+        cognition_url=COGNITION_SERVICE_URL
     )
 
-    # Store response handler in app state for access by health checks
-    app.state.response_handler = response_handler
+    # Start embedded services if requested (development convenience)
+    if os.getenv("START_EMBEDDED_SERVICES") == "true":
+        logger.info("Starting embedded services (development mode)")
+        # TODO: Implement embedded service startup if needed
 
     logger.info(f"Cortex Core {APP_VERSION} started in {ENVIRONMENT} environment with services:")
     logger.info(f"- Memory service: {MEMORY_SERVICE_URL}")
@@ -60,14 +88,39 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     yield
 
-    # Clean up resources on application shutdown
-    if response_handler:
-        await response_handler.stop()
-    app.state.response_handler = None
-    logger.info("Cortex Core shutting down, resources cleaned up")
+    # Clean up resources on application shutdown in reverse order
+    logger.info("Shutting down Cortex Core...")
+    
+    # Stop response handler
+    if hasattr(app.state, "response_handler") and app.state.response_handler:
+        logger.info("Stopping response handler...")
+        await app.state.response_handler.stop()
+        app.state.response_handler = None
+    
+    # Close service clients
+    if hasattr(app.state, "memory_client") and app.state.memory_client:
+        logger.info("Closing memory client connection...")
+        await app.state.memory_client.close()
+        app.state.memory_client = None
+        
+    if hasattr(app.state, "cognition_client") and app.state.cognition_client:
+        logger.info("Closing cognition client connection...")
+        await app.state.cognition_client.close()
+        app.state.cognition_client = None
+        
+    logger.info("Cortex Core shutdown complete, all resources cleaned up")
 
 
 app = FastAPI(title="Cortex Core MVP", lifespan=lifespan)
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ALLOWED_CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.exception_handler(CortexException)
@@ -102,25 +155,22 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     return JSONResponse(status_code=422, content=response)
 
 
-# Include API routers (stubs) into the main app
+# Include API routers with proper authentication
+# Public routes (no authentication required)
 app.include_router(auth.router)
-app.include_router(input.router)
-app.include_router(output.router)
-app.include_router(config.router)
 app.include_router(health.router)
-app.include_router(management.router)
+
+# Protected routes (require authentication)
+app.include_router(input.router, dependencies=[Depends(get_current_user)])
+app.include_router(output.router, dependencies=[Depends(get_current_user)])
+app.include_router(config.router, dependencies=[Depends(get_current_user)])
+app.include_router(management.router, dependencies=[Depends(get_current_user)])
 
 
 @app.get("/", tags=["system"])
 async def root() -> Dict[str, str]:
     """Root endpoint returning basic service information."""
     return {"status": "online", "service": "Cortex Core"}
-
-
-@app.get("/health", tags=["system"])
-async def health_check() -> Dict[str, str]:
-    """Health check endpoint to verify that the service is running."""
-    return {"status": "ok"}
 
 
 if __name__ == "__main__":

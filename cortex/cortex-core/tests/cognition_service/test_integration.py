@@ -2,11 +2,11 @@
 Integration tests for the Cognition Service components working together.
 """
 import pytest
-from unittest.mock import AsyncMock, patch, Mock
+from unittest.mock import AsyncMock, patch
 
 from cognition_service.main import generate_reply, evaluate_context_tool
 from cognition_service.models import Message, MessageRole
-from cognition_service.memory_client import MemoryClient
+# Memory client imported in the implementation
 from tests.cognition_service.conftest import MockPydanticAIResult
 
 

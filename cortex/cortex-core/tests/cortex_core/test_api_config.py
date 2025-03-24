@@ -2,12 +2,12 @@
 Tests for the API configuration endpoints.
 """
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 from fastapi.testclient import TestClient
 import uuid
 
 from app.main import app
-from app.utils.exceptions import ValidationErrorException, PermissionDeniedException, ResourceNotFoundException
+from app.utils.exceptions import PermissionDeniedException, ResourceNotFoundException
 
 
 class TestConfigAPI:

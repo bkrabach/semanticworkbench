@@ -5,8 +5,6 @@ from typing import Any, AsyncGenerator, Dict, Optional
 
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import StreamingResponse
-
-from app.core.event_bus import event_bus
 from app.utils.auth import get_current_user
 
 # Set up logger
@@ -27,6 +25,9 @@ async def event_generator(
         f"Creating SSE stream for user: {user_id}" + (f", conversation: {conversation_id}" if conversation_id else "")
     )
 
+    # Get the event bus from the app state
+    event_bus = request.app.state.event_bus
+    
     client_queue: asyncio.Queue = event_bus.subscribe(
         event_type=None,  # Subscribe to all event types
         conversation_id=conversation_id,  # Filter by conversation if specified

@@ -2,11 +2,10 @@
 Tests for the core configuration module.
 """
 import os
-import pytest
 from unittest.mock import patch
 
 from app.core.config import (
-    get_settings,
+    # get_settings imported in the test
     validate_config,
     SERVER_HOST,
     SERVER_PORT,

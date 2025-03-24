@@ -2,7 +2,7 @@
 Tests for the Cognition Service FastMCP server.
 """
 import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import patch
 
 from cognition_service.main import mcp, generate_reply, evaluate_context_tool, health
 from cognition_service.config import settings

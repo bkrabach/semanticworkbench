@@ -3,7 +3,7 @@ Tests for the Memory Client in the Cognition Service.
 """
 import pytest
 import unittest.mock as mock
-from unittest.mock import AsyncMock, MagicMock, patch, Mock
+from unittest.mock import AsyncMock, patch, Mock
 
 from cognition_service.memory_client import MemoryClient, MemoryServiceError
 from cognition_service.models import Message, MessageRole
