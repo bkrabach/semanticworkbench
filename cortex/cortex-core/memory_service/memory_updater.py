@@ -23,7 +23,7 @@ class MemoryUpdateResult(BaseModel):
 class MemoryUpdater:
     """Service to create and update memory summaries using LLM."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the memory updater with an LLM agent."""
         # Create a Pydantic-AI agent for memory summarization
         system_prompt = (

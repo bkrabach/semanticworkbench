@@ -10,7 +10,7 @@ from .models import MemoryEntry
 class MemoryStore:
     """File-based storage for memory entries."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the memory store."""
         self.storage_dir = Path(config.STORAGE_DIR)
         self.storage_dir.mkdir(exist_ok=True, parents=True)

@@ -50,3 +50,6 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 # Set default fixture loop scope to function to address pytest-asyncio warning
 asyncio_default_fixture_loop_scope = "function"
+markers = [
+    "integration: marks tests as integration tests",
+]
