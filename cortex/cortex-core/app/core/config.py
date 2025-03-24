@@ -29,6 +29,11 @@ DEV_SECRET = os.getenv("DEV_SECRET", "development_secret_key_do_not_use_in_produ
 MEMORY_SERVICE_URL = os.getenv("MEMORY_SERVICE_URL", "http://localhost:5001/sse")
 COGNITION_SERVICE_URL = os.getenv("COGNITION_SERVICE_URL", "http://localhost:5000/sse")
 
+# LLM configuration
+LLM_MODEL = os.getenv("CORTEX_LLM_MODEL", "claude-3-sonnet-20240229")
+LLM_TEMPERATURE = float(os.getenv("CORTEX_LLM_TEMPERATURE", "0.0"))
+LLM_STREAMING = os.getenv("CORTEX_LLM_STREAMING", "false").lower() == "true"
+
 # Logging configuration
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 
@@ -58,6 +63,11 @@ def get_settings() -> Dict[str, Any]:
             "memory_url": MEMORY_SERVICE_URL,
             "cognition_url": COGNITION_SERVICE_URL
         },
+        "llm": {
+            "model": LLM_MODEL,
+            "temperature": LLM_TEMPERATURE,
+            "streaming": LLM_STREAMING
+        },
         "logging": {
             "level": LOG_LEVEL
         }
@@ -85,6 +95,14 @@ def validate_config() -> Optional[str]:
         errors.append("MEMORY_SERVICE_URL is required")
     if not COGNITION_SERVICE_URL:
         errors.append("COGNITION_SERVICE_URL is required")
+    
+    # Check LLM configuration
+    if not LLM_MODEL:
+        errors.append("LLM_MODEL is required")
+    try:
+        float(LLM_TEMPERATURE)
+    except ValueError:
+        errors.append(f"LLM_TEMPERATURE must be a float, got {LLM_TEMPERATURE}")
     
     # Return None if no errors, otherwise join error messages
     if not errors:

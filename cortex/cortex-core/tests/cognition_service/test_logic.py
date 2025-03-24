@@ -3,17 +3,24 @@ Tests for the Cognition Service logic.
 """
 import asyncio
 import pytest
-from unittest.mock import patch
+from unittest.mock import patch, AsyncMock, MagicMock
 
 from cognition_service.logic import agent, generate_ai_response
 from cognition_service.models import Message, MessageRole
 
 
+class MockPydanticAIResult:
+    """Mock class to simulate Pydantic AI result structure."""
+    def __init__(self, data):
+        self.data = data
+
+
 @pytest.mark.asyncio
 async def test_generate_ai_response_basic():
     """Test that generate_ai_response returns a response."""
-    # Mock the agent.run method to return a fixed response
-    with patch.object(agent, 'run', return_value="Test response"):
+    # Mock the agent.run method to return a response with the correct structure
+    mock_result = MockPydanticAIResult("Test response")
+    with patch.object(agent, 'run', return_value=mock_result):
         response = await generate_ai_response(
             user_id="test_user",
             conversation_id="test_conversation",
@@ -33,7 +40,10 @@ async def test_generate_ai_response_with_history():
         Message(role=MessageRole.ASSISTANT, content="Hi there!")
     ]
     
-    with patch.object(agent, 'run', return_value="Response with history context"), \
+    # Create a mock result object with the correct structure
+    mock_result = MockPydanticAIResult("Response with history context")
+    
+    with patch.object(agent, 'run', return_value=mock_result), \
          patch('cognition_service.logic.get_conversation_history', return_value=asyncio.Future()) as mock_get_history:
         
         # Set the result of the future

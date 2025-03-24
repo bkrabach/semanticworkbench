@@ -1,10 +1,10 @@
-import asyncio
 import logging
-from typing import Any, Dict, Optional
+from typing import Optional
 
 from app.backend.cognition_client import CognitionClient
 from app.backend.memory_client import MemoryClient
-from app.core.event_bus import EventBus, EventData
+from app.core.event_bus import EventBus
+from app.core.llm_orchestrator import LLMOrchestrator, create_llm_orchestrator
 
 # Set up logger for the response handler
 logger = logging.getLogger(__name__)
@@ -13,7 +13,8 @@ logger = logging.getLogger(__name__)
 class ResponseHandler:
     """
     Response handler that processes input events and produces output events.
-    Orchestrates interactions between event bus, memory client, and cognition client.
+    Orchestrates interactions between event bus, memory client, cognition client,
+    and the LLM orchestrator.
     """
 
     def __init__(self, event_bus: EventBus, memory_client: MemoryClient, cognition_client: CognitionClient) -> None:
@@ -28,155 +29,37 @@ class ResponseHandler:
         self.event_bus = event_bus
         self.memory_client = memory_client
         self.cognition_client = cognition_client
-        self.input_queue: asyncio.Queue = asyncio.Queue()
         self.running = False
+        self.llm_orchestrator: Optional[LLMOrchestrator] = None
 
     async def start(self) -> None:
         """
         Start the response handler.
-        Subscribes to user message events and begins processing events.
+        Initializes and starts the LLM orchestrator for processing messages.
         """
         self.running = True
-        self.input_queue = self.event_bus.subscribe(event_type="user_message")
-        await self.process_events()
+        
+        # Initialize the LLM orchestrator
+        self.llm_orchestrator = await create_llm_orchestrator(self.event_bus)
+        
+        logger.info("Response handler started with LLM orchestrator")
 
     async def stop(self) -> None:
         """
         Stop the response handler and clean up resources.
-        Unsubscribes from the event bus and closes client connections.
+        Stops the LLM orchestrator and closes client connections.
         """
         self.running = False
-        self.event_bus.unsubscribe(self.input_queue)
+        
+        # Stop the LLM orchestrator if it's running
+        if self.llm_orchestrator:
+            await self.llm_orchestrator.stop()
 
         # Close client connections
         await self.memory_client.close()
         await self.cognition_client.close()
-
-    async def process_events(self) -> None:
-        """
-        Process events from the input queue.
-        This is the core orchestration loop that handles user messages.
-        Runs in a continuous loop until the handler is stopped.
-        """
-        while self.running:
-            try:
-                # Get the next event with a timeout (allows checking if we should stop)
-                try:
-                    event = await asyncio.wait_for(self.input_queue.get(), timeout=1.0)
-                except asyncio.TimeoutError:
-                    continue
-
-                # Process the event
-                await self.handle_input_event(event)
-
-                # Mark the task as done
-                self.input_queue.task_done()
-
-            except Exception as e:
-                logger.error(f"Error processing event: {e}", exc_info=True)
-
-    async def handle_input_event(self, event: Dict[str, Any]) -> None:
-        """
-        Handle an input event by orchestrating calls to memory and cognition services.
-        This implements the processing pipeline:
-        1. Retrieve relevant memory
-        2. Evaluate context with the cognition service
-        3. Store the response in memory
-        4. Publish response as an event
-
-        Args:
-            event: The event data containing user_id, conversation_id, and message content
-        """
-        # Extract needed info from the event
-        user_id = event.get("user_id")
-        conversation_id = event.get("conversation_id")
-        message_data = event.get("data", {})
-        message_content = message_data.get("content", "")
-
-        if not user_id or not conversation_id or not message_content:
-            logger.warning(f"Missing required fields in event: {event}")
-            return
-
-        try:
-            # 1. Store the user message in memory
-            await self.memory_client.store_message(
-                user_id=user_id,
-                conversation_id=conversation_id,
-                content=message_content,
-                role="user",
-                metadata=message_data.get("metadata", {}),
-            )
-
-            # 2. Retrieve conversation context from memory
-            memory_snippets = await self.memory_client.get_recent_messages(
-                user_id=user_id, conversation_id=conversation_id, limit=10
-            )
-
-            # 3. Generate a response by evaluating context
-            response = await self.cognition_client.evaluate_context(
-                user_id=user_id,
-                conversation_id=conversation_id,
-                message=message_content,
-                memory_snippets=memory_snippets,
-                expert_insights=[],  # Will add domain expert results here when implemented
-            )
-            
-            # Check if response might be a structured output (JSON)
-            final_response = response
-            try:
-                from app.models.llm import ToolRequest, FinalAnswer
-                import json
-                
-                # Try to parse as JSON
-                if response.strip().startswith('{') and response.strip().endswith('}'): 
-                    parsed_data = json.loads(response)
-                    
-                    # Try to parse as a ToolRequest
-                    if 'tool' in parsed_data and 'args' in parsed_data:
-                        tool_request = ToolRequest(**parsed_data)
-                        logger.info(f"Received tool request: {tool_request.tool}")
-                        
-                        # For now, we'll just log it and return a placeholder response
-                        # In the future, this would invoke the appropriate tool
-                        # and possibly do another LLM call with the results
-                        logger.info(f"Tool request args: {tool_request.args}")
-                        
-                        # Simple tool handling placeholder - this would be expanded later
-                        final_response = f"I would use the {tool_request.tool} tool, but that's not fully implemented yet."
-                    
-                    # Try to parse as a FinalAnswer
-                    elif 'answer' in parsed_data:
-                        final_answer = FinalAnswer(**parsed_data)
-                        final_response = final_answer.answer
-                        logger.info("Received structured final answer")
-            except Exception as e:
-                # If parsing fails, just use the original response
-                logger.debug(f"Response not structured or parsing failed: {e}")
-                # Keep using the original response (already set in final_response)
-
-            # 4. Store the assistant response in memory
-            await self.memory_client.store_message(
-                user_id=user_id, conversation_id=conversation_id, content=final_response, role="assistant"
-            )
-
-            # 5. Publish output event with the response
-            output_event = EventData({
-                "user_id": user_id,
-                "conversation_id": conversation_id,
-                "data": {"content": final_response, "role": "assistant"},
-            })
-            await self.event_bus.publish_async("assistant_response", output_event)
-
-        except Exception as e:
-            logger.error(f"Error handling input event: {e}", exc_info=True)
-            # Publish error event
-            error_event = EventData({
-                "type": "error",
-                "user_id": user_id,
-                "conversation_id": conversation_id,
-                "data": {"message": f"Error processing message: {str(e)}"},
-            })
-            await self.event_bus.publish_async("error", error_event)
+        
+        logger.info("Response handler stopped")
 
 
 async def create_response_handler(
@@ -206,6 +89,6 @@ async def create_response_handler(
     handler = ResponseHandler(event_bus=event_bus, memory_client=memory_client, cognition_client=cognition_client)
 
     # Start the handler in the background
-    asyncio.create_task(handler.start())
+    await handler.start()
 
     return handler
