@@ -3,16 +3,12 @@ Tests for the response handler module.
 """
 
 import json
-import os
 import asyncio
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from app.core.exceptions import ToolExecutionException
 from app.core.response_handler import ResponseHandler, register_tool
-
-# Ensure tests use the mock LLM
-os.environ["USE_MOCK_LLM"] = "true"
 
 
 # Sample test tool
@@ -60,41 +56,41 @@ async def test_stream_response(response_handler: ResponseHandler) -> None:
 
     # Mock get_output_queue to return our test queue
     # Also create a mock message to provide ID for the response
-    mock_message = Mock()
+    mock_message: Mock = Mock()
     mock_message.id = "test-message-id"
     
     # Create a mock message repository
-    mock_repo = Mock()
+    mock_repo: Mock = Mock()
     mock_repo.list_by_conversation = AsyncMock(return_value=[mock_message])
     
     # Create a mock UnitOfWork context manager
-    mock_uow = Mock()
+    mock_uow: Mock = Mock()
     mock_uow.repositories = Mock()
     mock_uow.repositories.get_message_repository.return_value = mock_repo
     
-    mock_uow_context = AsyncMock()
+    mock_uow_context: AsyncMock = AsyncMock()
     mock_uow_context.__aenter__.return_value = mock_uow
     
     with patch('app.core.response_handler.get_output_queue', return_value=test_queue), \
          patch('app.core.response_handler.UnitOfWork.for_transaction', return_value=mock_uow_context):
 
         # Stream a response
-        message = "This is a test response"
+        message: str = "This is a test response"
         await response_handler._stream_response(conversation_id, message)
 
         # Calculate expected number of chunks (50 chars per chunk)
-        expected_chunks = (len(message) + 49) // 50  # Ceiling division
+        expected_chunks: int = (len(message) + 49) // 50  # Ceiling division
 
         # Read from the queue and verify the response chunks
-        chunks = []
+        chunks: list[dict] = []
         for _ in range(expected_chunks + 1):  # +1 for the [DONE] event
             event_json = await asyncio.wait_for(test_queue.get(), timeout=1.0)
             event = json.loads(event_json)
             chunks.append(event)
 
         # Verify chunk events
-        chunk_events = chunks[:-1]  # All except last (done) event
-        done_event = chunks[-1]  # Last event is done
+        chunk_events: list[dict] = chunks[:-1]  # All except last (done) event
+        done_event: dict = chunks[-1]  # Last event is done
         
         # Verify all chunk events
         for event in chunk_events:
@@ -121,7 +117,7 @@ async def test_stream_response(response_handler: ResponseHandler) -> None:
         assert "metadata" in done_event
 
         # Reconstruct the message from chunks
-        reconstructed = ""
+        reconstructed: str = ""
         for chunk in chunk_events:
             reconstructed += chunk["data"]["content"]
 
@@ -131,27 +127,28 @@ async def test_stream_response(response_handler: ResponseHandler) -> None:
 
 @pytest.mark.asyncio
 async def test_handle_message_mock_streaming() -> None:
-    """Test handling a message with mock LLM and streaming enabled."""
+    """Test handling a message with mocked dependencies and streaming enabled."""
     # Create a handler with mocked dependencies
     handler = ResponseHandler()
 
     # Mock the methods we don't want to test here
-    user_message = Mock()
+    user_message: Mock = Mock()
     user_message.id = "user-message-id"
     
-    store_message_mock = AsyncMock(return_value=user_message)
-    get_history_mock = AsyncMock(return_value=[])
-    get_context_mock = AsyncMock(return_value=[])
-    prepare_messages_mock = AsyncMock(return_value=[{"role": "user", "content": "Hello, world!"}])
-    process_llm_mock = AsyncMock(return_value="This is a mock response")
-    handle_final_response_mock = AsyncMock()
+    store_message_mock: AsyncMock = AsyncMock(return_value=user_message)
+    get_history_mock: AsyncMock = AsyncMock(return_value=[])
+    get_context_mock: AsyncMock = AsyncMock(return_value=[])
+    prepare_messages_mock: AsyncMock = AsyncMock(return_value=[{"role": "user", "content": "Hello, world!"}])
+    process_llm_mock: AsyncMock = AsyncMock(return_value="This is a mock response")
+    handle_final_response_mock: AsyncMock = AsyncMock()
     
     with patch.object(handler, '_store_message', new=store_message_mock), \
          patch.object(handler, '_get_conversation_history', new=get_history_mock), \
          patch.object(handler, '_get_cognition_context', new=get_context_mock), \
          patch.object(handler, '_prepare_messages_with_context', new=prepare_messages_mock), \
          patch.object(handler, '_process_llm_conversation', new=process_llm_mock), \
-         patch.object(handler, '_handle_final_response', new=handle_final_response_mock):
+         patch.object(handler, '_handle_final_response', new=handle_final_response_mock), \
+         patch('app.core.response_handler.llm_adapter'):
 
         # Call handle_message with streaming enabled (default)
         await handler.handle_message(
@@ -186,27 +183,28 @@ async def test_handle_message_mock_streaming() -> None:
 
 @pytest.mark.asyncio
 async def test_handle_message_mock_non_streaming() -> None:
-    """Test handling a message with mock LLM and streaming disabled."""
+    """Test handling a message with mocked dependencies and streaming disabled."""
     # Create a handler with mocked dependencies
     handler = ResponseHandler()
 
     # Mock the methods we don't want to test here
-    user_message = Mock()
+    user_message: Mock = Mock()
     user_message.id = "user-message-id"
     
-    store_message_mock = AsyncMock(return_value=user_message)
-    get_history_mock = AsyncMock(return_value=[])
-    get_context_mock = AsyncMock(return_value=[])
-    prepare_messages_mock = AsyncMock(return_value=[{"role": "user", "content": "Hello, world!"}])
-    process_llm_mock = AsyncMock(return_value="This is a mock response")
-    handle_final_response_mock = AsyncMock()
+    store_message_mock: AsyncMock = AsyncMock(return_value=user_message)
+    get_history_mock: AsyncMock = AsyncMock(return_value=[])
+    get_context_mock: AsyncMock = AsyncMock(return_value=[])
+    prepare_messages_mock: AsyncMock = AsyncMock(return_value=[{"role": "user", "content": "Hello, world!"}])
+    process_llm_mock: AsyncMock = AsyncMock(return_value="This is a mock response")
+    handle_final_response_mock: AsyncMock = AsyncMock()
     
     with patch.object(handler, '_store_message', new=store_message_mock), \
          patch.object(handler, '_get_conversation_history', new=get_history_mock), \
          patch.object(handler, '_get_cognition_context', new=get_context_mock), \
          patch.object(handler, '_prepare_messages_with_context', new=prepare_messages_mock), \
          patch.object(handler, '_process_llm_conversation', new=process_llm_mock), \
-         patch.object(handler, '_handle_final_response', new=handle_final_response_mock):
+         patch.object(handler, '_handle_final_response', new=handle_final_response_mock), \
+         patch('app.core.response_handler.llm_adapter'):
 
         # Call handle_message with streaming disabled
         await handler.handle_message(
@@ -244,16 +242,16 @@ async def test_handle_message_mock_non_streaming() -> None:
 async def test_send_event(response_handler: ResponseHandler) -> None:
     """Test sending an event through the SSE queue."""
     # Create a test queue
-    test_queue = asyncio.Queue()
+    test_queue: asyncio.Queue = asyncio.Queue()
     # Create test conversation ID
-    conversation_id = "test-conversation"
+    conversation_id: str = "test-conversation"
     # Create test message ID
-    message_id = "test-message-id"
+    message_id: str = "test-message-id"
     
     # Mock get_output_queue to return our test queue
     with patch('app.core.response_handler.get_output_queue', return_value=test_queue):
         # Test sender info
-        sender = {
+        sender: dict[str, str] = {
             "id": "test-sender",
             "name": "Test Sender",
             "role": "test"
@@ -287,13 +285,13 @@ async def test_send_event(response_handler: ResponseHandler) -> None:
 async def test_handle_tool_execution(response_handler: ResponseHandler) -> None:
     """Test handling tool execution with events."""
     # Create a test queue
-    test_queue = asyncio.Queue()
+    test_queue: asyncio.Queue = asyncio.Queue()
     # Create test conversation ID
-    conversation_id = "test-conversation"
+    conversation_id: str = "test-conversation"
     # Create test tool details
-    tool_name = "test_tool"
-    tool_args = {"param1": "test"}
-    user_id = "test-user"
+    tool_name: str = "test_tool"
+    tool_args: dict[str, str] = {"param1": "test"}
+    user_id: str = "test-user"
     
     # Mock the dependencies
     with patch('app.core.response_handler.get_output_queue', return_value=test_queue), \
@@ -345,19 +343,20 @@ async def test_handle_message_with_tool() -> None:
     assistant_message.id = "assistant-message-id"
 
     # Mock the methods we don't want to test here
-    store_message_mock = AsyncMock(side_effect=[user_message, assistant_message])
-    get_history_mock = AsyncMock(return_value=[])
-    get_context_mock = AsyncMock(return_value=[])
-    prepare_messages_mock = AsyncMock(return_value=[{"role": "user", "content": "Hello, use a tool!"}])
-    handle_tool_execution_mock = AsyncMock(return_value="Tool result")
-    handle_final_response_mock = AsyncMock()
+    store_message_mock: AsyncMock = AsyncMock(side_effect=[user_message, assistant_message])
+    get_history_mock: AsyncMock = AsyncMock(return_value=[])
+    get_context_mock: AsyncMock = AsyncMock(return_value=[])
+    prepare_messages_mock: AsyncMock = AsyncMock(return_value=[{"role": "user", "content": "Hello, use a tool!"}])
+    # We don't need to mock handle_tool_execution for this test
+    handle_final_response_mock: AsyncMock = AsyncMock()
     
     with patch.object(handler, '_store_message', new=store_message_mock), \
          patch.object(handler, '_get_conversation_history', new=get_history_mock), \
          patch.object(handler, '_get_cognition_context', new=get_context_mock), \
          patch.object(handler, '_prepare_messages_with_context', new=prepare_messages_mock), \
          patch.object(handler, '_process_llm_conversation', return_value="Final response after tool"), \
-         patch.object(handler, '_handle_final_response', new=handle_final_response_mock):
+         patch.object(handler, '_handle_final_response', new=handle_final_response_mock), \
+         patch('app.core.response_handler.llm_adapter'):
 
         # Call handle_message
         await handler.handle_message(

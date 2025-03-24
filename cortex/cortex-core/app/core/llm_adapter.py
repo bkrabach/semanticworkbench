@@ -32,7 +32,6 @@ class LLMAdapter:
             ValueError: If required environment variables for the configured provider are missing
         """
         self.provider = os.getenv("LLM_PROVIDER", "openai").lower()
-        self.use_mock = os.getenv("USE_MOCK_LLM", "false").lower() == "true"
 
         # Common parameters
         self.temperature = float(os.getenv("LLM_TEMPERATURE", "0.7"))
@@ -40,7 +39,7 @@ class LLMAdapter:
 
         # Validate provider support
         supported_providers = ["openai", "azure_openai", "anthropic"]
-        if not self.use_mock and self.provider not in supported_providers:
+        if self.provider not in supported_providers:
             logger.warning(f"Unsupported provider: {self.provider}, defaulting to openai")
             self.provider = "openai"
 
@@ -55,18 +54,9 @@ class LLMAdapter:
             "max_tokens": self.max_tokens,
         }
 
-        # Initialize the agent if not using mock
-        if not self.use_mock:
-            try:
-                # Validate that required provider configuration is available
-                self._validate_provider_config()
-                logger.info(f"LLM Adapter initialized with provider: {self.provider}, model: {self.model_name}")
-            except Exception as e:
-                logger.warning(f"Failed to initialize LLM provider: {str(e)}. Falling back to mock LLM.")
-                self.use_mock = True
-
-        if self.use_mock:
-            logger.info("Using Mock LLM for responses")
+        # Validate that required provider configuration is available
+        self._validate_provider_config()
+        logger.info(f"LLM Adapter initialized with provider: {self.provider}, model: {self.model_name}")
 
     def _get_model_name(self) -> str:
         """
@@ -118,12 +108,6 @@ class LLMAdapter:
             or {"tool": "...", "input": {...}} for a tool request.
             Returns None if the call fails.
         """
-        # In development mode, use a simple fixed response if mock is enabled
-        if self.use_mock:
-            logger.info("Development mode: Using simple mock LLM response")
-            # Create a simple response for development without test dependencies
-            return {"content": "This is a development mode response. In production, configure LLM_PROVIDER."}
-
         try:
             # Prepare input data for LLM from messages
             input_data = self._prepare_input(messages)

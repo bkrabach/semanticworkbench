@@ -104,17 +104,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     if not os.getenv("LLM_PROVIDER"):
         os.environ["LLM_PROVIDER"] = "openai"  # Default provider
 
-    # Check if we're using mock or real LLM
-    use_mock = os.getenv("USE_MOCK_LLM", "").lower() == "true"
-
-    # Only set fake key if we're using mock and don't have real keys configured
-    if use_mock and not os.getenv("OPENAI_API_KEY"):
-        os.environ["OPENAI_API_KEY"] = "sk-demo-key-will-fail"
+    # For development environment, we can set a default OpenAI key if not present
+    # This is just to prevent errors during development, not for production use
+    if os.getenv("ENVIRONMENT", "").lower() == "development" and not os.getenv("OPENAI_API_KEY"):
+        logger.warning("Running in development environment without API keys. Set proper API keys for production use.")
+        os.environ["OPENAI_API_KEY"] = "sk-demo-key-for-development"
         os.environ["OPENAI_MODEL"] = "gpt-3.5-turbo"
-        logger.info("Using mock LLM with dummy API key")
     else:
-        # Using real LLM with keys from .env
-        logger.info("Using real LLM with configured API keys")
+        # Using LLM with configured API keys
+        logger.info("Using LLM with configured API keys")
 
     # Initialize LLM adapter
     try:

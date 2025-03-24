@@ -29,7 +29,7 @@ def client() -> TestClient:
 def mock_env_vars() -> Generator[None, None, None]:
     """Set test environment variables."""
     original = os.environ.copy()
-    os.environ["USE_MOCK_LLM"] = "true"
+    # Set any environment variables needed for testing here
     yield
     os.environ.clear()
     os.environ.update(original)
