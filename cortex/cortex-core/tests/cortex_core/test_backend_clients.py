@@ -2,7 +2,7 @@
 Tests for the backend clients that communicate with external services.
 """
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch, call
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.backend.cognition_client import CognitionClient, MCPConnectionError, MCPServiceError
 from app.backend.memory_client import MemoryClient
@@ -154,7 +154,7 @@ class TestCognitionClient:
         success, error = await client.connect()
         
         assert success is False
-        assert "Connection error" in error
+        assert error is not None and "Connection error" in error
         assert client.session is None
         assert client.streams_context is None
         assert client.available_tools == []
@@ -437,7 +437,7 @@ class TestMemoryClient:
         success, error = await client.connect()
         
         assert success is False
-        assert "Memory connection error" in error
+        assert error is not None and "Memory connection error" in error
         assert client.session is None
         assert client.streams_context is None
     

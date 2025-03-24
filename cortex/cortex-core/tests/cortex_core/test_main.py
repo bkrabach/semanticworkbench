@@ -5,7 +5,6 @@ import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from fastapi.exceptions import RequestValidationError
 
 from app.main import app
 from app.utils.exceptions import CortexException
@@ -126,7 +125,7 @@ class TestMainApp:
             age: int
         
         @app.post("/test/validation")
-        async def test_validation(model: TestModel):
+        async def test_validation(model: TestModel) -> TestModel:
             return model
         
         # Call the test endpoint with invalid data
@@ -206,7 +205,7 @@ class TestMainApp:
     def test_router_inclusion(self):
         """Test that all routers are included in the app."""
         # Get all router paths
-        routes = [route.path for route in app.routes]
+        routes = [str(getattr(route, "path", "")) for route in app.routes]
         
         # Check all API prefixes are included
         prefixes = [

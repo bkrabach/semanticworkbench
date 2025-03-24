@@ -2,7 +2,7 @@ import asyncio
 from unittest.mock import patch, MagicMock, AsyncMock
 
 import pytest
-from app.core.event_bus import EventBus, EventData
+from app.core.event_bus import EventBus, EventData, SubscriptionRecord
 
 
 @pytest.mark.asyncio
@@ -119,18 +119,18 @@ async def test_event_bus_error_handling() -> None:
     mock_full_queue.put_nowait.side_effect = asyncio.QueueFull()
     
     # Create subscriptions with the problematic queues
-    bus._subscriptions.append({
+    bus._subscriptions.append(SubscriptionRecord({
         "queue": mock_queue,
         "event_type": None,
         "conversation_id": None,
         "user_id": None
-    })
-    bus._subscriptions.append({
+    }))
+    bus._subscriptions.append(SubscriptionRecord({
         "queue": mock_full_queue,
         "event_type": None,
         "conversation_id": None,
         "user_id": None
-    })
+    }))
     
     # Normal queue for verification
     normal_queue = bus.subscribe()
@@ -168,12 +168,12 @@ async def test_async_publish_error_handling() -> None:
     mock_queue.put = AsyncMock(side_effect=Exception("Async test exception"))
     
     # Create a subscription with the problematic queue
-    bus._subscriptions.append({
+    bus._subscriptions.append(SubscriptionRecord({
         "queue": mock_queue,
         "event_type": None,
         "conversation_id": None,
         "user_id": None
-    })
+    }))
     
     # Normal queue for verification
     normal_queue = bus.subscribe()
