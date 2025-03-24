@@ -73,15 +73,9 @@ async def shutdown_event() -> None:
 @app.get("/health")
 async def health_check() -> Dict[str, str] | JSONResponse:
     """Health check endpoint for service discovery."""
-    global memory_client
-    
     try:
-        # Check if we can connect to the Memory Service
-        if memory_client:
-            response = await memory_client.get("/health")
-            memory_healthy = response.status_code == 200
-        else:
-            memory_healthy = False
+        # Check memory service health
+        memory_healthy = await _check_memory_service_health()
         
         # Return health status
         if memory_healthy:
@@ -107,6 +101,82 @@ async def health_check() -> Dict[str, str] | JSONResponse:
         )
 
 
+async def _check_memory_service_health() -> bool:
+    """
+    Check if the memory service is healthy.
+    
+    Returns:
+        True if healthy, False otherwise
+    """
+    global memory_client
+    
+    try:
+        # Check if we can connect to the Memory Service
+        if memory_client:
+            response = await memory_client.get("/health")
+            return response.status_code == 200
+        return False
+    except Exception as e:
+        logger.error(f"Memory service health check failed: {e}")
+        return False
+
+
+async def _dispatch_tool(tool_name: str, arguments: dict) -> dict:
+    """
+    Dispatch a tool call to the appropriate tool function.
+    
+    Args:
+        tool_name: The name of the tool to call
+        arguments: Arguments for the tool
+    
+    Returns:
+        Tool result
+    
+    Raises:
+        ValueError: If tool not found
+    """
+    # Call the appropriate tool based on the tool name
+    if tool_name == "get_context":
+        return await get_context(**arguments)
+    elif tool_name == "analyze_conversation":
+        return await analyze_conversation(**arguments)
+    elif tool_name == "search_history":
+        return await search_history(**arguments)
+    else:
+        raise ValueError(f"Tool not found: {tool_name}")
+
+
+def _parse_resource_path(resource_path: str) -> tuple[str, str, dict]:
+    """
+    Parse a resource path into components.
+    
+    Args:
+        resource_path: The resource path string
+    
+    Returns:
+        Tuple of (resource_type, resource_id, params)
+    
+    Raises:
+        ValueError: If path format is invalid
+    """
+    parts = resource_path.split("/")
+    
+    if len(parts) < 2:
+        raise ValueError(f"Invalid resource path format: {resource_path}")
+    
+    resource_type = parts[0]
+    resource_id = parts[1]
+    params = {}
+    
+    # Handle special cases
+    if resource_type == "conversation_analysis":
+        if len(parts) < 3:
+            raise ValueError("Invalid conversation analysis path. Format: conversation_analysis/{id}/{type}")
+        params["analysis_type"] = parts[2]
+    
+    return resource_type, resource_id, params
+
+
 @app.post("/tool/{tool_name}")
 async def call_tool(tool_name: str, request: Request):
     """
@@ -130,24 +200,16 @@ async def call_tool(tool_name: str, request: Request):
             detail={"error": {"code": "invalid_request", "message": "Invalid request body"}}
         )
     
-    # Call the appropriate tool based on the tool name
+    # Call the appropriate tool
     try:
-        if tool_name == "get_context":
-            result = await get_context(**arguments)
-        elif tool_name == "analyze_conversation":
-            result = await analyze_conversation(**arguments)
-        elif tool_name == "search_history":
-            result = await search_history(**arguments)
-        else:
-            raise HTTPException(
-                status_code=404,
-                detail={"error": {"code": "tool_not_found", "message": f"Tool '{tool_name}' not found"}}
-            )
-        
+        result = await _dispatch_tool(tool_name, arguments)
         return {"result": result}
-    except HTTPException:
-        # Re-raise HTTP exceptions
-        raise
+    except ValueError as e:
+        # Tool not found
+        raise HTTPException(
+            status_code=404,
+            detail={"error": {"code": "tool_not_found", "message": str(e)}}
+        )
     except Exception as e:
         logger.error(f"Error executing tool {tool_name}: {e}", exc_info=True)
         return JSONResponse(
@@ -174,26 +236,35 @@ async def get_resource(resource_path: str, request: Request):
     Returns:
         SSE stream of resource data
     """
-    # Parse the resource path to determine which resource to access
-    parts = resource_path.split("/")
-    resource_type = parts[0] if parts else ""
-    
     try:
-        if resource_type == "context":
-            # Format: context/{user_id}?query=<query>
-            if len(parts) < 2:
-                raise HTTPException(
-                    status_code=400,
-                    detail={
-                        "error": {
-                            "code": "invalid_resource_path",
-                            "message": "Invalid resource path for context. Format: context/{user_id}"
-                        }
+        # Parse the resource path
+        try:
+            resource_type, resource_id, path_params = _parse_resource_path(resource_path)
+        except ValueError as e:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": {
+                        "code": "invalid_resource_path",
+                        "message": str(e)
                     }
-                )
-            
-            user_id = parts[1]
-            
+                }
+            )
+        
+        # Get user ID from query parameter - required for all endpoints
+        user_id = request.query_params.get("user_id", "")
+        if not user_id:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": {
+                        "code": "missing_parameter",
+                        "message": "user_id parameter is required"
+                    }
+                }
+            )
+        
+        if resource_type == "context":
             # Get query parameter
             query = request.query_params.get("query", "")
             
@@ -211,33 +282,9 @@ async def get_resource(resource_path: str, request: Request):
             )
             
         elif resource_type == "conversation_analysis":
-            # Format: conversation_analysis/{conversation_id}/{analysis_type}
-            if len(parts) < 3:
-                raise HTTPException(
-                    status_code=400,
-                    detail={
-                        "error": {
-                            "code": "invalid_resource_path",
-                            "message": "Invalid resource path for conversation analysis. Format: conversation_analysis/{conversation_id}/{analysis_type}"
-                        }
-                    }
-                )
-            
-            conversation_id = parts[1]
-            analysis_type = parts[2]
-            
-            # Get user ID from query parameter
-            user_id = request.query_params.get("user_id", "")
-            if not user_id:
-                raise HTTPException(
-                    status_code=400,
-                    detail={
-                        "error": {
-                            "code": "missing_parameter",
-                            "message": "user_id parameter is required"
-                        }
-                    }
-                )
+            # Analysis type should be in path_params from _parse_resource_path
+            analysis_type = path_params.get("analysis_type", "summary")
+            conversation_id = resource_id
             
             # Create SSE stream for conversation analysis
             return StreamingResponse(
