@@ -3,6 +3,7 @@ Tests for the InProcessMCPClient implementation.
 """
 
 import asyncio
+from typing import Any, Callable, Dict, Generator
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
@@ -15,39 +16,39 @@ from app.core.mcp.in_process_client import InProcessMCPClient
 
 class MockServiceDefinition:
     """Mock for a service definition in the registry."""
-    def __init__(self, service_instance):
+    def __init__(self, service_instance: object) -> None:
         self.service_instance = service_instance
 
 
 class MockToolDefinition:
     """Mock for a tool definition in the registry."""
-    def __init__(self, func, schema=None):
+    def __init__(self, func: Callable[..., Any], schema: Dict[str, Any] | None = None) -> None:
         self.func = func
         self.schema = schema or {}
 
 
 class MockResourceDefinition:
     """Mock for a resource definition in the registry."""
-    def __init__(self, func, schema=None):
+    def __init__(self, func: Callable[..., Any], schema: Dict[str, Any] | None = None) -> None:
         self.func = func
         self.schema = schema or {}
 
 
 @pytest.fixture
-def mock_registry():
+def mock_registry() -> Generator[Mock, None, None]:
     """Create a mock registry for testing."""
     with patch('app.core.mcp.in_process_client.registry') as mock_reg:
         yield mock_reg
 
 
 @pytest.fixture
-def in_process_client():
+def in_process_client() -> InProcessMCPClient:
     """Create an InProcessMCPClient instance for testing."""
     return InProcessMCPClient()
 
 
 @pytest.mark.asyncio
-async def test_call_tool_success(in_process_client, mock_registry):
+async def test_call_tool_success(in_process_client: InProcessMCPClient, mock_registry: Mock) -> None:
     """Test calling a tool successfully."""
     # Create mock service and tool
     mock_service = Mock()
@@ -75,7 +76,7 @@ async def test_call_tool_success(in_process_client, mock_registry):
 
 
 @pytest.mark.asyncio
-async def test_call_tool_service_not_found(in_process_client, mock_registry):
+async def test_call_tool_service_not_found(in_process_client: InProcessMCPClient, mock_registry: Mock) -> None:
     """Test calling a tool on a service that doesn't exist."""
     # Make get_service raise ServiceNotFoundError
     mock_registry.get_service.side_effect = ServiceNotFoundError("nonexistent_service")
@@ -95,7 +96,7 @@ async def test_call_tool_service_not_found(in_process_client, mock_registry):
 
 
 @pytest.mark.asyncio
-async def test_call_tool_not_found(in_process_client, mock_registry):
+async def test_call_tool_not_found(in_process_client: InProcessMCPClient, mock_registry: Mock) -> None:
     """Test calling a tool that doesn't exist."""
     # Create mock service
     mock_service = Mock()
@@ -121,7 +122,7 @@ async def test_call_tool_not_found(in_process_client, mock_registry):
 
 
 @pytest.mark.asyncio
-async def test_call_tool_execution_error(in_process_client, mock_registry):
+async def test_call_tool_execution_error(in_process_client: InProcessMCPClient, mock_registry: Mock) -> None:
     """Test calling a tool that raises an exception during execution."""
     # Create mock service and tool
     mock_service = Mock()
@@ -152,7 +153,7 @@ async def test_call_tool_execution_error(in_process_client, mock_registry):
 
 
 @pytest.mark.asyncio
-async def test_call_tool_result_types(in_process_client, mock_registry):
+async def test_call_tool_result_types(in_process_client: InProcessMCPClient, mock_registry: Mock) -> None:
     """Test calling a tool with different result types."""
     # Create mock service
     mock_service = Mock()
@@ -183,7 +184,7 @@ async def test_call_tool_result_types(in_process_client, mock_registry):
 
 
 @pytest.mark.asyncio
-async def test_get_resource_success(in_process_client, mock_registry):
+async def test_get_resource_success(in_process_client: InProcessMCPClient, mock_registry: Mock) -> None:
     """Test getting a resource successfully."""
     # Create mock service and resource
     mock_service = Mock()
@@ -211,7 +212,7 @@ async def test_get_resource_success(in_process_client, mock_registry):
 
 
 @pytest.mark.asyncio
-async def test_get_resource_service_not_found(in_process_client, mock_registry):
+async def test_get_resource_service_not_found(in_process_client: InProcessMCPClient, mock_registry: Mock) -> None:
     """Test getting a resource from a service that doesn't exist."""
     # Make get_service raise ServiceNotFoundError
     mock_registry.get_service.side_effect = ServiceNotFoundError("nonexistent_service")
@@ -231,7 +232,7 @@ async def test_get_resource_service_not_found(in_process_client, mock_registry):
 
 
 @pytest.mark.asyncio
-async def test_get_resource_not_found(in_process_client, mock_registry):
+async def test_get_resource_not_found(in_process_client: InProcessMCPClient, mock_registry: Mock) -> None:
     """Test getting a resource that doesn't exist."""
     # Create mock service
     mock_service = Mock()
@@ -257,7 +258,7 @@ async def test_get_resource_not_found(in_process_client, mock_registry):
 
 
 @pytest.mark.asyncio
-async def test_get_resource_access_error(in_process_client, mock_registry):
+async def test_get_resource_access_error(in_process_client: InProcessMCPClient, mock_registry: Mock) -> None:
     """Test getting a resource that raises an exception during access."""
     # Create mock service and resource
     mock_service = Mock()
@@ -288,7 +289,7 @@ async def test_get_resource_access_error(in_process_client, mock_registry):
 
 
 @pytest.mark.asyncio
-async def test_get_resource_result_types(in_process_client, mock_registry):
+async def test_get_resource_result_types(in_process_client: InProcessMCPClient, mock_registry: Mock) -> None:
     """Test getting a resource with different result types."""
     # Create mock service
     mock_service = Mock()
@@ -320,7 +321,7 @@ async def test_get_resource_result_types(in_process_client, mock_registry):
 
 
 @pytest.mark.asyncio
-async def test_get_service_parameter_precedence(in_process_client, mock_registry):
+async def test_get_service_parameter_precedence(in_process_client: InProcessMCPClient, mock_registry: Mock) -> None:
     """Test that service parameter takes precedence over service_name."""
     # Create mock service and resource
     mock_service = Mock()
@@ -347,7 +348,7 @@ async def test_get_service_parameter_precedence(in_process_client, mock_registry
 
 
 @pytest.mark.asyncio
-async def test_get_tool_schema(in_process_client, mock_registry):
+async def test_get_tool_schema(in_process_client: InProcessMCPClient, mock_registry: Mock) -> None:
     """Test getting a tool schema."""
     # Create a mock tool definition with schema
     tool_schema = {
@@ -373,7 +374,7 @@ async def test_get_tool_schema(in_process_client, mock_registry):
 
 
 @pytest.mark.asyncio
-async def test_get_resource_schema(in_process_client, mock_registry):
+async def test_get_resource_schema(in_process_client: InProcessMCPClient, mock_registry: Mock) -> None:
     """Test getting a resource schema."""
     # Create a mock resource definition with schema
     resource_schema = {
@@ -399,7 +400,7 @@ async def test_get_resource_schema(in_process_client, mock_registry):
 
 
 @pytest.mark.asyncio
-async def test_list_services(in_process_client, mock_registry):
+async def test_list_services(in_process_client: InProcessMCPClient, mock_registry: Mock) -> None:
     """Test listing available services."""
     # Set up the registry mock
     mock_registry.list_services.return_value = ["service1", "service2", "service3"]
@@ -415,7 +416,7 @@ async def test_list_services(in_process_client, mock_registry):
 
 
 @pytest.mark.asyncio
-async def test_list_tools(in_process_client, mock_registry):
+async def test_list_tools(in_process_client: InProcessMCPClient, mock_registry: Mock) -> None:
     """Test listing tools for a service."""
     # Set up the registry mock
     mock_registry.list_tools.return_value = ["tool1", "tool2", "tool3"]
@@ -431,7 +432,7 @@ async def test_list_tools(in_process_client, mock_registry):
 
 
 @pytest.mark.asyncio
-async def test_list_resources(in_process_client, mock_registry):
+async def test_list_resources(in_process_client: InProcessMCPClient, mock_registry: Mock) -> None:
     """Test listing resources for a service."""
     # Set up the registry mock
     mock_registry.list_resources.return_value = ["resource1", "resource2", "resource3"]

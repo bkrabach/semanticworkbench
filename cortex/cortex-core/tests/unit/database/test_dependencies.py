@@ -3,14 +3,30 @@ Tests for the database dependencies.
 """
 
 import pytest
+import sys
 from unittest.mock import AsyncMock, MagicMock, patch
+from typing import AsyncGenerator, TypeVar
 
 from app.database.dependencies import get_repository_factory
 from app.database.repositories.factory import RepositoryFactory
 
+T = TypeVar('T')
+
+# Helper function for Python < 3.10
+async def async_next(async_iterator: AsyncGenerator[T, None]) -> T:
+    """Get the next item from an async iterator."""
+    try:
+        if sys.version_info >= (3, 10):
+            return await anext(async_iterator)  # type: ignore # Python 3.10+
+        else:
+            # Manual implementation for older Python versions
+            return await async_iterator.__anext__()
+    except StopAsyncIteration:
+        raise StopAsyncIteration("Async iterator is exhausted")
+
 
 @pytest.mark.asyncio
-async def test_get_repository_factory():
+async def test_get_repository_factory() -> None:
     """Test the repository factory dependency."""
     # Create a mock session for testing
     mock_session = MagicMock()
@@ -23,7 +39,7 @@ async def test_get_repository_factory():
     with patch('app.database.dependencies.get_session', return_value=mock_session_ctx):
         # Call the dependency function and get the repository factory
         factory_gen = get_repository_factory()
-        factory = await anext(factory_gen)
+        factory = await async_next(factory_gen)
         
         # Verify we got a proper repository factory
         assert isinstance(factory, RepositoryFactory)
@@ -36,7 +52,7 @@ async def test_get_repository_factory():
         
         # Cleanup the generator to exit the context
         try:
-            await anext(factory_gen)
+            await async_next(factory_gen)
         except StopAsyncIteration:
             pass
         

@@ -3,6 +3,7 @@ Tests for the input API endpoints.
 """
 
 import json
+from typing import Any, Dict, List, Tuple
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -14,7 +15,7 @@ from fastapi import HTTPException
 
 
 @pytest.fixture
-def mock_uow():
+def mock_uow() -> Tuple[AsyncMock, Mock, Mock]:
     """Create a mock UnitOfWork for testing."""
     mock = Mock()
     mock.repositories = Mock()
@@ -38,7 +39,7 @@ def mock_uow():
 
 
 @pytest.mark.asyncio
-async def test_receive_input_valid_request(mock_uow):
+async def test_receive_input_valid_request(mock_uow: Tuple[AsyncMock, Mock, Mock]) -> None:
     """Test successfully receiving a valid input request."""
     # Unpack mocks
     mock_context, mock_conv_repo, mock_ws_repo = mock_uow
@@ -106,7 +107,7 @@ async def test_receive_input_valid_request(mock_uow):
 
 
 @pytest.mark.asyncio
-async def test_receive_input_conversation_not_found(mock_uow):
+async def test_receive_input_conversation_not_found(mock_uow: Tuple[AsyncMock, Mock, Mock]) -> None:
     """Test receiving input for a non-existent conversation."""
     # Unpack mocks
     mock_context, mock_conv_repo, _ = mock_uow
@@ -138,7 +139,7 @@ async def test_receive_input_conversation_not_found(mock_uow):
 
 
 @pytest.mark.asyncio
-async def test_receive_input_workspace_not_found(mock_uow):
+async def test_receive_input_workspace_not_found(mock_uow: Tuple[AsyncMock, Mock, Mock]) -> None:
     """Test receiving input when workspace is not found."""
     # Unpack mocks
     mock_context, mock_conv_repo, mock_ws_repo = mock_uow
@@ -179,7 +180,7 @@ async def test_receive_input_workspace_not_found(mock_uow):
 
 
 @pytest.mark.asyncio
-async def test_receive_input_access_denied(mock_uow):
+async def test_receive_input_access_denied(mock_uow: Tuple[AsyncMock, Mock, Mock]) -> None:
     """Test receiving input when user doesn't have access to the conversation."""
     # Unpack mocks
     mock_context, mock_conv_repo, mock_ws_repo = mock_uow
@@ -226,7 +227,7 @@ async def test_receive_input_access_denied(mock_uow):
 
 
 @pytest.mark.asyncio
-async def test_receive_input_event_bus_exception(mock_uow):
+async def test_receive_input_event_bus_exception(mock_uow: Tuple[AsyncMock, Mock, Mock]) -> None:
     """Test handling event bus exceptions."""
     # Unpack mocks
     mock_context, mock_conv_repo, mock_ws_repo = mock_uow
@@ -273,7 +274,7 @@ async def test_receive_input_event_bus_exception(mock_uow):
 
 
 @pytest.mark.asyncio
-async def test_receive_input_with_streaming_param(mock_uow):
+async def test_receive_input_with_streaming_param(mock_uow: Tuple[AsyncMock, Mock, Mock]) -> None:
     """Test receiving input with a streaming parameter."""
     # Unpack mocks
     mock_context, mock_conv_repo, mock_ws_repo = mock_uow
