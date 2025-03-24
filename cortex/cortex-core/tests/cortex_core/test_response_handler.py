@@ -1,13 +1,13 @@
 """Tests for the Response Handler component."""
 
-from typing import Any, Protocol, TypeVar, cast
-from unittest.mock import MagicMock, Mock, patch
+import asyncio
+from typing import Any, Dict, Protocol, TypeVar, cast
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 from app.backend.cognition_client import CognitionClient
 from app.backend.memory_client import MemoryClient
 from app.core.event_bus import EventBus
-from app.core.llm_orchestrator import LLMOrchestrator
 from app.core.response_handler import ResponseHandler
 
 
@@ -29,7 +29,8 @@ async def test_response_handler_init():
     assert handler.memory_client is mock_memory_client
     assert handler.cognition_client is mock_cognition_client
     assert handler.running is False
-    assert handler.llm_orchestrator is None
+    assert handler.input_queue is None
+    assert handler.task is None
 
 
 # Define a protocol for our async mock functions
@@ -73,9 +74,15 @@ async def test_response_handler_start_stop():
     """Test starting and stopping the response handler."""
     # Create mocks
     mock_event_bus = MagicMock(spec=EventBus)
+    mock_queue = asyncio.Queue()
+    mock_event_bus.subscribe.return_value = mock_queue
+    
+    # Create task mock
+    mock_task = MagicMock()
+    mock_task.done.return_value = False
+    mock_task.cancel = MagicMock()
 
     # Create methods with our special async_mock to better support type checking
-    stop_mock = async_mock()
     memory_close_mock = async_mock()
     cognition_close_mock = async_mock()
 
@@ -86,32 +93,31 @@ async def test_response_handler_start_stop():
     mock_cognition_client = MagicMock(spec=CognitionClient)
     mock_cognition_client.close = cognition_close_mock
 
-    # Create orchestrator with mocked method
-    mock_llm_orchestrator = MagicMock(spec=LLMOrchestrator)
-    mock_llm_orchestrator.stop = stop_mock
-
     # Create handler
     handler = ResponseHandler(
         event_bus=mock_event_bus, memory_client=mock_memory_client, cognition_client=mock_cognition_client
     )
 
-    # Mock create_llm_orchestrator function
-    with patch("app.core.response_handler.create_llm_orchestrator", return_value=mock_llm_orchestrator):
+    # Mock the asyncio.create_task function
+    with patch("asyncio.create_task", return_value=mock_task):
         # Start the handler
         await handler.start()
 
-        # Verify handler is running and llm_orchestrator was initialized
+        # Verify handler is running and task was created
         assert handler.running is True
-        assert handler.llm_orchestrator is mock_llm_orchestrator
+        assert handler.input_queue is mock_queue
+        assert handler.task is mock_task
+        mock_event_bus.subscribe.assert_called_once_with(event_type="input")
 
         # Stop the handler
         await handler.stop()
 
-        # Verify handler is stopped
+        # Verify handler is stopped and task was cancelled
         assert handler.running is False
-
-        # Use the regular mock object inside our async_mock to check calls
-        stop_mock.mock.assert_called_once()
+        mock_task.cancel.assert_called_once()
+        mock_event_bus.unsubscribe.assert_called_once_with(mock_queue)
+        
+        # Verify clients were closed
         memory_close_mock.mock.assert_called_once()
         cognition_close_mock.mock.assert_called_once()
 
@@ -147,3 +153,71 @@ async def test_create_response_handler():
 
         # Check start method was called
         start_mock.mock.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_handle_input_event():
+    """Test handling an input event."""
+    # Create mocks
+    mock_event_bus = MagicMock(spec=EventBus)
+    mock_event_bus.publish = AsyncMock()
+    
+    mock_memory_client = MagicMock(spec=MemoryClient)
+    mock_memory_client.ensure_connected = AsyncMock()
+    mock_memory_client.store_message = AsyncMock()
+    
+    mock_cognition_client = MagicMock(spec=CognitionClient)
+    mock_cognition_client.evaluate_context = AsyncMock(return_value="Test response")
+    
+    # Create test event
+    test_event: Dict[str, Any] = {
+        "user_id": "test-user",
+        "conversation_id": "test-conv",
+        "content": "Hello, world!",
+        "metadata": {"test": "metadata"}
+    }
+    
+    # Create handler
+    handler = ResponseHandler(
+        event_bus=mock_event_bus, 
+        memory_client=mock_memory_client, 
+        cognition_client=mock_cognition_client
+    )
+    
+    # Handle the event
+    await handler.handle_input_event(test_event)
+    
+    # Verify memory client interactions
+    mock_memory_client.ensure_connected.assert_called_once()
+    assert mock_memory_client.store_message.call_count == 2  # Once for user, once for assistant
+    
+    # Verify first store_message call (user message)
+    user_call = mock_memory_client.store_message.call_args_list[0]
+    assert user_call.kwargs["user_id"] == "test-user"
+    assert user_call.kwargs["conversation_id"] == "test-conv"
+    assert user_call.kwargs["content"] == "Hello, world!"
+    assert user_call.kwargs["role"] == "user"
+    assert user_call.kwargs["metadata"] == {"test": "metadata"}
+    
+    # Verify cognition client was called
+    mock_cognition_client.evaluate_context.assert_called_once_with(
+        user_id="test-user",
+        conversation_id="test-conv",
+        message="Hello, world!"
+    )
+    
+    # Verify second store_message call (assistant response)
+    assistant_call = mock_memory_client.store_message.call_args_list[1]
+    assert assistant_call.kwargs["user_id"] == "test-user"
+    assert assistant_call.kwargs["conversation_id"] == "test-conv"
+    assert assistant_call.kwargs["content"] == "Test response"
+    assert assistant_call.kwargs["role"] == "assistant"
+    
+    # Verify event was published
+    mock_event_bus.publish.assert_called_once()
+    call_args = mock_event_bus.publish.call_args
+    assert call_args[0][0] == "output"  # First arg is event type
+    assert call_args[0][1]["user_id"] == "test-user"
+    assert call_args[0][1]["conversation_id"] == "test-conv"
+    assert call_args[0][1]["content"] == "Test response"
+    assert call_args[0][1]["role"] == "assistant"
