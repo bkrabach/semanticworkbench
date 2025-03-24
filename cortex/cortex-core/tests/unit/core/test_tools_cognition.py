@@ -67,43 +67,28 @@ async def test_get_context_with_mcp(mock_get_client: MagicMock, mock_client: Asy
 
 @pytest.mark.asyncio
 @patch("app.core.tools.get_client")
-@patch("app.core.tools.UnitOfWork")
-async def test_get_context_without_mcp(mock_uow_class: MagicMock, mock_get_client: MagicMock, mock_uow: tuple[MagicMock, AsyncMock]) -> None:
-    """Test get_context with no MCP client (fallback)."""
-    mock_uow_instance, mock_msg_repo = mock_uow
-    mock_uow_class.for_transaction.return_value = mock_uow_instance
+async def test_get_context_with_error(mock_get_client: MagicMock, mock_client: AsyncMock) -> None:
+    """Test get_context when MCP client raises an error."""
+    # Setup mocked MCP client to raise an exception
+    mock_get_client.return_value = mock_client
+    mock_client.get_resource.side_effect = Exception("MCP error")
     
-    # No MCP client
-    mock_get_client.return_value = None
+    # Call the function
+    result = await get_context("user123", "test", 5)
     
-    # Mock repository behavior
-    mock_msg_repo.list_by_sender.return_value = [
-        MagicMock(
-            id="msg1",
-            content="Test message with query",
-            timestamp="2023-01-01T00:00:00Z",
-            conversation_id="conv1"
-        ),
-        MagicMock(
-            id="msg2",
-            content="Another message",
-            timestamp="2023-01-02T00:00:00Z",
-            conversation_id="conv2"
-        )
-    ]
+    # Verify the MCP client was called correctly
+    mock_client.get_resource.assert_called_once_with(
+        service_name="cognition",
+        resource_name="context",
+        params={"user_id": "user123", "query": "test", "limit": 5}
+    )
     
-    # Call the function with a query that should match the first message
-    result = await get_context("user123", "query", 5)
-    
-    # Verify repository was called
-    mock_msg_repo.list_by_sender.assert_called_once_with("user123", limit=5)
-    
-    # Verify the result
-    assert result["count"] == 1  # Only one message matches the query
-    assert len(result["context"]) == 1
+    # Verify the result is an empty error response
+    assert result["count"] == 0
+    assert len(result["context"]) == 0
     assert result["user_id"] == "user123"
-    assert result["query"] == "query"
-    assert result["context"][0]["id"] == "msg1"
+    assert result["query"] == "test"
+    assert "error" in result
 
 
 @pytest.mark.asyncio
@@ -141,35 +126,27 @@ async def test_analyze_conversation_with_mcp(mock_get_client: MagicMock, mock_cl
 
 @pytest.mark.asyncio
 @patch("app.core.tools.get_client")
-@patch("app.core.tools.UnitOfWork")
-async def test_analyze_conversation_without_mcp(mock_uow_class: MagicMock, mock_get_client: MagicMock, mock_uow: tuple[MagicMock, AsyncMock]) -> None:
-    """Test analyze_conversation with no MCP client (fallback)."""
-    mock_uow_instance, mock_msg_repo = mock_uow
-    mock_uow_class.for_transaction.return_value = mock_uow_instance
-    
-    # No MCP client
-    mock_get_client.return_value = None
-    
-    # Mock repository behavior
-    mock_msg_repo.list_by_conversation.return_value = [
-        MagicMock(sender_id="user1", content="Hello"),
-        MagicMock(sender_id="user2", content="Hi there"),
-        MagicMock(sender_id="user1", content="How are you?")
-    ]
+async def test_analyze_conversation_with_error(mock_get_client: MagicMock, mock_client: AsyncMock) -> None:
+    """Test analyze_conversation when MCP client raises an error."""
+    # Setup mocked MCP client to raise an exception
+    mock_get_client.return_value = mock_client
+    mock_client.get_resource.side_effect = Exception("MCP error")
     
     # Call the function
     result = await analyze_conversation("user1", "conv123", "summary")
     
-    # Verify repository was called
-    mock_msg_repo.list_by_conversation.assert_called_once_with("conv123")
+    # Verify the MCP client was called correctly
+    mock_client.get_resource.assert_called_once_with(
+        service_name="cognition",
+        resource_name="analyze_conversation",
+        params={"user_id": "user1", "conversation_id": "conv123", "analysis_type": "summary"}
+    )
     
-    # Verify the result
+    # Verify the result is an error response with empty result
     assert result["type"] == "summary"
     assert result["conversation_id"] == "conv123"
-    assert result["results"]["message_count"] == 3
-    assert result["results"]["participants"] == 2
-    assert result["results"]["participant_counts"]["user1"] == 2
-    assert result["results"]["participant_counts"]["user2"] == 1
+    assert result["results"] == {}
+    assert "error" in result
 
 
 @pytest.mark.asyncio
@@ -210,48 +187,29 @@ async def test_search_history_with_mcp(mock_get_client: MagicMock, mock_client: 
 
 @pytest.mark.asyncio
 @patch("app.core.tools.get_client")
-@patch("app.core.tools.UnitOfWork")
-async def test_search_history_without_mcp(mock_uow_class: MagicMock, mock_get_client: MagicMock, mock_uow: tuple[MagicMock, AsyncMock]) -> None:
-    """Test search_history with no MCP client (fallback)."""
-    mock_uow_instance, mock_msg_repo = mock_uow
-    mock_uow_class.for_transaction.return_value = mock_uow_instance
-    
-    # No MCP client
-    mock_get_client.return_value = None
-    
-    # Mock repository behavior
-    mock_msg_repo.list_by_sender.return_value = [
-        MagicMock(
-            id="msg1",
-            content="Test message with query",
-            timestamp="2023-01-01T00:00:00Z",
-            conversation_id="conv1"
-        ),
-        MagicMock(
-            id="msg2",
-            content="Another message",
-            timestamp="2023-01-02T00:00:00Z",
-            conversation_id="conv2"
-        )
-    ]
-    
-    # Additional mock for conversation data when include_conversations=True
-    mock_msg_repo.list_by_conversation.return_value = [
-        MagicMock(content="First message in conversation")
-    ]
+async def test_search_history_with_error(mock_get_client: MagicMock, mock_client: AsyncMock) -> None:
+    """Test search_history when MCP client raises an error."""
+    # Setup mocked MCP client to raise an exception
+    mock_get_client.return_value = mock_client
+    mock_client.get_resource.side_effect = Exception("MCP error")
     
     # Call the function
     result = await search_history("user123", "query", 5, True)
     
-    # Verify repository was called
-    mock_msg_repo.list_by_sender.assert_called_once_with("user123", limit=100)
+    # Verify the MCP client was called correctly
+    mock_client.get_resource.assert_called_once_with(
+        service_name="cognition",
+        resource_name="search_history",
+        params={
+            "user_id": "user123", 
+            "query": "query", 
+            "limit": 5,
+            "include_conversations": True
+        }
+    )
     
-    # Verify the result
-    assert result["count"] == 1  # Only one message matches the query
-    assert len(result["results"]) == 1
+    # Verify the result is an error response with empty results
+    assert result["count"] == 0
+    assert len(result["results"]) == 0
     assert result["query"] == "query"
-    assert result["results"][0]["id"] == "msg1"
-    
-    # Verify conversation data was included
-    assert "_conversation_data" in result["results"][0]
-    assert result["results"][0]["_conversation_data"]["message_count"] == 1
+    assert "error" in result

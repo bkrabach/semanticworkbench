@@ -53,24 +53,16 @@ async def test_llm_adapter_initialization_openai() -> None:
 
 @pytest.mark.asyncio
 async def test_mock_llm_generation() -> None:
-    """Test generation with mock LLM."""
+    """Test generation with development mode mock LLM."""
     with patch.dict("os.environ", {"USE_MOCK_LLM": "true"}):
-        # Create a mock directory for tests
-        os.makedirs("tests/mocks", exist_ok=True)
+        adapter = LLMAdapter()
+        messages = [{"role": "user", "content": "Hello"}]
         
-        # Mock the mock_llm module
-        with patch("tests.mocks.mock_llm.generate_mock_response") as mock_generate:
-            mock_generate.return_value = {"content": "Mock response"}
+        response = await adapter.generate(messages)
 
-            adapter = LLMAdapter()
-            messages = [{"role": "user", "content": "Hello"}]
-            
-            # Patch the import itself
-            with patch("app.core.llm_adapter.generate_mock_response", mock_generate):
-                response = await adapter.generate(messages)
-
-                assert response == {"content": "Mock response"}
-                mock_generate.assert_called_once()
+        # Simple fixed response for development mode
+        assert "content" in response
+        assert "development mode" in response["content"].lower()
 
 
 @pytest.mark.asyncio
@@ -194,55 +186,78 @@ async def test_error_handling() -> None:
 
 @pytest.mark.asyncio
 async def test_adapter_initialization_failure_fallback() -> None:
-    """Test adapter initialization failure with fallback to mock."""
-    with patch.dict("os.environ", {
-        "LLM_PROVIDER": "openai", 
-        "USE_MOCK_LLM": "false", 
-        "OPENAI_API_KEY": None  # Missing required key will cause validation failure
-    }):
-        # Create a mock directory for tests
-        os.makedirs("tests/mocks", exist_ok=True)
-        
-        # Patch the mock_llm module for the fallback
-        with patch("tests.mocks.mock_llm.generate_mock_response") as mock_generate:
-            mock_generate.return_value = {"content": "Fallback response"}
+    """Test adapter initialization failure with fallback to development mode."""
+    # First, save the original environment
+    original_env = os.environ.copy()
+    # Set environment variables
+    os.environ["LLM_PROVIDER"] = "openai"
+    os.environ["USE_MOCK_LLM"] = "false"
+    # Remove OPENAI_API_KEY if present
+    if "OPENAI_API_KEY" in os.environ:
+        del os.environ["OPENAI_API_KEY"]
+    
+    try:
+        # Patch the validation method to raise an exception
+        with patch.object(LLMAdapter, "_validate_provider_config", side_effect=Exception("Missing API key")):
+            adapter = LLMAdapter()
             
-            # Patch the validation method to raise an exception
-            with patch.object(LLMAdapter, "_validate_provider_config", side_effect=Exception("Missing API key")):
-                adapter = LLMAdapter()
-                
-                # Should fall back to mock
-                assert adapter.use_mock is True
-                
-                # Test that it uses mock_llm for generation
-                with patch("app.core.llm_adapter.generate_mock_response", mock_generate):
-                    messages = [{"role": "user", "content": "Hello"}]
-                    response = await adapter.generate(messages)
-                    
-                    assert response == {"content": "Fallback response"}
-                    mock_generate.assert_called_once()
+            # Should fall back to development mode
+            assert adapter.use_mock is True
+            
+            # Test that it uses development mode response generation
+            messages = [{"role": "user", "content": "Hello"}]
+            response = await adapter.generate(messages)
+            
+            # Verify it has a content field with development mode message
+            assert "content" in response
+            assert "development mode" in response["content"].lower()
+    finally:
+        # Restore the original environment
+        os.environ.clear()
+        os.environ.update(original_env)
 
 
 @pytest.mark.asyncio
 async def test_validate_provider_config() -> None:
     """Test provider configuration validation."""
     # Test OpenAI validation
-    with patch.dict("os.environ", {"LLM_PROVIDER": "openai", "OPENAI_API_KEY": None}):
+    original_env = os.environ.copy()
+    try:
+        # Set environment and remove keys we want to test
+        os.environ["LLM_PROVIDER"] = "openai"
+        if "OPENAI_API_KEY" in os.environ:
+            del os.environ["OPENAI_API_KEY"]
+        
         adapter = LLMAdapter()
         with pytest.raises(ValueError) as exc_info:
             adapter._validate_provider_config()
         assert "OPENAI_API_KEY environment variable is required" in str(exc_info.value)
-    
-    # Test Azure OpenAI validation
-    with patch.dict("os.environ", {"LLM_PROVIDER": "azure_openai", "AZURE_OPENAI_KEY": "key", "AZURE_OPENAI_BASE_URL": None}):
+        
+        # Test Azure OpenAI validation
+        os.environ.clear()
+        os.environ.update(original_env)
+        os.environ["LLM_PROVIDER"] = "azure_openai"
+        os.environ["AZURE_OPENAI_KEY"] = "key"
+        if "AZURE_OPENAI_BASE_URL" in os.environ:
+            del os.environ["AZURE_OPENAI_BASE_URL"]
+        
         adapter = LLMAdapter()
         with pytest.raises(ValueError) as exc_info:
             adapter._validate_provider_config()
         assert "AZURE_OPENAI_KEY and AZURE_OPENAI_BASE_URL environment variables are required" in str(exc_info.value)
-    
-    # Test Anthropic validation
-    with patch.dict("os.environ", {"LLM_PROVIDER": "anthropic", "ANTHROPIC_API_KEY": None}):
+        
+        # Test Anthropic validation
+        os.environ.clear()
+        os.environ.update(original_env)
+        os.environ["LLM_PROVIDER"] = "anthropic"
+        if "ANTHROPIC_API_KEY" in os.environ:
+            del os.environ["ANTHROPIC_API_KEY"]
+        
         adapter = LLMAdapter()
         with pytest.raises(ValueError) as exc_info:
             adapter._validate_provider_config()
         assert "ANTHROPIC_API_KEY environment variable is required" in str(exc_info.value)
+    finally:
+        # Restore original environment
+        os.environ.clear()
+        os.environ.update(original_env)

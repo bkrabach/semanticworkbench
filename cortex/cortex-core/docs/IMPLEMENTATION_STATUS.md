@@ -51,10 +51,10 @@ The following code needs to be cleaned up to maintain a simpler, more focused co
 - [x] Simplify import handling for get_client
 
 ### Mock LLM (Phase 3)
-- [ ] Move to tests/mocks/ directory
-- [ ] Simplify implementation for test scenarios only
-- [ ] Update test imports and references
-- [ ] Remove development-focused features
+- [x] Remove mock LLM entirely from production code
+- [x] Replace with simple development mode response
+- [x] Update test approach to properly use mocking/patching
+- [x] Eliminate dependency between production and test code
 
 ### Response Handler (Phase 4)
 - [x] Optimize _execute_tool method
