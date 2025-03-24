@@ -1,18 +1,10 @@
 import asyncio
 import logging
-from typing import Any, Dict, List, Optional, TypedDict
+from typing import Any, Dict, List, Optional
 
 
 # Set up logger for the event bus
 logger = logging.getLogger(__name__)
-
-
-class SubscriptionRecord(TypedDict):
-    """Type definition for subscription records in the event bus."""
-    queue: asyncio.Queue
-    event_type: Optional[str]
-    conversation_id: Optional[str]
-    user_id: Optional[str]
 
 
 class EventBus:
@@ -31,7 +23,7 @@ class EventBus:
 
     def __init__(self) -> None:
         """Initialize the event bus with no subscribers."""
-        self._subscriptions: List[SubscriptionRecord] = []
+        self._subscriptions: List[Dict[str, Any]] = []
 
     def subscribe(
         self, event_type: Optional[str] = None, conversation_id: Optional[str] = None, user_id: Optional[str] = None
@@ -54,7 +46,7 @@ class EventBus:
         queue: asyncio.Queue = asyncio.Queue()
 
         # Register the subscription with the specified filters
-        sub_record: SubscriptionRecord = {
+        sub_record = {
             "queue": queue,
             "event_type": event_type,
             "conversation_id": conversation_id,
@@ -97,7 +89,7 @@ class EventBus:
                     self._subscriptions.remove(sub)
 
     def _matches_subscription(
-        self, sub: SubscriptionRecord, event_type: str, event_data: Dict[str, Any]
+        self, sub: Dict[str, Any], event_type: str, event_data: Dict[str, Any]
     ) -> bool:
         """
         Check if an event matches a subscription's filters.

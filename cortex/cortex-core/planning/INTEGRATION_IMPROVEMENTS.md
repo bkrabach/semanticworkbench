@@ -132,10 +132,10 @@ app.include_router(management.router, dependencies=[Depends(get_current_user)])
    - Delete the global `event_bus` instance ✅
    - Allow main.py to create and manage instances ✅
 
-2. **Simplify implementation** ⚠️ (Partially complete):
+2. **Simplify implementation** ✅:
    - Consolidate publish methods into one async method ✅
    - Streamline subscription model ✅
-   - Use native Python dicts instead of custom types ❌ (Still using TypedDict)
+   - Use native Python dicts instead of custom types ✅
 
 3. **Standardize event types** ✅:
    - Document standard event types used across the system ✅
@@ -395,11 +395,11 @@ app.include_router(output.router, dependencies=[Depends(get_current_user)])
 
 Here's the current status of implementation:
 
-1. **Event Bus Improvements** ✅ (mostly complete):
+1. **Event Bus Improvements** ✅ (complete):
    - ✅ Removed module-level singleton
    - ✅ Using more direct implementation
    - ✅ Standardized event types
-   - ❌ Still using custom TypedDict instead of native Python dicts
+   - ✅ Using native Python dicts instead of custom TypedDict
 
 2. **FastAPI Main Application** ✅ (complete):
    - ✅ Proper lifespan to create and manage components
@@ -462,19 +462,15 @@ These improvements align with the Implementation Philosophy by:
 
 Based on the current implementation status, the following tasks remain:
 
-1. **Event Bus Refinement**:
-   - Replace custom TypedDict with native Python dicts
-   - Further streamline the subscription model
-
-2. **Service Client Improvements**:
+1. **Service Client Improvements**:
    - Consider using standard Python exceptions instead of custom types
    - Further align error handling between clients
 
-3. **Memory Service Integration**:
+2. **Memory Service Integration**:
    - Complete the memory service implementation
    - Ensure proper integration with the core application
 
-4. **Response Handler Testing**:
+3. **Response Handler Testing**:
    - Write comprehensive tests for the updated response handler
    - Ensure proper error handling and event flow
 
