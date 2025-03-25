@@ -512,6 +512,17 @@ async def get_conversation_stream(conversation_id: str, user_id: Optional[str] =
             return
 
         async with UnitOfWork.for_transaction() as uow:
+            # First, check if the conversation exists
+            conversation_repo = uow.repositories.get_conversation_repository()
+            conversation = await conversation_repo.get_by_id(conversation_id)
+            
+            if not conversation:
+                logger.warning(f"Conversation {conversation_id} does not exist in Memory Service")
+                # Instead of returning error, return an empty set with end marker
+                # This aligns with the principle that no messages is a valid state
+                yield f"data: {json.dumps({'end': True})}\n\n"
+                return
+                
             message_repo = uow.repositories.get_message_repository()
 
             # Get messages for the conversation

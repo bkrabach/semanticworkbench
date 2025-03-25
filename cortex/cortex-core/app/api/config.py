@@ -24,7 +24,7 @@ from ..models.api.response import (
 from ..utils.auth import get_current_user
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/config", tags=["config"])
+router = APIRouter(prefix="/v1", tags=["resources"])
 
 
 # Helper for error handling
@@ -518,6 +518,7 @@ async def get_conversation(conversation_id: str, current_user: dict = Depends(ge
 
             # Convert conversation to dict to add messages
             conversation_dict = conversation.model_dump()
+            # If messages is empty, we'll still add an empty list (not raise 404)
             conversation_dict["messages"] = [message.model_dump() for message in messages]
 
         logger.info(f"Retrieved conversation {conversation_id}")
@@ -613,6 +614,7 @@ async def update_conversation(
         # Add messages to the conversation
         message_repo = uow.repositories.get_message_repository()
         messages = await message_repo.list_by_conversation(conversation_id)
+        # If messages is empty, we'll still add an empty list (not raise 404)
         conversation_dict["messages"] = [message.model_dump() for message in messages]
 
         return ConversationResponse(status="conversation updated", conversation=conversation_dict)

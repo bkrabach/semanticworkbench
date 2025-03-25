@@ -16,7 +16,6 @@ class InputRequest(BaseModelWithMetadata):
     """Input data from clients."""
 
     content: str = Field(..., description="Message content")
-    conversation_id: str = Field(..., description="Conversation ID")
     streaming: bool = Field(True, description="Whether to stream the response")
 
 

@@ -9,6 +9,8 @@ from app.api.cognition import router
 from fastapi.testclient import TestClient
 from fastapi import FastAPI
 
+# Update test paths to match the router paths with prefix
+router.prefix = "/v1"  # Keep the /v1 prefix for testing
 app = FastAPI()
 app.include_router(router)
 client = TestClient(app)
@@ -51,7 +53,7 @@ async def test_get_user_context(mock_get_context: AsyncMock, mock_get_current_us
     
     # Call API endpoint
     response = client.post(
-        "/cognition/context",
+        "/v1/context",
         json={"query": "test", "limit": 5},
         headers=auth_headers
     )
@@ -93,7 +95,7 @@ async def test_analyze_user_conversation(mock_analyze_conversation: AsyncMock, m
     
     # Call API endpoint
     response = client.post(
-        "/cognition/analyze",
+        "/v1/analyze",
         json={"conversation_id": "conv123", "analysis_type": "summary"},
         headers=auth_headers
     )
@@ -134,7 +136,7 @@ async def test_search_user_history(mock_search_history: AsyncMock, mock_get_curr
     
     # Call API endpoint
     response = client.post(
-        "/cognition/search",
+        "/v1/search",
         json={"query": "test", "limit": 5, "include_conversations": True},
         headers=auth_headers
     )

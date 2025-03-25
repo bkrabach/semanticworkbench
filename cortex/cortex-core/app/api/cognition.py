@@ -15,11 +15,11 @@ from ..models.api.response import AnalyzeConversationResponse, ErrorResponse, Ge
 from ..utils.auth import get_current_user
 
 logger = logging.getLogger(__name__)
-router = APIRouter(tags=["cognition"])
+router = APIRouter(prefix="/v1", tags=["cognition"])
 
 
 @router.post(
-    "/cognition/context",
+    "/context",
     response_model=GetContextResponse,
     responses={
         400: {"model": ErrorResponse},
@@ -65,7 +65,7 @@ async def get_user_context(request: GetContextRequest, current_user: dict = Depe
 
 
 @router.post(
-    "/cognition/analyze",
+    "/analyze",
     response_model=AnalyzeConversationResponse,
     responses={
         400: {"model": ErrorResponse},
@@ -121,7 +121,7 @@ async def analyze_user_conversation(
 
 
 @router.post(
-    "/cognition/search",
+    "/search",
     response_model=SearchHistoryResponse,
     responses={
         400: {"model": ErrorResponse},

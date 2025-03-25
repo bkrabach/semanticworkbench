@@ -5,7 +5,7 @@ from ..core.exceptions import InvalidCredentialsException
 from ..models.api.response import LoginResponse
 from ..utils.auth import ACCESS_TOKEN_EXPIRE_HOURS, create_access_token, get_current_user
 
-router = APIRouter(prefix="/auth", tags=["auth"])
+router = APIRouter(prefix="/v1/auth", tags=["auth"])
 
 # For development, a simple in-memory user store
 # In production, this would use Azure B2C

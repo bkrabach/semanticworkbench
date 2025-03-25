@@ -23,9 +23,45 @@ def test_root_endpoint() -> None:
     assert response.json() == {"status": "online", "service": "Cortex Core"}
 
 
+def test_health_endpoints() -> None:
+    """Test health endpoints."""
+    # Basic health endpoint
+    response = client.get("/health")
+    assert response.status_code == 200
+    assert response.json() == {"status": "healthy"}
+    
+    # Enhanced v1 health endpoint
+    response = client.get("/v1/health")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "healthy"
+    assert data["service"] == "Cortex Core"
+    assert "version" in data
+    assert "resources" in data
+    
+    
+def test_cognition_endpoints_existence() -> None:
+    """Test cognition endpoints existence."""
+    # We simply check that the routes exist and require authentication
+    # Don't test functionality here - that's done in the unit tests
+    headers = get_auth_header()
+    
+    # Context endpoint
+    response = client.post("/v1/context", json={"query": "test"})
+    assert response.status_code == 401  # Unauthorized without token
+    
+    # Analysis endpoint
+    response = client.post("/v1/analyze", json={"conversation_id": "test"})
+    assert response.status_code == 401  # Unauthorized without token
+    
+    # Search endpoint
+    response = client.post("/v1/search", json={"query": "test"})
+    assert response.status_code == 401  # Unauthorized without token
+
+
 def test_login_endpoint() -> None:
     """Test login endpoint."""
-    response = client.post("/auth/login", data={"username": "user@example.com", "password": "password123"})
+    response = client.post("/v1/auth/login", data={"username": "user@example.com", "password": "password123"})
     assert response.status_code == 200
     data = response.json()
     assert "access_token" in data
@@ -34,14 +70,14 @@ def test_login_endpoint() -> None:
 
 def test_invalid_login() -> None:
     """Test login with invalid credentials."""
-    response = client.post("/auth/login", data={"username": "wrong@example.com", "password": "wrong"})
+    response = client.post("/v1/auth/login", data={"username": "wrong@example.com", "password": "wrong"})
     assert response.status_code == 401
 
 
 def test_verify_token() -> None:
     """Test token verification."""
     headers = get_auth_header()
-    response = client.get("/auth/verify", headers=headers)
+    response = client.get("/v1/auth/verify", headers=headers)
     assert response.status_code == 200
     data = response.json()
     assert data["user_id"] == "test-user"
@@ -53,7 +89,7 @@ def test_input_endpoint() -> None:
 
     # Create a workspace and conversation first
     workspace_response = client.post(
-        "/config/workspace",
+        "/v1/workspace",
         json={"name": "Test Workspace", "description": "Test Description", "metadata": {}},
         headers=headers,
     )
@@ -61,16 +97,16 @@ def test_input_endpoint() -> None:
     workspace_id = workspace_data["workspace"]["id"]
 
     conversation_response = client.post(
-        "/config/conversation",
+        "/v1/conversation",
         json={"workspace_id": workspace_id, "topic": "Test Conversation", "metadata": {}},
         headers=headers,
     )
     conversation_data = conversation_response.json()
     conversation_id = conversation_data["conversation"]["id"]
 
-    # Test input endpoint with required conversation_id
+    # Test input endpoint with conversation_id in path
     response = client.post(
-        "/input", json={"content": "Test message", "conversation_id": conversation_id, "metadata": {}}, headers=headers
+        f"/v1/conversation/{conversation_id}/messages", json={"content": "Test message", "metadata": {}}, headers=headers
     )
     assert response.status_code == 200
     data = response.json()
@@ -79,20 +115,20 @@ def test_input_endpoint() -> None:
     assert data["data"]["conversation_id"] == conversation_id
 
 
-def test_input_endpoint_missing_conversation_id() -> None:
-    """Test input endpoint with missing conversation_id."""
+def test_input_endpoint_missing_conversation_path() -> None:
+    """Test input endpoint with invalid conversation path."""
     headers = get_auth_header()
 
-    # Test input endpoint without the required conversation_id
-    response = client.post("/input", json={"content": "Test message", "metadata": {}}, headers=headers)
-    # Should return a validation error
-    assert response.status_code == 422
+    # Test input endpoint with an invalid conversation ID path
+    response = client.post("/v1/conversation/invalid-id/messages", json={"content": "Test message", "metadata": {}}, headers=headers)
+    # Should return a not found error
+    assert response.status_code == 404
     data = response.json()
-    # Check that the error is about the missing conversation_id
-    assert "error" in data
-    assert data["error"]["code"] == "validation_error"
-    assert "validation_errors" in data["error"]["details"]
-    assert any("conversation_id" in str(error) for error in data["error"]["details"]["validation_errors"])
+    # Check that the error is about the conversation not found
+    assert "detail" in data
+    assert "error" in data["detail"]
+    assert data["detail"]["error"]["code"] == "resource_not_found"
+    assert "Conversation not found" in data["detail"]["error"]["message"]
 
 
 def test_workspace_endpoints() -> None:
@@ -101,7 +137,7 @@ def test_workspace_endpoints() -> None:
 
     # Create workspace
     response = client.post(
-        "/config/workspace",
+        "/v1/workspace",
         json={"name": "Test Workspace", "description": "Test Description", "metadata": {}},
         headers=headers,
     )
@@ -112,7 +148,7 @@ def test_workspace_endpoints() -> None:
     workspace_id = data["workspace"]["id"]
 
     # List workspaces
-    response = client.get("/config/workspace", headers=headers)
+    response = client.get("/v1/workspace", headers=headers)
     assert response.status_code == 200
     data = response.json()
     
@@ -123,7 +159,7 @@ def test_workspace_endpoints() -> None:
 
     # Create conversation
     response = client.post(
-        "/config/conversation",
+        "/v1/conversation",
         json={"workspace_id": workspace_id, "topic": "Test Conversation", "metadata": {}},
         headers=headers,
     )
@@ -134,7 +170,7 @@ def test_workspace_endpoints() -> None:
     conversation_id = data["conversation"]["id"]
 
     # List conversations
-    response = client.get(f"/config/conversation?workspace_id={workspace_id}", headers=headers)
+    response = client.get(f"/v1/conversation?workspace_id={workspace_id}", headers=headers)
     assert response.status_code == 200
     data = response.json()
     assert len(data["conversations"]) > 0

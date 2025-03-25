@@ -14,11 +14,11 @@ from ..models.api.response import ErrorResponse
 from ..utils.auth import get_current_user
 
 logger = logging.getLogger(__name__)
-router = APIRouter(tags=["output"])
+router = APIRouter(prefix="/v1", tags=["messages"])
 
 
 @router.get(
-    "/output/stream",
+    "/conversation/{conversation_id}/messages/stream",
     responses={401: {"model": ErrorResponse}, 500: {"model": ErrorResponse}, 503: {"model": ErrorResponse}},
 )
 async def output_stream(request: Request, conversation_id: str, current_user: dict = Depends(get_current_user)) -> StreamingResponse:

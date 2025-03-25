@@ -34,7 +34,7 @@ def auth_headers() -> Dict[str, str]:
 def test_workspace(client: TestClient, auth_headers: Dict[str, str]) -> Dict[str, Any]:
     """Create a test workspace."""
     response = client.post(
-        "/config/workspace",
+        "/v1/workspace",
         json={
             "name": f"E2E Test Workspace {uuid.uuid4()}",
             "description": "Workspace for E2E testing",
@@ -53,7 +53,7 @@ def test_conversation(
 ) -> Dict[str, Any]:
     """Create a test conversation."""
     response = client.post(
-        "/config/conversation",
+        "/v1/conversation",
         json={
             "workspace_id": test_workspace["id"],
             "topic": f"E2E Test Conversation {uuid.uuid4()}",
@@ -70,7 +70,7 @@ def test_create_workspace_and_conversation(client: TestClient, auth_headers: Dic
     """Test creating a workspace and conversation."""
     # Create workspace
     workspace_response = client.post(
-        "/config/workspace",
+        "/v1/workspace",
         json={
             "name": f"Flow Test Workspace {uuid.uuid4()}",
             "description": "Workspace for flow testing",
@@ -84,7 +84,7 @@ def test_create_workspace_and_conversation(client: TestClient, auth_headers: Dic
 
     # Create conversation
     conversation_response = client.post(
-        "/config/conversation",
+        "/v1/conversation",
         json={
             "workspace_id": workspace["id"],
             "topic": f"Flow Test Conversation {uuid.uuid4()}",
@@ -98,7 +98,7 @@ def test_create_workspace_and_conversation(client: TestClient, auth_headers: Dic
     assert conversation["workspace_id"] == workspace["id"]
 
     # Verify conversation in workspace
-    conversations_response = client.get(f"/config/conversation?workspace_id={workspace['id']}", headers=auth_headers)
+    conversations_response = client.get(f"/v1/conversation?workspace_id={workspace['id']}", headers=auth_headers)
     assert conversations_response.status_code == 200
     conversations = conversations_response.json()["conversations"]
     assert any(c["id"] == conversation["id"] for c in conversations)
@@ -110,10 +110,9 @@ def test_send_and_receive_message(
     """Test sending a message and getting a response."""
     # Send a message
     input_response = client.post(
-        "/input",
+        f"/v1/conversation/{test_conversation['id']}/messages",
         json={
             "content": "Hello, this is a test message",
-            "conversation_id": test_conversation["id"],
             "metadata": {"test": True},
         },
         headers=auth_headers,
@@ -129,7 +128,7 @@ def test_send_and_receive_message(
     time.sleep(2)
 
     # Get conversation detail to see the messages
-    conversation_detail_response = client.get(f"/config/conversation/{test_conversation['id']}", headers=auth_headers)
+    conversation_detail_response = client.get(f"/v1/conversation/{test_conversation['id']}", headers=auth_headers)
     assert conversation_detail_response.status_code == 200
     conversation_detail = conversation_detail_response.json()["conversation"]
 
@@ -164,8 +163,8 @@ def test_complex_conversation_flow(
 
     for message in test_messages:
         response = client.post(
-            "/input",
-            json={"content": message, "conversation_id": test_conversation["id"], "metadata": {"test": True}},
+            f"/v1/conversation/{test_conversation['id']}/messages",
+            json={"content": message, "metadata": {"test": True}},
             headers=auth_headers,
         )
         assert response.status_code == 200
@@ -175,7 +174,7 @@ def test_complex_conversation_flow(
         time.sleep(2)
 
     # Get conversation detail
-    conversation_detail_response = client.get(f"/config/conversation/{test_conversation['id']}", headers=auth_headers)
+    conversation_detail_response = client.get(f"/v1/conversation/{test_conversation['id']}", headers=auth_headers)
     assert conversation_detail_response.status_code == 200
     conversation_detail = conversation_detail_response.json()["conversation"]
 
@@ -198,7 +197,7 @@ def test_update_conversation(
     # Update the conversation
     new_topic = f"Updated Topic {uuid.uuid4()}"
     update_response = client.put(
-        f"/config/conversation/{test_conversation['id']}",
+        f"/v1/conversation/{test_conversation['id']}",
         json={"topic": new_topic, "metadata": {**test_conversation["metadata"], "updated": True}},
         headers=auth_headers,
     )
@@ -208,7 +207,7 @@ def test_update_conversation(
     assert updated_conversation["metadata"]["updated"] is True
 
     # Verify the update
-    get_response = client.get(f"/config/conversation/{test_conversation['id']}", headers=auth_headers)
+    get_response = client.get(f"/v1/conversation/{test_conversation['id']}", headers=auth_headers)
     assert get_response.status_code == 200
     retrieved_conversation = get_response.json()["conversation"]
     assert retrieved_conversation["topic"] == new_topic
@@ -218,20 +217,22 @@ def test_update_conversation(
 def test_invalid_requests(client: TestClient, auth_headers: Dict[str, str], test_workspace: Dict[str, Any]) -> None:
     """Test handling of invalid requests."""
     # Try to create a conversation with missing workspace_id
-    response = client.post("/config/conversation", json={"topic": "Invalid Conversation"}, headers=auth_headers)
+    response = client.post("/v1/conversation", json={"topic": "Invalid Conversation"}, headers=auth_headers)
     assert response.status_code == 422  # Validation error
 
-    # Try to send a message with missing conversation_id
-    response = client.post("/input", json={"content": "Invalid message"}, headers=auth_headers)
+    # Try to send a message with missing content
+    random_id = str(uuid.uuid4())
+    response = client.post(f"/v1/conversation/{random_id}/messages", json={}, headers=auth_headers)
     assert response.status_code == 422  # Validation error
 
     # Try to access a non-existent conversation
-    response = client.get(f"/config/conversation/{uuid.uuid4()}", headers=auth_headers)
+    response = client.get(f"/v1/conversation/{uuid.uuid4()}", headers=auth_headers)
     assert response.status_code == 404  # Not found
 
     # Try to send a message to a non-existent conversation
+    non_existent_id = str(uuid.uuid4())
     response = client.post(
-        "/input", json={"content": "Message to nowhere", "conversation_id": str(uuid.uuid4())}, headers=auth_headers
+        f"/v1/conversation/{non_existent_id}/messages", json={"content": "Message to nowhere"}, headers=auth_headers
     )
     assert response.status_code == 404  # Not found
 
@@ -239,19 +240,19 @@ def test_invalid_requests(client: TestClient, auth_headers: Dict[str, str], test
 def test_unauthorized_access(client: TestClient, test_conversation: Dict[str, Any]) -> None:
     """Test unauthorized access attempts."""
     # Try to access without auth header
-    response = client.get("/config/workspace")
+    response = client.get("/v1/workspace")
     assert response.status_code == 401
 
     # Try with invalid token
-    response = client.get("/config/workspace", headers={"Authorization": "Bearer invalid-token"})
+    response = client.get("/v1/workspace", headers={"Authorization": "Bearer invalid-token"})
     assert response.status_code == 401
 
     # Try to create a workspace without auth
-    response = client.post("/config/workspace", json={"name": "Unauthorized Workspace", "description": "Should fail"})
+    response = client.post("/v1/workspace", json={"name": "Unauthorized Workspace", "description": "Should fail"})
     assert response.status_code == 401
 
     # Try to send a message without auth
     response = client.post(
-        "/input", json={"content": "Unauthorized message", "conversation_id": test_conversation["id"]}
+        f"/v1/conversation/{test_conversation['id']}/messages", json={"content": "Unauthorized message"}
     )
     assert response.status_code == 401

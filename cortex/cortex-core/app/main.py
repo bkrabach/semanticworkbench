@@ -333,6 +333,36 @@ async def health() -> dict[str, str]:
     return {"status": "healthy"}
 
 
+# Enhanced health check endpoint with system information
+@app.get("/v1/health", tags=["status"])
+async def v1_health() -> dict:
+    """
+    Enhanced health check endpoint with system information.
+    Returns detailed system status information.
+    """
+    import os
+    import platform
+    import sys
+    import psutil
+    
+    # Get basic system information
+    system_info = {
+        "status": "healthy",
+        "service": "Cortex Core",
+        "version": "0.1.0",
+        "environment": os.getenv("ENVIRONMENT", "development"),
+        "python_version": sys.version,
+        "platform": platform.platform(),
+        "resources": {
+            "cpu_percent": psutil.cpu_percent(interval=0.1),
+            "memory_percent": psutil.virtual_memory().percent,
+            "disk_percent": psutil.disk_usage('/').percent
+        }
+    }
+    
+    return system_info
+
+
 # Include routers
 app.include_router(auth_router)
 app.include_router(input_router)

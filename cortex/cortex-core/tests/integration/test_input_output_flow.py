@@ -26,7 +26,7 @@ async def test_input_to_output_flow() -> None:
 
     # Create a workspace first
     workspace_response = client.post(
-        "/config/workspace",
+        "/v1/workspace",
         json={"name": "Integration Test Workspace", "description": "For integration testing", "metadata": {}},
         headers=headers,
     )
@@ -35,17 +35,17 @@ async def test_input_to_output_flow() -> None:
 
     # Create a conversation
     conversation_response = client.post(
-        "/config/conversation",
+        "/v1/conversation",
         json={"workspace_id": workspace_id, "topic": "Integration Test Conversation", "metadata": {}},
         headers=headers,
     )
     assert conversation_response.status_code == 201
     conversation_id = conversation_response.json()["conversation"]["id"]
 
-    # Send test input with the required conversation_id
+    # Send test input using the conversation_id in the path
     response = client.post(
-        "/input",
-        json={"content": "Test message for integration", "conversation_id": conversation_id, "metadata": {}},
+        f"/v1/conversation/{conversation_id}/messages",
+        json={"content": "Test message for integration", "metadata": {}},
         headers=headers,
     )
 

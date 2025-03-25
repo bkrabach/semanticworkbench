@@ -12,11 +12,11 @@ from ..models.api.response import ErrorResponse, InputResponse
 from ..utils.auth import get_current_user
 
 logger = logging.getLogger(__name__)
-router = APIRouter(tags=["input"])
+router = APIRouter(prefix="/v1", tags=["messages"])
 
 
 @router.post(
-    "/input",
+    "/conversation/{conversation_id}/messages",
     response_model=InputResponse,
     responses={
         400: {"model": ErrorResponse},
@@ -26,6 +26,7 @@ router = APIRouter(tags=["input"])
     },
 )
 async def receive_input(
+    conversation_id: str,
     request: InputRequest, 
     background_tasks: BackgroundTasks, 
     current_user: dict = Depends(get_current_user)
@@ -42,19 +43,19 @@ async def receive_input(
         Status response
     """
     user_id = current_user["user_id"]
-    logger.info(f"Received input from user {user_id}")
+    logger.info(f"Received input from user {user_id} for conversation {conversation_id}")
 
     try:
         async with UnitOfWork.for_transaction() as uow:
             # Verify conversation exists
             conversation_repo = uow.repositories.get_conversation_repository()
-            conversation = await conversation_repo.get_by_id(request.conversation_id)
+            conversation = await conversation_repo.get_by_id(conversation_id)
 
             if not conversation:
                 raise EntityNotFoundError(
-                    message=f"Conversation not found: {request.conversation_id}",
+                    message=f"Conversation not found: {conversation_id}",
                     entity_type="Conversation",
-                    entity_id=request.conversation_id,
+                    entity_id=conversation_id,
                 )
 
             # Check if user is a participant
@@ -68,7 +69,7 @@ async def receive_input(
                 raise AccessDeniedError(
                     message="You do not have access to this conversation",
                     entity_type="Conversation",
-                    entity_id=request.conversation_id,
+                    entity_id=conversation_id,
                     user_id=user_id,
                 )
 
@@ -81,7 +82,7 @@ async def receive_input(
                 "message_type": "user",
                 "data": {
                     "content": request.content,
-                    "conversation_id": request.conversation_id,
+                    "conversation_id": conversation_id,
                     "timestamp": timestamp,
                     # Note: message_id will be added by the response handler
                     "sender": {
@@ -103,7 +104,7 @@ async def receive_input(
             except Exception as e:
                 logger.error(f"Failed to publish event: {e}")
                 raise EventBusException(
-                    message="Failed to publish input event", details={"conversation_id": request.conversation_id}
+                    message="Failed to publish input event", details={"conversation_id": conversation_id}
                 )
 
             # Create a background task to handle the response generation
@@ -111,7 +112,7 @@ async def receive_input(
             background_tasks.add_task(
                 response_handler.handle_message,
                 user_id=user_id,
-                conversation_id=request.conversation_id,
+                conversation_id=conversation_id,
                 message_content=request.content,
                 metadata=request.metadata,
                 streaming=request.streaming,
@@ -122,7 +123,7 @@ async def receive_input(
                 status="received",
                 data={
                     "content": request.content,
-                    "conversation_id": request.conversation_id,
+                    "conversation_id": conversation_id,
                     "timestamp": timestamp,
                     "metadata": request.metadata,
                 },

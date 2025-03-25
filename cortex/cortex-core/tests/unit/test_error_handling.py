@@ -23,13 +23,13 @@ def test_custom_exception_handler() -> None:
     # Create a workspace with valid token first
     headers = get_auth_header()
     client.post(
-        "/config/workspace",
+        "/v1/workspace",
         json={"name": "Test Workspace", "description": "Test Description", "metadata": {}},
         headers=headers,
     )
 
     # Try to access a non-existent workspace (should raise ResourceNotFoundException)
-    response = client.get("/config/conversation?workspace_id=non-existent-id", headers=headers)
+    response = client.get("/v1/conversation?workspace_id=non-existent-id", headers=headers)
 
     # Check that we get the expected response
     assert response.status_code == status.HTTP_404_NOT_FOUND
@@ -45,7 +45,7 @@ def test_validation_error_handler() -> None:
     # Send a request with missing required fields
     headers = get_auth_header()
     response = client.post(
-        "/config/workspace",
+        "/v1/workspace",
         json={"name": "Test Workspace"},  # Missing description field
         headers=headers,
     )
@@ -61,7 +61,7 @@ def test_validation_error_handler() -> None:
 def test_authentication_error_handler() -> None:
     """Test that authentication errors are handled properly."""
     # Send a request with invalid token
-    response = client.get("/config/workspace", headers={"Authorization": "Bearer invalid-token"})
+    response = client.get("/v1/workspace", headers={"Authorization": "Bearer invalid-token"})
 
     # Check that we get the expected response
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
@@ -78,7 +78,7 @@ def test_permission_denied_error() -> None:
 
     # User 1 creates a workspace
     workspace_response = client.post(
-        "/config/workspace",
+        "/v1/workspace",
         json={"name": "User1 Workspace", "description": "Test Description", "metadata": {}},
         headers=headers_user1,
     )
@@ -86,13 +86,13 @@ def test_permission_denied_error() -> None:
 
     # Create a conversation in User 1's workspace
     client.post(
-        "/config/conversation",
+        "/v1/conversation",
         json={"workspace_id": test_workspace_id, "topic": "Test Conversation", "metadata": {}},
         headers=headers_user1,
     )
 
     # User 2 tries to directly access a specific workspace
-    response = client.get(f"/config/workspace/{test_workspace_id}", headers=headers_user2)
+    response = client.get(f"/v1/workspace/{test_workspace_id}", headers=headers_user2)
 
     # Check that we get the expected response - this should be a 404 since we don't leak existence
     assert response.status_code == status.HTTP_404_NOT_FOUND

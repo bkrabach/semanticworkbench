@@ -10,6 +10,7 @@ dependencies = [
     "fastapi>=0.115.11",
     "litellm>=1.63.11",
     "mcp[cli]>=1.4.1",
+    "psutil>=7.0.0",
     "pydantic>=2.10.6",
     "pydantic-ai-slim[anthropic,openai]>=0.0.43",
     "pydantic-settings>=2.3.0",
@@ -19,6 +20,7 @@ dependencies = [
     "python-multipart>=0.0.20",
     "sqlalchemy>=2.0.39",
     "sse-starlette>=2.2.1",
+    "types-psutil>=7.0.0.20250218",
     "uvicorn>=0.34.0",
 ]
 

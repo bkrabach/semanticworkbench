@@ -347,14 +347,38 @@
             <div class="tab-content" id="api-endpoints-tab">
                 <h3>MCP API Reference</h3>
                 <pre>
-# Cognition API Endpoints
-GET  /cognition/context      - Get relevant context for conversations
-POST /cognition/analyze      - Analyze a conversation
-POST /cognition/search       - Search through conversation history
+# API Endpoints (v1)
 
-# Response Handler Integration
-POST /input                  - Send message with context from Cognition Service
-GET  /output/stream          - Receive SSE events with responses
+# Status and Health
+GET  /                                         - Basic status endpoint
+GET  /health                                   - Simple health check
+GET  /v1/health                                - Detailed health status with system info
+
+# Authentication
+POST /v1/auth/login                            - Login with credentials 
+GET  /v1/auth/verify                           - Verify authentication token
+
+# Cognition API
+POST /v1/context                               - Get relevant context for conversations
+POST /v1/analyze                               - Analyze a conversation
+POST /v1/search                                - Search through conversation history
+
+# Messages
+POST /v1/conversation/{id}/messages            - Send message to a conversation
+GET  /v1/conversation/{id}/messages/stream     - Receive SSE events with responses
+
+# Resources
+GET  /v1/workspace                             - List workspaces
+POST /v1/workspace                             - Create a workspace
+GET  /v1/workspace/{id}                        - Get workspace details
+PUT  /v1/workspace/{id}                        - Update workspace
+DELETE /v1/workspace/{id}                      - Delete workspace
+
+GET  /v1/conversation                          - List conversations
+POST /v1/conversation                          - Create a conversation
+GET  /v1/conversation/{id}                     - Get conversation details
+PUT  /v1/conversation/{id}                     - Update conversation
+DELETE /v1/conversation/{id}                   - Delete conversation
                 </pre>
             </div>
         </div>
@@ -478,7 +502,7 @@ GET  /output/stream          - Receive SSE events with responses
                 formData.append('username', email);
                 formData.append('password', password);
                 
-                const response = await fetch(`${API_URL}/auth/login`, {
+                const response = await fetch(`${API_URL}/v1/auth/login`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/x-www-form-urlencoded'
@@ -527,7 +551,7 @@ GET  /output/stream          - Receive SSE events with responses
             }
             
             try {
-                const response = await fetch(`${API_URL}/config/workspace`, {
+                const response = await fetch(`${API_URL}/v1/workspace`, {
                     headers: {
                         'Authorization': `Bearer ${token}`
                     }
@@ -663,7 +687,7 @@ GET  /output/stream          - Receive SSE events with responses
             const description = document.getElementById('new-workspace-description').value.trim();
             
             try {
-                const response = await fetch(`${API_URL}/config/workspace`, {
+                const response = await fetch(`${API_URL}/v1/workspace`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -719,7 +743,7 @@ GET  /output/stream          - Receive SSE events with responses
             }
             
             try {
-                const response = await fetch(`${API_URL}/config/conversation?workspace_id=${workspaceId}`, {
+                const response = await fetch(`${API_URL}/v1/conversation?workspace_id=${workspaceId}`, {
                     headers: {
                         'Authorization': `Bearer ${token}`
                     }
@@ -776,8 +800,8 @@ GET  /output/stream          - Receive SSE events with responses
                     activeMessages[selectedConversationId] = {};
                 }
                 
-                // Note: History loading is commented out as the endpoint doesn't exist yet
-                // loadConversationHistory(selectedConversationId);
+                // Load conversation history
+                loadConversationHistory(selectedConversationId);
                 
                 // Log
                 const conversationTopic = conversationSelect.options[conversationSelect.selectedIndex].text;
@@ -849,7 +873,7 @@ GET  /output/stream          - Receive SSE events with responses
             }
             
             try {
-                const response = await fetch(`${API_URL}/config/conversation`, {
+                const response = await fetch(`${API_URL}/v1/conversation`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -892,13 +916,46 @@ GET  /output/stream          - Receive SSE events with responses
             }
         }
         
-        // Note: Message history endpoint doesn't exist yet
-        // This is a placeholder for future implementation
-        // The /config/message endpoint returns a 404 currently
+        // Load conversation history from the server
         async function loadConversationHistory(conversationId) {
-            // This feature will be implemented in the future
-            // For now, we'll just display a message
-            addMessage('system', 'Message history will be implemented in a future phase.');
+            if (!token || !conversationId) {
+                return;
+            }
+            
+            try {
+                addMessage('system', 'Loading conversation history...');
+                
+                // First try to get the conversation details with messages from the config API
+                const configResponse = await fetch(`${API_URL}/v1/conversation/${conversationId}`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                
+                if (configResponse.ok) {
+                    const data = await configResponse.json();
+                    if (data.conversation && data.conversation.messages && data.conversation.messages.length > 0) {
+                        // Display messages from newest to oldest
+                        const messages = data.conversation.messages.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+                        
+                        // Add messages to UI
+                        for (const message of messages) {
+                            const messageType = message.sender_id === user.user_id ? 'user' : 'assistant';
+                            updateOrCreateMessage(selectedConversationId, message.id, messageType, message.content);
+                        }
+                        
+                        addMessage('system', `Loaded ${messages.length} messages from history`);
+                        return;
+                    }
+                }
+                
+                // If the API request returned no messages, just display a message
+                addMessage('system', 'No message history found for this conversation');
+                
+            } catch (error) {
+                console.error('Error loading conversation history:', error);
+                addMessage('system', `Error loading conversation history: ${error.message}`);
+            }
         }
 
         // Find a matching user message by content to avoid duplication
@@ -977,7 +1034,7 @@ GET  /output/stream          - Receive SSE events with responses
                 }
                 
                 // Send message to server
-                const response = await fetch(`${API_URL}/input`, {
+                const response = await fetch(`${API_URL}/v1/conversation/${selectedConversationId}/messages`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -1031,7 +1088,7 @@ GET  /output/stream          - Receive SSE events with responses
                 const messageInput = document.getElementById('message-input');
                 const content = messageInput.value.trim();
                 
-                const response = await fetch(`${API_URL}/cognition/context`, {
+                const response = await fetch(`${API_URL}/v1/context`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -1186,7 +1243,7 @@ GET  /output/stream          - Receive SSE events with responses
                 }
                 
                 // Create AuthEventSource
-                const source = new AuthEventSource(`${API_URL}/output/stream?conversation_id=${selectedConversationId}`, token);
+                const source = new AuthEventSource(`${API_URL}/v1/conversation/${selectedConversationId}/messages/stream`, token);
                 
                 // Store for later cleanup
                 window.eventSource = source;
@@ -1705,7 +1762,7 @@ GET  /output/stream          - Receive SSE events with responses
             const analysisType = document.getElementById('analysis-type').value;
             
             try {
-                const response = await fetch(`${API_URL}/cognition/analyze`, {
+                const response = await fetch(`${API_URL}/v1/analyze`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -1836,7 +1893,7 @@ GET  /output/stream          - Receive SSE events with responses
             const includeConversations = document.getElementById('include-conversations').checked;
             
             try {
-                const response = await fetch(`${API_URL}/cognition/search`, {
+                const response = await fetch(`${API_URL}/v1/search`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',

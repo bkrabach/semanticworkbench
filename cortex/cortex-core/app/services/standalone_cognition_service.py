@@ -472,12 +472,14 @@ async def analyze_conversation(
                 "error": f"Failed to retrieve conversation: {str(e)}"
             }
 
+        # Don't treat empty conversation as an error - it might just be a new conversation
+        # with no messages yet
         if not conversation_items:
+            logger.info(f"No messages found for conversation {conversation_id}, returning empty results")
             return {
                 "type": analysis_type,
-                "results": {},
+                "results": {"message_count": 0, "participants": 0, "duration_seconds": 0},
                 "conversation_id": conversation_id,
-                "error": "Conversation not found",
             }
 
         # Filter out error information from each item's metadata
@@ -712,11 +714,13 @@ async def get_conversation_analysis_stream(user_id: str, conversation_id: str, a
         # Call the analyze_conversation tool
         analysis_result = await analyze_conversation(user_id, conversation_id, analysis_type)
         
-        if "error" in analysis_result:
+        # Only treat as an error if it explicitly has an error field and the error is not just about
+        # an empty conversation
+        if "error" in analysis_result and analysis_result["error"] != "No messages found":
             yield f"data: {json.dumps({'error': analysis_result['error']})}\n\n"
             return
         
-        # Stream the analysis result
+        # Stream the analysis result (even if empty - client can handle this)
         yield f"data: {json.dumps(analysis_result)}\n\n"
         
         # End of stream

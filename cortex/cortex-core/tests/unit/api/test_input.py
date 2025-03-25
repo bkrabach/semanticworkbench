@@ -59,7 +59,7 @@ async def test_receive_input_valid_request(mock_uow: Tuple[AsyncMock, Mock, Mock
     mock_ws_repo.get_by_id = AsyncMock(return_value=mock_workspace)
 
     # Create request
-    request = InputRequest(conversation_id="test-conv-id", content="Hello, world!", metadata={"key": "value"}, streaming=True)
+    request = InputRequest(content="Hello, world!", metadata={"key": "value"}, streaming=True)
 
     # Mock background tasks
     mock_background = Mock()
@@ -73,8 +73,8 @@ async def test_receive_input_valid_request(mock_uow: Tuple[AsyncMock, Mock, Mock
         patch("app.api.input.event_bus.publish", new_callable=AsyncMock) as mock_publish,
         patch("app.api.input.response_handler.handle_message") as mock_handle_message,
     ):
-        # Call the endpoint
-        response = await receive_input(request, mock_background, current_user)
+        # Call the endpoint - now we pass conversation_id as a separate parameter
+        response = await receive_input("test-conv-id", request, mock_background, current_user)
 
         # Verify the response
         assert response.status == "received"
@@ -116,7 +116,7 @@ async def test_receive_input_conversation_not_found(mock_uow: Tuple[AsyncMock, M
     mock_conv_repo.get_by_id = AsyncMock(return_value=None)
 
     # Create request
-    request = InputRequest(conversation_id="nonexistent-conv-id", content="Hello, world!", streaming=True)
+    request = InputRequest(content="Hello, world!", streaming=True)
 
     # Mock background tasks
     mock_background = Mock()
@@ -129,8 +129,8 @@ async def test_receive_input_conversation_not_found(mock_uow: Tuple[AsyncMock, M
         patch("app.api.input.UnitOfWork.for_transaction", return_value=mock_context),
         pytest.raises(HTTPException) as exc_info,
     ):
-        # Call the endpoint
-        await receive_input(request, mock_background, current_user)
+        # Call the endpoint - passing nonexistent-conv-id
+        await receive_input("nonexistent-conv-id", request, mock_background, current_user)
 
     # Verify the exception
     assert exc_info.value.status_code == 404
@@ -157,7 +157,7 @@ async def test_receive_input_workspace_not_found(mock_uow: Tuple[AsyncMock, Mock
     mock_ws_repo.get_by_id = AsyncMock(return_value=None)
 
     # Create request
-    request = InputRequest(conversation_id="test-conv-id", content="Hello, world!", streaming=True)
+    request = InputRequest(content="Hello, world!", streaming=True)
 
     # Mock background tasks
     mock_background = Mock()
@@ -171,7 +171,7 @@ async def test_receive_input_workspace_not_found(mock_uow: Tuple[AsyncMock, Mock
         pytest.raises(HTTPException) as exc_info,
     ):
         # Call the endpoint
-        await receive_input(request, mock_background, current_user)
+        await receive_input("test-conv-id", request, mock_background, current_user)
 
     # Verify the exception
     assert exc_info.value.status_code == 404
@@ -204,7 +204,7 @@ async def test_receive_input_access_denied(mock_uow: Tuple[AsyncMock, Mock, Mock
     mock_ws_repo.get_by_id = AsyncMock(return_value=mock_workspace)
 
     # Create request
-    request = InputRequest(conversation_id="test-conv-id", content="Hello, world!", streaming=True)
+    request = InputRequest(content="Hello, world!", streaming=True)
 
     # Mock background tasks
     mock_background = Mock()
@@ -218,7 +218,7 @@ async def test_receive_input_access_denied(mock_uow: Tuple[AsyncMock, Mock, Mock
         pytest.raises(HTTPException) as exc_info,
     ):
         # Call the endpoint
-        await receive_input(request, mock_background, current_user)
+        await receive_input("test-conv-id", request, mock_background, current_user)
 
     # Verify the exception
     assert exc_info.value.status_code == 403
@@ -250,7 +250,7 @@ async def test_receive_input_event_bus_exception(mock_uow: Tuple[AsyncMock, Mock
     mock_ws_repo.get_by_id = AsyncMock(return_value=mock_workspace)
 
     # Create request
-    request = InputRequest(conversation_id="test-conv-id", content="Hello, world!", streaming=True)
+    request = InputRequest(content="Hello, world!", streaming=True)
 
     # Mock background tasks
     mock_background = Mock()
@@ -266,7 +266,7 @@ async def test_receive_input_event_bus_exception(mock_uow: Tuple[AsyncMock, Mock
     ):
         # Call the endpoint - this will raise EventBusException internally
         # which is NOT converted to HTTPException (it's re-raised directly)
-        await receive_input(request, mock_background, current_user)
+        await receive_input("test-conv-id", request, mock_background, current_user)
 
     # Verify the exception
     assert str(exc_info.value) == "Failed to publish input event"
@@ -295,7 +295,6 @@ async def test_receive_input_with_streaming_param(mock_uow: Tuple[AsyncMock, Moc
 
     # Create request with streaming=False
     request = InputRequest(
-        conversation_id="test-conv-id",
         content="Hello, world!",
         metadata={},
         streaming=False,  # Explicitly set streaming to False
@@ -314,7 +313,7 @@ async def test_receive_input_with_streaming_param(mock_uow: Tuple[AsyncMock, Moc
         patch("app.api.input.response_handler.handle_message") as mock_handle_message,
     ):
         # Call the endpoint
-        response = await receive_input(request, mock_background, current_user)
+        response = await receive_input("test-conv-id", request, mock_background, current_user)
 
         # Verify the response
         assert response.status == "received"
