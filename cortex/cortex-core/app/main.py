@@ -56,10 +56,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     app.state.cognition_client = CognitionClient(COGNITION_SERVICE_URL)
     
     # Add client factory functions to app state for components that need to create their own clients
-    async def get_memory_client():
+    async def get_memory_client() -> MemoryClient:
         return MemoryClient(MEMORY_SERVICE_URL)
     
-    async def get_cognition_client():
+    async def get_cognition_client() -> CognitionClient:
         return CognitionClient(COGNITION_SERVICE_URL)
     
     app.state.get_memory_client = get_memory_client

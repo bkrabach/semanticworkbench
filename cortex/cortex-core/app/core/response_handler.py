@@ -75,40 +75,53 @@ class ResponseHandler:
         self.input_queue = self.event_bus.subscribe(event_type="input")
         
         # Start processing events in a background task
-        self.task = asyncio.create_task(self.process_events())
+        self.task = await self.process_events()
         
         logger.info("Response handler started and listening for input events")
 
-    async def process_events(self) -> None:
+    async def process_events(self) -> asyncio.Task:
         """
         Process events from the input queue.
         This is the main loop that handles input messages.
+        
+        Returns:
+            A Task object that processes events in the background
         """
-        if not self.input_queue:
-            logger.error("Input queue not initialized")
-            return
-            
-        while self.running:
-            try:
-                # Get the next event with a timeout
-                try:
-                    event = await asyncio.wait_for(self.input_queue.get(), timeout=1.0)
-                except asyncio.TimeoutError:
-                    continue
+        async def _process_events_loop() -> None:
+            """Inner loop function to process events from the queue."""
+            if not self.input_queue:
+                logger.error("Input queue not initialized")
+                return
                 
-                # Process the event
+            while self.running:
                 try:
-                    await self.handle_input_event(event)
-                except Exception as e:
-                    logger.error(f"Error processing event: {e}", exc_info=True)
-                finally:
-                    self.input_queue.task_done()
+                    # Get the next event with a timeout
+                    try:
+                        event = await asyncio.wait_for(self.input_queue.get(), timeout=1.0)
+                    except asyncio.TimeoutError:
+                        # Just continue the loop on timeout
+                        continue
                     
-            except asyncio.CancelledError:
-                logger.info("Response handler task cancelled")
-                break
-            except Exception as e:
-                logger.error(f"Unexpected error in response handler: {e}", exc_info=True)
+                    # Process the event
+                    try:
+                        # Handle the event - this is where the main processing happens
+                        await self.handle_input_event(event)
+                    except Exception as e:
+                        # Log any errors but continue processing other events
+                        logger.error(f"Error processing event: {e}", exc_info=True)
+                    finally:
+                        # Always mark the task as done even if processing failed
+                        self.input_queue.task_done()
+                        
+                except asyncio.CancelledError:
+                    # Clean shutdown when task is cancelled (e.g., during app shutdown)
+                    logger.info("Response handler task cancelled")
+                    break
+                except Exception as e:
+                    # Catch-all for unexpected errors to keep the loop running
+                    logger.error(f"Unexpected error in response handler: {e}", exc_info=True)
+        
+        return asyncio.create_task(_process_events_loop())
 
     async def handle_input_event(self, event: Dict[str, Any]) -> None:
         """

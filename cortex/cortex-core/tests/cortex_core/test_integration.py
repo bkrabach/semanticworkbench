@@ -1,16 +1,13 @@
 import pytest
 import asyncio
-import json
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import MagicMock, AsyncMock
 from fastapi.testclient import TestClient
-from fastapi import FastAPI
 
 from app.main import app
 from app.utils.auth import create_access_token
 from app.core.event_bus import EventBus
 from app.core.response_handler import ResponseHandler
 from app.core.storage_service import storage_service
-from app.models.api import InputMessage
 
 
 @pytest.mark.asyncio
