@@ -1,6 +1,8 @@
 # Cortex Core API Reference
 
-This document provides detailed information about the API endpoints available in Cortex Core as implemented in Phase 2.
+This document provides detailed information about the API endpoints available in Cortex Core as implemented in Phase 5.
+
+> Note: The API has been versioned with a `/v1` prefix for all endpoints to support future API evolution.
 
 ## Base URL
 
@@ -14,7 +16,7 @@ For production deployments, this will be replaced with the appropriate domain.
 
 ## Authentication
 
-All endpoints except `/auth/login` require authentication using JWT tokens.
+All endpoints except `/v1/auth/login` require authentication using JWT tokens.
 
 ### Token Format
 
@@ -39,7 +41,7 @@ Tokens include the following claims:
 #### Login
 
 ```
-POST /auth/login
+POST /v1/auth/login
 ```
 
 Authenticates a user and returns a JWT token.
@@ -67,7 +69,7 @@ Authenticates a user and returns a JWT token.
 #### Verify Token
 
 ```
-GET /auth/verify
+GET /v1/auth/verify
 ```
 
 Verifies a JWT token and returns the user information.
@@ -85,21 +87,23 @@ Verifies a JWT token and returns the user information.
 - `200 OK`: Valid token
 - `401 Unauthorized`: Invalid token
 
-### Input
+### Conversation Messages
 
-#### Send Input
+#### Send Message
 
 ```
-POST /input
+POST /v1/conversation/{id}/messages
 ```
 
-Sends input data to the system.
+Sends a message to the specified conversation.
+
+**Path Parameters:**
+- `id`: ID of the conversation
 
 **Request Body:**
 ```json
 {
   "content": "Hello, Cortex!",
-  "conversation_id": "850e8400-e29b-41d4-a716-446655440333", // Required
   "metadata": {
     "client_id": "web-chat-client",
     "client_version": "1.0.0"
@@ -115,19 +119,21 @@ Sends input data to the system.
 ```
 
 **Status Codes:**
-- `200 OK`: Input received and processed
+- `200 OK`: Message received and processed
 - `401 Unauthorized`: Invalid token
+- `404 Not Found`: Conversation not found
 - `422 Unprocessable Entity`: Invalid request body
 
-### Output
-
-#### Stream Output
+#### Stream Messages
 
 ```
-GET /output/stream
+GET /v1/conversation/{id}/messages/stream
 ```
 
-Establishes a Server-Sent Events (SSE) connection for receiving output events.
+Establishes a Server-Sent Events (SSE) connection for receiving messages and events for a specific conversation.
+
+**Path Parameters:**
+- `id`: ID of the conversation
 
 **Response:**
 Server-Sent Events stream with the following event format:
@@ -148,13 +154,14 @@ data: {"type": "typing", "is_typing": true, "user_id": "550e8400-e29b-41d4-a716-
 **Status Codes:**
 - `200 OK`: Connection established
 - `401 Unauthorized`: Invalid token
+- `404 Not Found`: Conversation not found
 
-### Configuration
+### Workspaces
 
 #### Create Workspace
 
 ```
-POST /config/workspace
+POST /v1/workspace
 ```
 
 Creates a new workspace.
@@ -186,7 +193,7 @@ Creates a new workspace.
 #### List Workspaces
 
 ```
-GET /config/workspace
+GET /v1/workspace
 ```
 
 Lists all workspaces owned by the authenticated user.
@@ -210,10 +217,12 @@ Lists all workspaces owned by the authenticated user.
 - `200 OK`: Workspaces retrieved
 - `401 Unauthorized`: Invalid token
 
+### Conversations
+
 #### Create Conversation
 
 ```
-POST /config/conversation
+POST /v1/conversation
 ```
 
 Creates a new conversation in a workspace.
@@ -246,7 +255,7 @@ Creates a new conversation in a workspace.
 #### List Conversations
 
 ```
-GET /config/conversation?workspace_id=950e8400-e29b-41d4-a716-446655440444
+GET /v1/conversation?workspace_id=950e8400-e29b-41d4-a716-446655440444
 ```
 
 Lists all conversations in a workspace.
@@ -273,6 +282,70 @@ Lists all conversations in a workspace.
 - `200 OK`: Conversations retrieved
 - `401 Unauthorized`: Invalid token
 - `404 Not Found`: Workspace not found
+
+### Health Endpoints
+
+#### Basic Health Check
+
+```
+GET /v1/health
+```
+
+Returns a simple health status check.
+
+**Response:**
+```json
+{
+  "status": "healthy",
+  "timestamp": "2025-03-20T10:16:00Z"
+}
+```
+
+**Status Codes:**
+- `200 OK`: Service is healthy
+- `503 Service Unavailable`: Service is unhealthy
+
+#### Detailed Health Check
+
+```
+GET /v1/health/details
+```
+
+Returns detailed system health information.
+
+**Response:**
+```json
+{
+  "status": "healthy",
+  "timestamp": "2025-03-20T10:16:00Z",
+  "version": "1.0.0",
+  "services": {
+    "memory": {
+      "status": "healthy",
+      "response_time_ms": 42
+    },
+    "cognition": {
+      "status": "healthy", 
+      "response_time_ms": 53
+    },
+    "database": {
+      "status": "healthy",
+      "connections": 5,
+      "max_connections": 20
+    }
+  },
+  "system": {
+    "cpu_usage": 0.23,
+    "memory_usage": 0.45,
+    "uptime_seconds": 3600
+  }
+}
+```
+
+**Status Codes:**
+- `200 OK`: Service is healthy
+- `207 Multi-Status`: Some subsystems are unhealthy
+- `503 Service Unavailable`: Service is unhealthy
 
 ## Error Responses
 
@@ -302,7 +375,7 @@ For validation errors, the response includes more detailed information:
     "details": {
       "validation_errors": [
         {
-          "loc": ["body", "conversation_id"],
+          "loc": ["body", "content"],
           "msg": "field required",
           "type": "value_error.missing"
         }
@@ -333,7 +406,7 @@ Cross-Origin Resource Sharing (CORS) is enabled for development with configurabl
 
 When implementing an SSE client:
 
-1. Connect to the `/output/stream` endpoint with the JWT token in the Authorization header
+1. Connect to the `/v1/conversation/{id}/messages/stream` endpoint with the JWT token in the Authorization header
 2. Listen for events and parse the JSON data
 3. Filter events by type if needed
 4. Implement reconnection logic (browsers handle this automatically)
@@ -342,7 +415,8 @@ When implementing an SSE client:
 Example JavaScript client:
 
 ```javascript
-const eventSource = new EventSource('/output/stream', {
+const conversationId = "850e8400-e29b-41d4-a716-446655440333";
+const eventSource = new EventSource(`/v1/conversation/${conversationId}/messages/stream`, {
   headers: {
     'Authorization': 'Bearer your-jwt-token'
   }
@@ -381,14 +455,14 @@ When sending input:
 Example JavaScript client:
 
 ```javascript
-async function sendInput(content, conversationId) {
+async function sendMessage(content, conversationId) {
   // Ensure conversation ID is provided
   if (!conversationId) {
     throw new Error('Conversation ID is required');
   }
   
   try {
-    const response = await fetch('/input', {
+    const response = await fetch(`/v1/conversation/${conversationId}/messages`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -396,7 +470,6 @@ async function sendInput(content, conversationId) {
       },
       body: JSON.stringify({
         content,
-        conversation_id: conversationId,
         metadata: {
           client_id: 'web-chat-client',
           client_version: '1.0.0'
@@ -405,12 +478,12 @@ async function sendInput(content, conversationId) {
     });
     
     if (!response.ok) {
-      throw new Error(`Error sending input: ${response.statusText}`);
+      throw new Error(`Error sending message: ${response.statusText}`);
     }
     
     return await response.json();
   } catch (error) {
-    console.error('Failed to send input:', error);
+    console.error('Failed to send message:', error);
     throw error;
   }
 }
