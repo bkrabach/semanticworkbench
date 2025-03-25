@@ -19,8 +19,10 @@ import json
 import os
 import signal
 import subprocess
+from subprocess import Popen
 import sys
 import time
+from typing import Any, Dict, List, Optional, cast
 
 import requests
 # The package is sseclient-py but the module is sseclient
@@ -39,6 +41,12 @@ except ImportError:
 DEFAULT_HOST = "localhost"
 DEFAULT_PORT = 8000
 DEFAULT_TIMEOUT = 30  # seconds
+
+# Environment variable names for Auth0 configuration
+AUTH0_TOKEN_ENV = "CORTEX_AUTH0_TEST_TOKEN"
+AUTH0_DOMAIN_ENV = "CORTEX_AUTH0_DOMAIN"
+AUTH0_CLIENT_ID_ENV = "CORTEX_AUTH0_CLIENT_ID"
+AUTH0_CLIENT_SECRET_ENV = "CORTEX_AUTH0_CLIENT_SECRET"
 
 # Colors for terminal output
 GREEN = "\033[92m"
@@ -68,7 +76,7 @@ def log_section(message: str) -> None:
     print(f"\n{BOLD}=== {message} ==={RESET}")
 
 
-def start_server(host: str, port: int) -> subprocess.Popen:
+def start_server(host: str, port: int) -> Popen[bytes]:
     """Start the Cortex Core server."""
     log_section("Starting Cortex Core Server")
 
@@ -107,7 +115,7 @@ def start_server(host: str, port: int) -> subprocess.Popen:
         sys.exit(1)
 
 
-def stop_server(process: subprocess.Popen) -> None:
+def stop_server(process: Popen[bytes]) -> None:
     """Stop the Cortex Core server."""
     log_section("Stopping Cortex Core Server")
     try:
@@ -144,14 +152,48 @@ def get_auth_token(base_url: str) -> str:
             token = response.json().get("access_token")
             if token:
                 log_success("Authentication successful")
-                return token
+                return cast(str, token)
             else:
                 log_error("Failed to get token from response")
                 sys.exit(1)
         elif response.status_code == 404:
             # In Auth0 mode, the login endpoint will return 404
-            # For testing purposes, we'll generate a test token
+            # Check for a token provided via environment variable
+            env_token = os.environ.get(AUTH0_TOKEN_ENV)
+            if env_token:
+                log_success(f"Auth0 mode detected. Using token from {AUTH0_TOKEN_ENV} environment variable")
+                return env_token
+                
+            # Try to get Auth0 credentials from environment and use them to get a token
+            auth0_domain = os.environ.get(AUTH0_DOMAIN_ENV)
+            auth0_client_id = os.environ.get(AUTH0_CLIENT_ID_ENV)
+            auth0_client_secret = os.environ.get(AUTH0_CLIENT_SECRET_ENV)
+            
+            if all([auth0_domain, auth0_client_id, auth0_client_secret]):
+                log_warning("Auth0 mode detected. Attempting to get token using client credentials")
+                try:
+                    auth0_token_url = f"https://{auth0_domain}/oauth/token"
+                    auth0_payload = {
+                        "client_id": auth0_client_id,
+                        "client_secret": auth0_client_secret,
+                        "audience": f"https://{auth0_domain}/api/v2/",
+                        "grant_type": "client_credentials"
+                    }
+                    auth0_response = requests.post(auth0_token_url, json=auth0_payload)
+                    
+                    if auth0_response.status_code == 200:
+                        token = auth0_response.json().get("access_token")
+                        if token:
+                            log_success("Successfully obtained Auth0 token")
+                            return cast(str, token)
+                except Exception as e:
+                    log_warning(f"Failed to get Auth0 token: {e}")
+            
+            # Fallback to a dummy token for testing only
             log_warning("Auth0 mode detected. Using pre-generated test token")
+            log_warning("For proper Auth0 testing, set the following environment variables:")
+            log_warning(f"  {AUTH0_TOKEN_ENV}: A valid Auth0 token for testing")
+            log_warning(f"  Or set all of these to generate a token: {AUTH0_DOMAIN_ENV}, {AUTH0_CLIENT_ID_ENV}, {AUTH0_CLIENT_SECRET_ENV}")
             # This is a dummy token for testing only - in a real environment, this would come from Auth0
             return "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJkZXYtdXNlci0xMjMiLCJuYW1lIjoiVGVzdCBVc2VyIiwiZW1haWwiOiJ1c2VyQGV4YW1wbGUuY29tIn0.lMzHrPZxBKwSfT7YIxKM-P-WvzYQVXKUGCG7u80jfXc"
         else:
@@ -231,7 +273,7 @@ def create_workspace(base_url: str, token: str) -> str:
             workspace_id = response.json().get("workspace", {}).get("id")
             if workspace_id:
                 log_success(f"Workspace created: {workspace_id}")
-                return workspace_id
+                return cast(str, workspace_id)
             else:
                 log_error("Failed to get workspace ID from response")
                 sys.exit(1)
@@ -265,7 +307,7 @@ def create_conversation(base_url: str, token: str, workspace_id: str) -> str:
             conversation_id = response.json().get("conversation", {}).get("id")
             if conversation_id:
                 log_success(f"Conversation created: {conversation_id}")
-                return conversation_id
+                return cast(str, conversation_id)
             else:
                 log_error("Failed to get conversation ID from response")
                 sys.exit(1)
@@ -285,11 +327,11 @@ class SSEListener:
         self.url = url
         self.token = token
         self.conversation_id = conversation_id
-        self.events = []
-        self.process = None
+        self.events: List[Dict[str, Any]] = []
+        self.process: Optional[Popen[bytes]] = None
         self.output_file = "sse_events.log"
 
-    def start(self):
+    def start(self) -> None:
         """Start listening for SSE events in a separate process."""
         # Write a simple script to listen for SSE events and save them to a file
         script_path = "sse_listener.py"
@@ -345,7 +387,7 @@ except Exception as e:
         time.sleep(2)
         log_success("SSE listener started")
 
-    def stop(self):
+    def stop(self) -> None:
         """Stop the SSE listener."""
         if self.process:
             try:
@@ -359,7 +401,7 @@ except Exception as e:
                 except ProcessLookupError:
                     pass
 
-    def get_events(self):
+    def get_events(self) -> List[Dict[str, Any]]:
         """Get the events received by the listener."""
         events = []
         try:
@@ -557,13 +599,23 @@ def run_e2e_test(host: str, port: int) -> None:
         stop_server(server_process)
 
 
-def main():
+def main() -> None:
     """Main entry point."""
     parser = argparse.ArgumentParser(description="Run end-to-end tests for Cortex Core")
     parser.add_argument("--host", default=DEFAULT_HOST, help=f"Server host (default: {DEFAULT_HOST})")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT, help=f"Server port (default: {DEFAULT_PORT})")
-
+    parser.add_argument("--minimal", action="store_true", help="Run minimal test only (health check)")
+    parser.add_argument("--auth0-token", help=f"Auth0 token for testing (overrides {AUTH0_TOKEN_ENV})")
+    
     args = parser.parse_args()
+    
+    # Set environment variables based on command line arguments
+    if args.minimal:
+        os.environ["MINIMAL_TEST"] = "true"
+        
+    if args.auth0_token:
+        os.environ[AUTH0_TOKEN_ENV] = args.auth0_token
+        
     run_e2e_test(args.host, args.port)
 
 

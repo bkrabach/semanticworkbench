@@ -581,3 +581,100 @@ async def test_get_pydantic_ai_agent():
 
         # Both calls should return the same instance
         assert agent1 is agent2
+
+
+@pytest.mark.asyncio
+async def test_process_events_outer_exception():
+    """Test that process_events handles unexpected exceptions in the outer loop."""
+    # Create mocks
+    mock_event_bus = MagicMock(spec=EventBus)
+    mock_queue = MagicMock(spec=asyncio.Queue)
+    
+    # Create a special mock for asyncio.Queue.get that raises a different exception
+    # each time it's called to force execution through different code paths
+    call_count = 0
+    
+    async def queue_get_with_exceptions():
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            # First call - raise a ValueError to trigger the outer exception handler
+            raise ValueError("Unexpected error")
+        elif call_count == 2:
+            # Second call - return a normal event
+            return {"test": "event"}
+        else:
+            # Subsequent calls - just wait (for test cleanup)
+            await asyncio.sleep(1000)
+    
+    mock_queue.get = queue_get_with_exceptions
+    mock_queue.task_done = MagicMock()
+    mock_event_bus.subscribe.return_value = mock_queue
+    
+    mock_memory_client = MagicMock(spec=MemoryClient)
+    mock_cognition_client = MagicMock(spec=CognitionClient)
+    
+    # Create handler
+    handler = ResponseHandler(
+        event_bus=mock_event_bus, 
+        memory_client=mock_memory_client,
+        cognition_client=mock_cognition_client
+    )
+    handler.handle_input_event = AsyncMock()
+    
+    # Start the handler
+    await handler.start()
+    
+    # Give the task time to process both exceptions
+    await asyncio.sleep(0.3)
+    
+    # The handler should still be running despite the outer exception
+    assert handler.running is True
+    assert handler.task is not None
+    assert not handler.task.done()
+    
+    # Verify handle_input_event was called once (for the second event)
+    assert handler.handle_input_event.call_count == 1
+    
+    # Cleanup
+    await handler.stop()
+
+
+@pytest.mark.asyncio
+async def test_stop_with_real_task_cancelled():
+    """Test stopping when task is a real Task and CancelledError is raised."""
+    # Create mocks
+    mock_event_bus = MagicMock(spec=EventBus)
+    mock_memory_client = MagicMock(spec=MemoryClient)
+    mock_memory_client.close = AsyncMock()
+    mock_cognition_client = MagicMock(spec=CognitionClient)
+    mock_cognition_client.close = AsyncMock()
+    
+    # Create a queue that will block forever
+    mock_queue = asyncio.Queue()
+    mock_event_bus.subscribe.return_value = mock_queue
+    
+    # Create handler
+    handler = ResponseHandler(
+        event_bus=mock_event_bus, 
+        memory_client=mock_memory_client,
+        cognition_client=mock_cognition_client
+    )
+    
+    # Start the handler (this will create a real task)
+    await handler.start()
+    
+    # Verify task is a real asyncio.Task, not a MagicMock
+    assert isinstance(handler.task, asyncio.Task)
+    assert not handler.task.done()
+    
+    # Stop the handler - this will cancel the task and it should handle CancelledError
+    await handler.stop()
+    
+    # Verify the handler state
+    assert handler.running is False
+    assert handler.task.done()  # Task should be done but not raise an unhandled exception
+    
+    # Verify clients were closed
+    mock_memory_client.close.assert_called_once()
+    mock_cognition_client.close.assert_called_once()

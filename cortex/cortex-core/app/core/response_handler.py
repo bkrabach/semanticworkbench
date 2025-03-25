@@ -43,6 +43,29 @@ class ResponseHandler:
     Response handler that processes input events and produces output events.
     Orchestrates interactions between event bus, memory client, and cognition client
     to generate responses to user input.
+    
+    Event Processing Pattern:
+    ------------------------
+    This class implements a background event processing pattern with the following components:
+    
+    1. Event Queue: Provided by EventBus.subscribe(), this queue receives events of a specific type
+       (in this case, "input" events) in an asynchronous manner.
+       
+    2. Background Task: The process_events() method creates and returns an asyncio.Task that
+       runs in the background and continuously processes events from the queue. This approach
+       allows the main application to continue functioning while events are processed asynchronously.
+       
+    3. Error Handling: The event processing loop includes comprehensive error handling to ensure
+       robustness:
+       - CancelledError: Properly handled for clean shutdown
+       - TimeoutError: Handled to prevent blocking on empty queues
+       - General exceptions: Caught and logged without crashing the processing loop
+       
+    4. Resource Management: The start() and stop() methods properly manage the lifecycle of
+       the background task, ensuring proper cleanup of resources.
+       
+    5. Thread Safety: All operations are performed within the asyncio event loop, ensuring
+       thread-safety for concurrent operations.
     """
 
     def __init__(self, event_bus: EventBus, memory_client: MemoryClient, cognition_client: CognitionClient) -> None:
@@ -83,6 +106,16 @@ class ResponseHandler:
         """
         Process events from the input queue.
         This is the main loop that handles input messages.
+        
+        This method implements a key pattern for background processing in asyncio applications:
+        1. Define an inner async function that contains the actual processing loop
+        2. Create and return a Task for this inner function
+        3. The calling code can await or manage this Task as needed
+        
+        The returned Task runs independently in the background until:
+        - It's explicitly cancelled (by calling task.cancel())
+        - The self.running flag is set to False
+        - An unhandled exception occurs (which we prevent with try/except blocks)
         
         Returns:
             A Task object that processes events in the background
