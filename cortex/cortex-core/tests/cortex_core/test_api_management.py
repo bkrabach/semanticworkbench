@@ -49,22 +49,41 @@ def test_system_status_unauthorized():
     assert response.status_code == 401
 
 
-@pytest.mark.skip("Need to update test to work with app.state.event_bus")
 def test_publish_system_event():
     """Test that the publish event endpoint works correctly."""
+    # Create a fresh mock for this specific test
+    test_mock_event_bus = MagicMock(spec=EventBus)
+    test_mock_event_bus.publish = AsyncMock()
     
-    # Get a valid token
-    token = get_test_token()
+    # Save original event_bus
+    original_event_bus = app.state.event_bus
+    
+    try:
+        # Replace app.state.event_bus with our test-specific mock
+        app.state.event_bus = test_mock_event_bus
+        
+        # Get a valid token
+        token = get_test_token()
 
-    # Test data
-    event_data = {"event_type": "system.notification", "payload": {"message": "Test notification"}}
+        # Test data
+        event_data = {"event_type": "system.notification", "payload": {"message": "Test notification"}}
 
-    # Make the request
-    response = client.post("/management/events/publish", json=event_data, headers={"Authorization": f"Bearer {token}"})
+        # Make the request
+        response = client.post("/management/events/publish", json=event_data, headers={"Authorization": f"Bearer {token}"})
 
-    # Check response
-    assert response.status_code == 200
-    assert response.json()["status"] == "published"
+        # Check response
+        assert response.status_code == 200
+        assert response.json()["status"] == "published"
+        
+        # Verify event bus was called with correct parameters
+        test_mock_event_bus.publish.assert_awaited_once()
+        call_args = test_mock_event_bus.publish.await_args
+        assert call_args[0][0] == "system.notification"  # First arg is event_type
+        assert "user_id" in call_args[0][1]  # Second arg is event_payload
+        assert call_args[0][1]["data"] == {"message": "Test notification"}
+    finally:
+        # Restore original event_bus
+        app.state.event_bus = original_event_bus
 
 
 def test_publish_invalid_event_type():

@@ -1,12 +1,13 @@
 import asyncio
 import json
 import pytest
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi.testclient import TestClient
 
 from app.api.output import event_generator
 from app.core.event_bus import EventBus
 from app.main import app
+from app.utils.auth import create_access_token
 
 
 @pytest.mark.asyncio
@@ -217,12 +218,25 @@ def test_stream_output_endpoint_authentication():
     assert response.status_code == 401
 
 
-# Skip this test for now as it requires special handling for SSE streaming responses
-# The standard TestClient approach isn't working because of app state initialization
-@pytest.mark.skip(reason="SSE streaming not properly testable with TestClient")
-def test_stream_output_endpoint_with_auth():
-    """Test that the stream output endpoint works with valid authentication."""
-    # This test would verify that a valid token allows access to the SSE endpoint
-    # However, testing streaming responses requires more complex setup
-    # For this MVP phase, we'll rely on the manual testing instructions instead
-    pass
+def test_stream_output_endpoint_initiates_event_stream():
+    """Test that the stream output endpoint starts an SSE event stream with authentication."""
+    # Create a patch for event_generator that returns a simple generator
+    async def mock_event_generator(*args, **kwargs):
+        yield "data: test\n\n"
+        
+    # Create a valid token
+    token_data = {"sub": "test-user", "id": "test-user", "name": "Test User"}
+    token = create_access_token(token_data)
+    
+    with patch("app.api.output.event_generator", return_value=mock_event_generator()):
+        # Make the request with a valid token
+        with TestClient(app) as client:
+            response = client.get("/output/stream", headers={"Authorization": f"Bearer {token}"})
+            
+            # Verify the response code
+            assert response.status_code == 200
+            # Verify the content type (FastAPI adds charset=utf-8)
+            assert response.headers["content-type"].startswith("text/event-stream")
+            # Verify streaming response headers are set
+            assert response.headers.get("cache-control") == "no-cache"
+            assert response.headers.get("connection") == "keep-alive"
