@@ -64,8 +64,10 @@ def test_login_endpoint() -> None:
     response = client.post("/v1/auth/login", data={"username": "user@example.com", "password": "password123"})
     assert response.status_code == 200
     data = response.json()
-    assert "access_token" in data
-    assert data["token_type"] == "bearer"
+    # With the standardized response format, fields are in the data object
+    assert "data" in data
+    assert "access_token" in data["data"]
+    assert data["data"]["token_type"] == "bearer"
 
 
 def test_invalid_login() -> None:

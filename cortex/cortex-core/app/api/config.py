@@ -1,5 +1,6 @@
 import logging
 import uuid
+from datetime import datetime
 from typing import NoReturn
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -15,10 +16,14 @@ from ..models.api.request import (
     WorkspaceUpdate,
 )
 from ..models.api.response import (
+    ConversationData,
     ConversationResponse,
+    ConversationsListData,
     ConversationsListResponse,
     ErrorResponse,
+    WorkspaceData,
     WorkspaceResponse,
+    WorkspacesListData,
     WorkspacesListResponse,
 )
 from ..utils.auth import get_current_user
@@ -39,6 +44,9 @@ def handle_repository_error(error: Exception) -> NoReturn:
     Raises:
         HTTPException: FastAPI compatible exception
     """
+    request_id = str(uuid.uuid4())
+    timestamp = datetime.now().isoformat()
+    
     if isinstance(error, EntityNotFoundError):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -47,7 +55,9 @@ def handle_repository_error(error: Exception) -> NoReturn:
                     "code": "resource_not_found",
                     "message": str(error),
                     "details": error.details if hasattr(error, "details") else {},
-                }
+                },
+                "request_id": request_id,
+                "timestamp": timestamp,
             },
         )
     elif isinstance(error, AccessDeniedError):
@@ -58,7 +68,9 @@ def handle_repository_error(error: Exception) -> NoReturn:
                     "code": "permission_denied",
                     "message": str(error),
                     "details": error.details if hasattr(error, "details") else {},
-                }
+                },
+                "request_id": request_id,
+                "timestamp": timestamp,
             },
         )
     elif isinstance(error, DuplicateEntityError):
@@ -69,7 +81,9 @@ def handle_repository_error(error: Exception) -> NoReturn:
                     "code": "resource_already_exists",
                     "message": str(error),
                     "details": error.details if hasattr(error, "details") else {},
-                }
+                },
+                "request_id": request_id,
+                "timestamp": timestamp,
             },
         )
     elif isinstance(error, DatabaseError):
@@ -81,7 +95,9 @@ def handle_repository_error(error: Exception) -> NoReturn:
                     "code": "database_error",
                     "message": "An error occurred while accessing the database",
                     "details": {"original_error": str(error)},
-                }
+                },
+                "request_id": request_id,
+                "timestamp": timestamp,
             },
         )
     else:
@@ -93,7 +109,9 @@ def handle_repository_error(error: Exception) -> NoReturn:
                     "code": "internal_error",
                     "message": "An unexpected error occurred",
                     "details": {"original_error": str(error)},
-                }
+                },
+                "request_id": request_id,
+                "timestamp": timestamp,
             },
         )
 
@@ -119,6 +137,7 @@ async def create_workspace(request: WorkspaceCreate, current_user: dict = Depend
         The created workspace
     """
     user_id = current_user["user_id"]
+    request_id = str(uuid.uuid4())
 
     try:
         # Create workspace
@@ -138,7 +157,17 @@ async def create_workspace(request: WorkspaceCreate, current_user: dict = Depend
 
         logger.info(f"Created workspace {workspace.id} for user {user_id}")
 
-        return WorkspaceResponse(status="workspace created", workspace=created_workspace)
+        # Create data for the response
+        data = WorkspaceData(workspace=created_workspace)
+        
+        # Create response with both new and backward compatible format
+        return WorkspaceResponse(
+            status="workspace created",
+            request_id=request_id,
+            timestamp=datetime.now().isoformat(),
+            data=data,
+            workspace=created_workspace
+        )
     except Exception as e:
         handle_repository_error(e)  # This never returns as it always raises an exception
 
@@ -148,7 +177,10 @@ async def create_workspace(request: WorkspaceCreate, current_user: dict = Depend
     response_model=WorkspacesListResponse,
     responses={401: {"model": ErrorResponse}, 500: {"model": ErrorResponse}},
 )
-async def list_workspaces(pagination: PaginationParams = Depends(), current_user: dict = Depends(get_current_user)) -> WorkspacesListResponse:
+async def list_workspaces(
+    pagination: PaginationParams = Depends(), 
+    current_user: dict = Depends(get_current_user)
+) -> WorkspacesListResponse:
     """
     List workspaces for the current user.
 
@@ -157,15 +189,16 @@ async def list_workspaces(pagination: PaginationParams = Depends(), current_user
         current_user: The authenticated user
 
     Returns:
-        List of workspaces owned by the user
+        List of workspaces owned by the user with pagination information
     """
     user_id = current_user["user_id"]
+    request_id = str(uuid.uuid4())
 
     try:
         async with UnitOfWork.for_transaction() as uow:
             workspace_repo = uow.repositories.get_workspace_repository()
 
-            # Get workspaces for user
+            # Get workspaces for user with pagination
             workspaces = await workspace_repo.list_by_owner(user_id, limit=pagination.limit, offset=pagination.offset)
 
             # Get total count
@@ -173,7 +206,25 @@ async def list_workspaces(pagination: PaginationParams = Depends(), current_user
 
         logger.info(f"Listed {len(workspaces)} workspaces for user {user_id}")
 
-        return WorkspacesListResponse(workspaces=workspaces, total=total)
+        # Create response with standardized format
+        data = WorkspacesListData(
+            workspaces=workspaces,
+            total=total,
+            limit=pagination.limit,
+            offset=pagination.offset
+        )
+        
+        # Use direct field access for backward compatibility
+        response = WorkspacesListResponse(
+            status="success",
+            request_id=request_id,
+            timestamp=datetime.now().isoformat(),
+            data=data,
+            workspaces=workspaces,
+            total=total
+        )
+        
+        return response
     except Exception as e:
         handle_repository_error(e)  # This never returns as it always raises an exception
 
@@ -274,7 +325,20 @@ async def update_workspace(workspace_id: str, request: WorkspaceUpdate, current_
 
         logger.info(f"Updated workspace {workspace_id} for user {user_id}")
 
-        return WorkspaceResponse(status="workspace updated", workspace=updated_workspace)
+        # Create request ID
+        request_id = str(uuid.uuid4())
+        
+        # Create data for the response
+        data = WorkspaceData(workspace=updated_workspace)
+        
+        # Create response with both new and backward compatible format
+        return WorkspaceResponse(
+            status="workspace updated", 
+            request_id=request_id,
+            timestamp=datetime.now().isoformat(),
+            data=data,
+            workspace=updated_workspace
+        )
     except Exception as e:
         handle_repository_error(e)  # This never returns as it always raises an exception
 
@@ -395,7 +459,20 @@ async def create_conversation(request: ConversationCreate, current_user: dict = 
         conversation_dict = created_conversation.model_dump()
         conversation_dict["messages"] = []  # Empty messages for new conversation
 
-        return ConversationResponse(status="conversation created", conversation=conversation_dict)
+        # Create request ID
+        request_id = str(uuid.uuid4())
+        
+        # Create data for the response
+        data = ConversationData(conversation=conversation_dict)
+        
+        # Create response with both new and backward compatible format
+        return ConversationResponse(
+            status="conversation created",
+            request_id=request_id,
+            timestamp=datetime.now().isoformat(),
+            data=data,
+            conversation=conversation_dict
+        )
     except Exception as e:
         handle_repository_error(e)  # This never returns as it always raises an exception
 
@@ -413,7 +490,7 @@ async def create_conversation(request: ConversationCreate, current_user: dict = 
 async def list_conversations(
     workspace_id: str = Query(..., description="The workspace ID"),
     pagination: PaginationParams = Depends(),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user)
 ) -> ConversationsListResponse:
     """
     List conversations in a workspace.
@@ -424,9 +501,10 @@ async def list_conversations(
         current_user: The authenticated user
 
     Returns:
-        List of conversations in the workspace
+        List of conversations in the workspace with pagination information
     """
     user_id = current_user["user_id"]
+    request_id = str(uuid.uuid4())
 
     try:
         async with UnitOfWork.for_transaction() as uow:
@@ -451,7 +529,25 @@ async def list_conversations(
 
         logger.info(f"Listed {len(conversations)} conversations for workspace {workspace_id}")
 
-        return ConversationsListResponse(conversations=conversations, total=total)
+        # Create response with standardized format
+        data = ConversationsListData(
+            conversations=conversations,
+            total=total,
+            limit=pagination.limit,
+            offset=pagination.offset
+        )
+        
+        # Use direct field access for backward compatibility
+        response = ConversationsListResponse(
+            status="success",
+            request_id=request_id,
+            timestamp=datetime.now().isoformat(),
+            data=data,
+            conversations=conversations,
+            total=total
+        )
+        
+        return response
     except Exception as e:
         handle_repository_error(e)  # This never returns as it always raises an exception
 
@@ -478,6 +574,7 @@ async def get_conversation(conversation_id: str, current_user: dict = Depends(ge
         The conversation
     """
     user_id = current_user["user_id"]
+    request_id = str(uuid.uuid4())
 
     try:
         async with UnitOfWork.for_transaction() as uow:
@@ -523,7 +620,17 @@ async def get_conversation(conversation_id: str, current_user: dict = Depends(ge
 
         logger.info(f"Retrieved conversation {conversation_id}")
 
-        return ConversationResponse(status="conversation retrieved", conversation=conversation_dict)
+        # Create data for the response
+        data = ConversationData(conversation=conversation_dict)
+        
+        # Create response with both new and backward compatible format
+        return ConversationResponse(
+            status="conversation retrieved",
+            request_id=request_id,
+            timestamp=datetime.now().isoformat(),
+            data=data,
+            conversation=conversation_dict
+        )
     except Exception as e:
         handle_repository_error(e)  # This never returns as it always raises an exception
 
@@ -617,7 +724,20 @@ async def update_conversation(
         # If messages is empty, we'll still add an empty list (not raise 404)
         conversation_dict["messages"] = [message.model_dump() for message in messages]
 
-        return ConversationResponse(status="conversation updated", conversation=conversation_dict)
+        # Create request ID
+        request_id = str(uuid.uuid4())
+        
+        # Create data for the response
+        data = ConversationData(conversation=conversation_dict)
+        
+        # Create response with both new and backward compatible format
+        return ConversationResponse(
+            status="conversation updated",
+            request_id=request_id,
+            timestamp=datetime.now().isoformat(),
+            data=data,
+            conversation=conversation_dict
+        )
     except Exception as e:
         handle_repository_error(e)  # This never returns as it always raises an exception
 

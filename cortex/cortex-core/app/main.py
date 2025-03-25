@@ -363,6 +363,139 @@ async def v1_health() -> dict:
     return system_info
 
 
+# Detailed health check endpoint with service status
+@app.get("/v1/health/details", tags=["status"])
+async def v1_health_details() -> dict:
+    """
+    Detailed health check endpoint with service status.
+    Returns comprehensive system and service health information.
+    """
+    import os
+    import platform
+    import sys
+    import psutil
+    import time
+    import httpx
+    from datetime import datetime
+    
+    # Start timing the response
+    start_time = time.time()
+    
+    # Get basic system information (same as v1_health)
+    health_info = {
+        "status": "healthy",
+        "timestamp": datetime.now().isoformat(),
+        "service": "Cortex Core",
+        "version": "0.1.0",
+        "environment": os.getenv("ENVIRONMENT", "development"),
+        "request_id": str(uuid.uuid4()),
+        "system": {
+            "python_version": sys.version,
+            "platform": platform.platform(),
+            "cpu_usage": psutil.cpu_percent(interval=0.1),
+            "memory_usage": psutil.virtual_memory().percent,
+            "disk_usage": psutil.disk_usage('/').percent,
+            "uptime_seconds": int(time.time() - psutil.boot_time())
+        },
+        "services": {}
+    }
+    
+    # Check if we're in distributed mode
+    distributed_mode = os.getenv("CORTEX_DISTRIBUTED_MODE", "false").lower() in ("true", "1", "yes")
+    
+    if distributed_mode:
+        # Check distributed services
+        services_to_check = {
+            "memory": os.getenv("MEMORY_SERVICE_URL", "http://localhost:9000"),
+            "cognition": os.getenv("COGNITION_SERVICE_URL", "http://localhost:9100")
+        }
+        
+        # Check each service
+        service_statuses = {}
+        overall_status = "healthy"
+        
+        async with httpx.AsyncClient(timeout=2.0) as client:
+            for service_name, service_url in services_to_check.items():
+                service_start_time = time.time()
+                try:
+                    response = await client.get(f"{service_url}/health")
+                    if response.status_code == 200:
+                        service_statuses[service_name] = {
+                            "status": "healthy",
+                            "endpoint": service_url,
+                            "response_time_ms": int((time.time() - service_start_time) * 1000)
+                        }
+                    else:
+                        service_statuses[service_name] = {
+                            "status": "unhealthy",
+                            "endpoint": service_url,
+                            "status_code": response.status_code,
+                            "response_time_ms": int((time.time() - service_start_time) * 1000)
+                        }
+                        overall_status = "degraded"
+                except Exception as e:
+                    service_statuses[service_name] = {
+                        "status": "unavailable",
+                        "endpoint": service_url,
+                        "error": str(e),
+                        "response_time_ms": int((time.time() - service_start_time) * 1000)
+                    }
+                    overall_status = "degraded"
+        
+        health_info["services"] = service_statuses
+        health_info["status"] = overall_status
+    else:
+        # In-process mode - check local MCP services
+        local_services = {
+            "memory": mcp_registry.get_service("memory"),
+            "cognition": mcp_registry.get_service("cognition")
+        }
+        
+        service_statuses = {}
+        for service_name, service in local_services.items():
+            if service is not None:
+                service_statuses[service_name] = {
+                    "status": "healthy",
+                    "mode": "in-process",
+                    "initialized": getattr(service, "initialized", True)
+                }
+            else:
+                service_statuses[service_name] = {
+                    "status": "unavailable",
+                    "mode": "in-process"
+                }
+        
+        health_info["services"] = service_statuses
+    
+    # Check database connectivity
+    try:
+        async with UnitOfWork.for_transaction() as uow:
+            # Simple query to verify database connection
+            user_repo = uow.repositories.get_user_repository()
+            count = await user_repo.count()
+            
+            health_info["database"] = {
+                "status": "healthy",
+                "type": os.getenv("DATABASE_TYPE", "sqlite"),
+                "connection_count": 1,
+                "record_counts": {
+                    "users": count
+                }
+            }
+    except Exception as e:
+        health_info["database"] = {
+            "status": "unhealthy",
+            "type": os.getenv("DATABASE_TYPE", "sqlite"),
+            "error": str(e)
+        }
+        health_info["status"] = "degraded"
+    
+    # Add response time
+    health_info["response_time_ms"] = int((time.time() - start_time) * 1000)
+    
+    return health_info
+
+
 # Include routers
 app.include_router(auth_router)
 app.include_router(input_router)

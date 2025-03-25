@@ -49,10 +49,50 @@ class ConversationUpdate(BaseModelWithMetadata):
 
 
 class PaginationParams(BaseModel):
-    """Pagination parameters."""
+    """
+    Pagination parameters.
+    
+    These parameters follow the limit-offset pagination pattern, which is simple
+    and works well with SQL databases. It allows clients to paginate through results
+    by specifying how many items to return (limit) and how many to skip (offset).
+    """
 
-    limit: int = Field(100, ge=1, le=1000, description="Maximum number of items to return")
+    limit: int = Field(50, ge=1, le=1000, description="Maximum number of items to return")
     offset: int = Field(0, ge=0, description="Number of items to skip")
+    
+    @property
+    def page(self) -> int:
+        """
+        Calculate the current page number (0-indexed).
+        
+        Returns:
+            Current page number based on offset and limit
+        """
+        if self.limit <= 0:  # Avoid division by zero
+            return 0
+        return self.offset // self.limit
+    
+    @property
+    def has_previous(self) -> bool:
+        """
+        Check if there is a previous page.
+        
+        Returns:
+            True if offset > 0, False otherwise
+        """
+        return self.offset > 0
+    
+    @property
+    def previous_offset(self) -> int:
+        """
+        Calculate the offset for the previous page.
+        
+        Returns:
+            Offset for the previous page, or 0 if no previous page
+        """
+        if not self.has_previous:
+            return 0
+        return max(0, self.offset - self.limit)
 
 
 class GetContextRequest(BaseModelWithMetadata):

@@ -1,8 +1,11 @@
+import uuid
+from datetime import datetime
+
 from fastapi import APIRouter, Depends
 from fastapi.security import OAuth2PasswordRequestForm
 
 from ..core.exceptions import InvalidCredentialsException
-from ..models.api.response import LoginResponse
+from ..models.api.response import LoginResponse, LoginResponseData
 from ..utils.auth import ACCESS_TOKEN_EXPIRE_HOURS, create_access_token, get_current_user
 
 router = APIRouter(prefix="/v1/auth", tags=["auth"])
@@ -56,12 +59,22 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()) -> LoginRespon
     token_data = {"sub": form_data.username, "oid": user["oid"], "name": user["name"], "email": user["email"]}
 
     access_token = create_access_token(token_data)
-
-    return LoginResponse(
+    request_id = str(uuid.uuid4())
+    
+    # Create data for the response
+    data = LoginResponseData(
         access_token=access_token,
         token_type="bearer",
         expires_in=ACCESS_TOKEN_EXPIRE_HOURS * 3600,  # Convert hours to seconds
         claims={"oid": user["oid"], "name": user["name"], "email": user["email"]},
+    )
+    
+    # Create response with standardized format
+    return LoginResponse(
+        status="success",
+        request_id=request_id,
+        timestamp=datetime.now().isoformat(),
+        data=data
     )
 
 
@@ -76,4 +89,6 @@ async def verify_token(current_user: dict = Depends(get_current_user)) -> dict:
     Returns:
         User data from the token
     """
+    # For this endpoint, we're maintaining the simpler response format
+    # since it's primarily used internally and doesn't need the full BaseResponse structure
     return current_user

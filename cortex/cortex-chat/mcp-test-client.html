@@ -519,9 +519,9 @@ DELETE /v1/conversation/{id}                   - Delete conversation
                 
                 const data = await response.json();
                 
-                // Store token and user data
-                token = data.access_token;
-                user = data.claims;
+                // Store token and user data from standardized response format
+                token = data.data.access_token;
+                user = data.data.claims;
                 
                 // Show success message
                 authStatus.textContent = 'Authentication successful!';
@@ -570,15 +570,15 @@ DELETE /v1/conversation/{id}                   - Delete conversation
                 const workspaceSelect = document.getElementById('workspace-select');
                 workspaceSelect.innerHTML = '<option value="">-- Select Workspace --</option>';
                 
-                if (data.workspaces && data.workspaces.length > 0) {
-                    data.workspaces.forEach(workspace => {
+                if (data.data && data.data.workspaces && data.data.workspaces.length > 0) {
+                    data.data.workspaces.forEach(workspace => {
                         const option = document.createElement('option');
                         option.value = workspace.id;
                         option.textContent = workspace.name;
                         workspaceSelect.appendChild(option);
                     });
                     
-                    addMessage('system', `Loaded ${data.workspaces.length} workspaces`);
+                    addMessage('system', `Loaded ${data.data.workspaces.length} workspaces`);
                     
                     // Add create button next to select
                     if (!document.getElementById('create-workspace-btn')) {
@@ -716,7 +716,20 @@ DELETE /v1/conversation/{id}                   - Delete conversation
                 const options = Array.from(workspaceSelect.options);
                 const newOption = options.find(option => option.textContent === name);
                 
-                if (newOption) {
+                // Use workspace ID from the response data
+                if (data.data && data.data.workspace && data.data.workspace.id) {
+                    selectedWorkspaceId = data.data.workspace.id;
+                    const matchingOption = options.find(option => option.value === selectedWorkspaceId);
+                    if (matchingOption) {
+                        workspaceSelect.value = selectedWorkspaceId;
+                    }
+                    
+                    // Show conversation container
+                    document.getElementById('conversation-container').style.display = 'block';
+                    
+                    // Load conversations for this workspace (will be empty initially)
+                    loadConversations(selectedWorkspaceId);
+                } else if (newOption) {
                     workspaceSelect.value = newOption.value;
                     selectedWorkspaceId = newOption.value;
                     
@@ -762,15 +775,15 @@ DELETE /v1/conversation/{id}                   - Delete conversation
                 const conversationSelect = document.getElementById('conversation-select');
                 conversationSelect.innerHTML = '<option value="">-- Select Conversation --</option>';
                 
-                if (data.conversations && data.conversations.length > 0) {
-                    data.conversations.forEach(conversation => {
+                if (data.data && data.data.conversations && data.data.conversations.length > 0) {
+                    data.data.conversations.forEach(conversation => {
                         const option = document.createElement('option');
                         option.value = conversation.id;
                         option.textContent = conversation.topic;
                         conversationSelect.appendChild(option);
                     });
                     
-                    addMessage('system', `Loaded ${data.conversations.length} conversations`);
+                    addMessage('system', `Loaded ${data.data.conversations.length} conversations`);
                 } else {
                     addMessage('system', 'No conversations found in this workspace. Create one to get started.');
                 }
@@ -900,12 +913,23 @@ DELETE /v1/conversation/{id}                   - Delete conversation
                 // Find and select the newly created conversation
                 const conversationSelect = document.getElementById('conversation-select');
                 const options = Array.from(conversationSelect.options);
-                const newOption = options.find(option => option.textContent === topic);
                 
-                if (newOption) {
-                    conversationSelect.value = newOption.value;
-                    selectedConversationId = newOption.value;
-                    handleConversationSelect();
+                // Check if we have conversation ID in the response
+                if (data.data && data.data.conversation && data.data.conversation.id) {
+                    selectedConversationId = data.data.conversation.id;
+                    const matchingOption = options.find(option => option.value === selectedConversationId);
+                    if (matchingOption) {
+                        conversationSelect.value = selectedConversationId;
+                        handleConversationSelect();
+                    }
+                } else {
+                    // Fallback to searching by topic
+                    const newOption = options.find(option => option.textContent === topic);
+                    if (newOption) {
+                        conversationSelect.value = newOption.value;
+                        selectedConversationId = newOption.value;
+                        handleConversationSelect();
+                    }
                 }
                 
                 addMessage('system', `Created new conversation: ${topic}`);
@@ -934,9 +958,12 @@ DELETE /v1/conversation/{id}                   - Delete conversation
                 
                 if (configResponse.ok) {
                     const data = await configResponse.json();
-                    if (data.conversation && data.conversation.messages && data.conversation.messages.length > 0) {
+                    // Handle both standard and backwards compatible formats
+                    const conversation = data.data && data.data.conversation ? data.data.conversation : data.conversation;
+                    
+                    if (conversation && conversation.messages && conversation.messages.length > 0) {
                         // Display messages from newest to oldest
-                        const messages = data.conversation.messages.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+                        const messages = conversation.messages.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
                         
                         // Add messages to UI
                         for (const message of messages) {
@@ -1687,7 +1714,7 @@ DELETE /v1/conversation/{id}                   - Delete conversation
             const recencyWeight = parseFloat(document.getElementById('recency-weight').value);
             
             try {
-                const response = await fetch(`${API_URL}/cognition/context`, {
+                const response = await fetch(`${API_URL}/v1/context`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
