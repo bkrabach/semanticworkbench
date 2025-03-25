@@ -7,9 +7,6 @@ from typing import Any, Dict, Optional
 from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
-from app.backend.cognition_client import CognitionClient
-from app.backend.memory_client import MemoryClient
-
 # Set up logger
 logger = logging.getLogger(__name__)
 
@@ -86,9 +83,13 @@ async def health_check(request: Request) -> HealthResponse:
             cognition_client = response_handler.cognition_client
             logger.debug("Using existing cognition client from response handler")
         else:
-            # Create temporary client for health check only
-            cognition_client = CognitionClient()
-            logger.debug("Created temporary cognition client for health check")
+            # Use client factory from app state
+            if hasattr(app.state, "get_cognition_client"):
+                cognition_client = await app.state.get_cognition_client()
+                logger.debug("Created cognition client using app.state factory")
+            else:
+                logger.warning("No cognition client factory found in app.state")
+                raise RuntimeError("Cognition client factory not available")
 
         # Measure latency
         start_time = time.time()
@@ -126,9 +127,13 @@ async def health_check(request: Request) -> HealthResponse:
             memory_client = response_handler.memory_client
             logger.debug("Using existing memory client from response handler")
         else:
-            # Create temporary client for health check only
-            memory_client = MemoryClient()
-            logger.debug("Created temporary memory client for health check")
+            # Use client factory from app state
+            if hasattr(app.state, "get_memory_client"):
+                memory_client = await app.state.get_memory_client()
+                logger.debug("Created memory client using app.state factory")
+            else:
+                logger.warning("No memory client factory found in app.state")
+                raise RuntimeError("Memory client factory not available")
 
         # Measure latency
         start_time = time.time()

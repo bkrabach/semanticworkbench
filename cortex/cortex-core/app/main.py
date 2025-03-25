@@ -55,6 +55,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     app.state.memory_client = MemoryClient(MEMORY_SERVICE_URL)
     app.state.cognition_client = CognitionClient(COGNITION_SERVICE_URL)
     
+    # Add client factory functions to app state for components that need to create their own clients
+    async def get_memory_client():
+        return MemoryClient(MEMORY_SERVICE_URL)
+    
+    async def get_cognition_client():
+        return CognitionClient(COGNITION_SERVICE_URL)
+    
+    app.state.get_memory_client = get_memory_client
+    app.state.get_cognition_client = get_cognition_client
+    
     # Connect to services
     try:
         memory_connected, memory_error = await app.state.memory_client.connect()
