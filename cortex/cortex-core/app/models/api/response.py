@@ -1,15 +1,15 @@
 from datetime import datetime
 from typing import Any, Dict, List, Optional, TypeVar, Generic
 
-from pydantic import BaseModel, Field
-from pydantic.generics import GenericModel
+from pydantic import BaseModel, Field, ConfigDict
+# No longer need to import GenericModel as it's now part of BaseModel
 
 from ...models import Conversation, Workspace
 
 T = TypeVar('T')
 
 
-class BaseResponse(GenericModel, Generic[T]):
+class BaseResponse(BaseModel, Generic[T]):
     """Base response model that all API responses should inherit from."""
     
     status: str = Field("success", description="Status of the operation (success, error, etc.)")
@@ -17,10 +17,9 @@ class BaseResponse(GenericModel, Generic[T]):
     timestamp: str = Field(default_factory=lambda: datetime.now().isoformat(), description="Response timestamp")
     data: T = Field(..., description="Response data payload")
     
-    class Config:
-        """Pydantic config for BaseResponse."""
-        
-        schema_extra = {
+    # Modern Pydantic v2 way of specifying model configuration
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "status": "success",
                 "request_id": "550e8400-e29b-41d4-a716-446655440000",
@@ -28,6 +27,7 @@ class BaseResponse(GenericModel, Generic[T]):
                 "data": {}
             }
         }
+    )
 
 
 class ResultSegment(BaseModel):
@@ -55,7 +55,6 @@ class LoginResponse(BaseResponse[LoginResponseData]):
 class InputResponse(BaseResponse[Dict[str, Any]]):
     """Input response model."""
     
-    # Maintains backward compatibility with existing clients
     data: Dict[str, Any] = Field(..., description="Echoed input data")
 
 
@@ -68,11 +67,7 @@ class WorkspaceData(BaseModel):
 class WorkspaceResponse(BaseResponse[WorkspaceData]):
     """Workspace response model."""
     
-    # For backward compatibility
     data: WorkspaceData
-    
-    # Backward compatibility field
-    workspace: Optional[Workspace] = Field(None, description="Workspace data (backward compatibility)")
 
 
 class WorkspacesListData(BaseModel):
@@ -88,10 +83,6 @@ class WorkspacesListResponse(BaseResponse[WorkspacesListData]):
     """Workspaces list response model."""
     
     data: WorkspacesListData
-    
-    # Backward compatibility fields
-    workspaces: List[Workspace] = Field([], description="List of workspaces (backward compatibility)")
-    total: int = Field(0, description="Total number of workspaces (backward compatibility)")
 
 
 class ConversationData(BaseModel):
@@ -104,10 +95,6 @@ class ConversationResponse(BaseResponse[ConversationData]):
     """Conversation response model."""
     
     data: ConversationData
-    
-    # Backward compatibility fields
-    conversation: Dict[str, Any] = Field({}, description="Conversation data (backward compatibility)")
-    status: str = Field("success", description="Status of the operation (backward compatibility)")
 
 
 class ConversationsListData(BaseModel):
@@ -123,10 +110,6 @@ class ConversationsListResponse(BaseResponse[ConversationsListData]):
     """Conversations list response model."""
     
     data: ConversationsListData
-    
-    # Backward compatibility fields
-    conversations: List[Conversation] = Field([], description="List of conversations (backward compatibility)")
-    total: int = Field(0, description="Total number of conversations (backward compatibility)")
 
 
 class ErrorDetail(BaseModel):

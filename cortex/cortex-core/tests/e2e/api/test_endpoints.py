@@ -96,7 +96,7 @@ def test_input_endpoint() -> None:
         headers=headers,
     )
     workspace_data = workspace_response.json()
-    workspace_id = workspace_data["workspace"]["id"]
+    workspace_id = workspace_data["data"]["workspace"]["id"]
 
     conversation_response = client.post(
         "/v1/conversation",
@@ -104,7 +104,7 @@ def test_input_endpoint() -> None:
         headers=headers,
     )
     conversation_data = conversation_response.json()
-    conversation_id = conversation_data["conversation"]["id"]
+    conversation_id = conversation_data["data"]["conversation"]["id"]
 
     # Test input endpoint with conversation_id in path
     response = client.post(
@@ -146,8 +146,8 @@ def test_workspace_endpoints() -> None:
     assert response.status_code == 201
     data = response.json()
     assert data["status"] == "workspace created"
-    assert data["workspace"]["name"] == "Test Workspace"
-    workspace_id = data["workspace"]["id"]
+    assert data["data"]["workspace"]["name"] == "Test Workspace"
+    workspace_id = data["data"]["workspace"]["id"]
 
     # List workspaces
     response = client.get("/v1/workspace", headers=headers)
@@ -156,8 +156,9 @@ def test_workspace_endpoints() -> None:
     
     # In a test environment, workspaces may or may not persist between calls depending on the database setup
     # Just verify we get a list and the response format is correct, without requiring the specific workspace
-    assert "workspaces" in data
-    assert isinstance(data["workspaces"], list)
+    assert "data" in data
+    assert "workspaces" in data["data"]
+    assert isinstance(data["data"]["workspaces"], list)
 
     # Create conversation
     response = client.post(
@@ -168,12 +169,12 @@ def test_workspace_endpoints() -> None:
     assert response.status_code == 201
     data = response.json()
     assert data["status"] == "conversation created"
-    assert data["conversation"]["topic"] == "Test Conversation"
-    conversation_id = data["conversation"]["id"]
+    assert data["data"]["conversation"]["topic"] == "Test Conversation"
+    conversation_id = data["data"]["conversation"]["id"]
 
     # List conversations
     response = client.get(f"/v1/conversation?workspace_id={workspace_id}", headers=headers)
     assert response.status_code == 200
     data = response.json()
-    assert len(data["conversations"]) > 0
-    assert any(c["id"] == conversation_id for c in data["conversations"])
+    assert len(data["data"]["conversations"]) > 0
+    assert any(c["id"] == conversation_id for c in data["data"]["conversations"])

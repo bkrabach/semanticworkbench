@@ -160,13 +160,12 @@ async def create_workspace(request: WorkspaceCreate, current_user: dict = Depend
         # Create data for the response
         data = WorkspaceData(workspace=created_workspace)
         
-        # Create response with both new and backward compatible format
+        # Create standardized response
         return WorkspaceResponse(
             status="workspace created",
             request_id=request_id,
             timestamp=datetime.now().isoformat(),
-            data=data,
-            workspace=created_workspace
+            data=data
         )
     except Exception as e:
         handle_repository_error(e)  # This never returns as it always raises an exception
@@ -206,7 +205,7 @@ async def list_workspaces(
 
         logger.info(f"Listed {len(workspaces)} workspaces for user {user_id}")
 
-        # Create response with standardized format
+        # Create standardized response
         data = WorkspacesListData(
             workspaces=workspaces,
             total=total,
@@ -214,14 +213,11 @@ async def list_workspaces(
             offset=pagination.offset
         )
         
-        # Use direct field access for backward compatibility
         response = WorkspacesListResponse(
             status="success",
             request_id=request_id,
             timestamp=datetime.now().isoformat(),
-            data=data,
-            workspaces=workspaces,
-            total=total
+            data=data
         )
         
         return response
@@ -331,13 +327,12 @@ async def update_workspace(workspace_id: str, request: WorkspaceUpdate, current_
         # Create data for the response
         data = WorkspaceData(workspace=updated_workspace)
         
-        # Create response with both new and backward compatible format
+        # Create standardized response
         return WorkspaceResponse(
             status="workspace updated", 
             request_id=request_id,
             timestamp=datetime.now().isoformat(),
-            data=data,
-            workspace=updated_workspace
+            data=data
         )
     except Exception as e:
         handle_repository_error(e)  # This never returns as it always raises an exception
@@ -465,13 +460,12 @@ async def create_conversation(request: ConversationCreate, current_user: dict = 
         # Create data for the response
         data = ConversationData(conversation=conversation_dict)
         
-        # Create response with both new and backward compatible format
+        # Create standardized response
         return ConversationResponse(
             status="conversation created",
             request_id=request_id,
             timestamp=datetime.now().isoformat(),
-            data=data,
-            conversation=conversation_dict
+            data=data
         )
     except Exception as e:
         handle_repository_error(e)  # This never returns as it always raises an exception
@@ -529,7 +523,7 @@ async def list_conversations(
 
         logger.info(f"Listed {len(conversations)} conversations for workspace {workspace_id}")
 
-        # Create response with standardized format
+        # Create standardized response
         data = ConversationsListData(
             conversations=conversations,
             total=total,
@@ -537,14 +531,11 @@ async def list_conversations(
             offset=pagination.offset
         )
         
-        # Use direct field access for backward compatibility
         response = ConversationsListResponse(
             status="success",
             request_id=request_id,
             timestamp=datetime.now().isoformat(),
-            data=data,
-            conversations=conversations,
-            total=total
+            data=data
         )
         
         return response
@@ -623,13 +614,12 @@ async def get_conversation(conversation_id: str, current_user: dict = Depends(ge
         # Create data for the response
         data = ConversationData(conversation=conversation_dict)
         
-        # Create response with both new and backward compatible format
+        # Create standardized response
         return ConversationResponse(
             status="conversation retrieved",
             request_id=request_id,
             timestamp=datetime.now().isoformat(),
-            data=data,
-            conversation=conversation_dict
+            data=data
         )
     except Exception as e:
         handle_repository_error(e)  # This never returns as it always raises an exception
@@ -730,13 +720,12 @@ async def update_conversation(
         # Create data for the response
         data = ConversationData(conversation=conversation_dict)
         
-        # Create response with both new and backward compatible format
+        # Create standardized response
         return ConversationResponse(
             status="conversation updated",
             request_id=request_id,
             timestamp=datetime.now().isoformat(),
-            data=data,
-            conversation=conversation_dict
+            data=data
         )
     except Exception as e:
         handle_repository_error(e)  # This never returns as it always raises an exception

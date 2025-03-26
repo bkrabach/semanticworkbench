@@ -82,7 +82,7 @@ def test_permission_denied_error() -> None:
         json={"name": "User1 Workspace", "description": "Test Description", "metadata": {}},
         headers=headers_user1,
     )
-    test_workspace_id = workspace_response.json()["workspace"]["id"]
+    test_workspace_id = workspace_response.json()["data"]["workspace"]["id"]
 
     # Create a conversation in User 1's workspace
     client.post(

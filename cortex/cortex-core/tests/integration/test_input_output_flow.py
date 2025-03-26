@@ -31,7 +31,7 @@ async def test_input_to_output_flow() -> None:
         headers=headers,
     )
     assert workspace_response.status_code == 201
-    workspace_id = workspace_response.json()["workspace"]["id"]
+    workspace_id = workspace_response.json()["data"]["workspace"]["id"]
 
     # Create a conversation
     conversation_response = client.post(
@@ -40,7 +40,7 @@ async def test_input_to_output_flow() -> None:
         headers=headers,
     )
     assert conversation_response.status_code == 201
-    conversation_id = conversation_response.json()["conversation"]["id"]
+    conversation_id = conversation_response.json()["data"]["conversation"]["id"]
 
     # Send test input using the conversation_id in the path
     response = client.post(

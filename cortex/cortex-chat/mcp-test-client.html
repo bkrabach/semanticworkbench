@@ -714,7 +714,6 @@ DELETE /v1/conversation/{id}                   - Delete conversation
                 // Find and select the newly created workspace
                 const workspaceSelect = document.getElementById('workspace-select');
                 const options = Array.from(workspaceSelect.options);
-                const newOption = options.find(option => option.textContent === name);
                 
                 // Use workspace ID from the response data
                 if (data.data && data.data.workspace && data.data.workspace.id) {
@@ -723,15 +722,6 @@ DELETE /v1/conversation/{id}                   - Delete conversation
                     if (matchingOption) {
                         workspaceSelect.value = selectedWorkspaceId;
                     }
-                    
-                    // Show conversation container
-                    document.getElementById('conversation-container').style.display = 'block';
-                    
-                    // Load conversations for this workspace (will be empty initially)
-                    loadConversations(selectedWorkspaceId);
-                } else if (newOption) {
-                    workspaceSelect.value = newOption.value;
-                    selectedWorkspaceId = newOption.value;
                     
                     // Show conversation container
                     document.getElementById('conversation-container').style.display = 'block';
@@ -914,20 +904,12 @@ DELETE /v1/conversation/{id}                   - Delete conversation
                 const conversationSelect = document.getElementById('conversation-select');
                 const options = Array.from(conversationSelect.options);
                 
-                // Check if we have conversation ID in the response
+                // Get conversation ID from the response
                 if (data.data && data.data.conversation && data.data.conversation.id) {
                     selectedConversationId = data.data.conversation.id;
                     const matchingOption = options.find(option => option.value === selectedConversationId);
                     if (matchingOption) {
                         conversationSelect.value = selectedConversationId;
-                        handleConversationSelect();
-                    }
-                } else {
-                    // Fallback to searching by topic
-                    const newOption = options.find(option => option.textContent === topic);
-                    if (newOption) {
-                        conversationSelect.value = newOption.value;
-                        selectedConversationId = newOption.value;
                         handleConversationSelect();
                     }
                 }
@@ -958,8 +940,8 @@ DELETE /v1/conversation/{id}                   - Delete conversation
                 
                 if (configResponse.ok) {
                     const data = await configResponse.json();
-                    // Handle both standard and backwards compatible formats
-                    const conversation = data.data && data.data.conversation ? data.data.conversation : data.conversation;
+                    // Get conversation from standardized format
+                    const conversation = data.data.conversation;
                     
                     if (conversation && conversation.messages && conversation.messages.length > 0) {
                         // Display messages from newest to oldest
@@ -1315,8 +1297,12 @@ DELETE /v1/conversation/{id}                   - Delete conversation
                             return;
                         }
                         
+                        // Track if we've handled this event
+                        let handled = false;
+                        
                         // Handle unified message format
                         if (data.type === 'message' && data.data) {
+                            handled = true;
                             const messageData = data.data;
                             const messageType = data.message_type;
                             const conversationId = messageData.conversation_id || selectedConversationId;
@@ -1546,92 +1532,10 @@ DELETE /v1/conversation/{id}                   - Delete conversation
                             return;
                         }
                         
-                        // Legacy event handling for backward compatibility
-                        switch (data.type) {
-                            case 'input':
-                                // Handle input confirmation from server (legacy format)
-                                if (data.data && conversationId) {
-                                    // Use server-provided message ID if available, or generate one
-                                    const messageId = data.data.message_id || `user-${Date.now()}`;
-                                    
-                                    // Find existing message with matching content
-                                    const existingMessageElement = findMatchingUserMessage(data.data.content);
-                                    
-                                    if (existingMessageElement) {
-                                        // Update with server ID instead of creating a new one
-                                        console.log('Legacy: Found existing message, updating with server ID');
-                                        existingMessageElement.id = `msg-${messageId}`;
-                                        existingMessageElement.dataset.messageId = messageId;
-                                        
-                                        // Update tracking
-                                        if (existingMessageElement.dataset.tempId) {
-                                            const tempId = existingMessageElement.dataset.tempId;
-                                            if (messageTracking[conversationId][tempId]) {
-                                                delete messageTracking[conversationId][tempId];
-                                            }
-                                        }
-                                        
-                                        // Add to tracking with server ID
-                                        messageTracking[conversationId][messageId] = {
-                                            type: 'user',
-                                            content: data.data.content,
-                                            timestamp: data.timestamp || new Date().toISOString()
-                                        };
-                                        
-                                        // Update active message tracking
-                                        activeMessages[conversationId].user = messageId;
-                                    } else {
-                                        // Create new message (rare case)
-                                        updateOrCreateMessage(
-                                            conversationId, 
-                                            messageId, 
-                                            'user', 
-                                            data.data.content
-                                        );
-                                    }
-                                }
-                                break;
-                                
-                            case 'response':
-                                // Handle final response (legacy format)
-                                if (data.data && conversationId) {
-                                    const messageId = data.data.message_id;
-                                    const inReplyTo = data.data.in_reply_to;
-                                    const content = data.data.content;
-                                    
-                                    if (messageId) {
-                                        updateOrCreateMessage(
-                                            conversationId,
-                                            messageId,
-                                            'assistant',
-                                            content,
-                                            inReplyTo
-                                        );
-                                        
-                                        messageTracking[conversationId]._streamContent = "";
-                                        
-                                        // Refresh context
-                                        if (document.getElementById('context-toggle').checked) {
-                                            setTimeout(() => {
-                                                getContextPreview();
-                                            }, 500);
-                                        }
-                                    }
-                                }
-                                break;
-                                
-                            case 'response_chunk':
-                            case 'response_complete':
-                            case 'tool_execution':
-                            case 'tool_result':
-                                console.log(`Received legacy event type: ${data.type}`);
-                                // Process legacy events similarly to their unified counterparts
-                                // (Specific handlers omitted for brevity since we're transitioning away from these)
-                                break;
-                                
-                            default:
-                                console.log('Unknown event type:', data.type);
-                                addMessage('system', `Received event of type: ${data.type}`);
+                        // Handle unknown event types
+                        if (!handled) {
+                            console.log('Unknown event type:', data.type);
+                            addMessage('system', `Received event of type: ${data.type}`);
                         }
                     } catch (error) {
                         console.error('Error processing SSE event:', error);

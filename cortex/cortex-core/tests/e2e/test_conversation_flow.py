@@ -43,7 +43,7 @@ def test_workspace(client: TestClient, auth_headers: Dict[str, str]) -> Dict[str
         headers=auth_headers,
     )
     assert response.status_code == 201
-    workspace: Dict[str, Any] = response.json()["workspace"]
+    workspace: Dict[str, Any] = response.json()["data"]["workspace"]
     return workspace
 
 
@@ -62,7 +62,7 @@ def test_conversation(
         headers=auth_headers,
     )
     assert response.status_code == 201
-    conversation: Dict[str, Any] = response.json()["conversation"]
+    conversation: Dict[str, Any] = response.json()["data"]["conversation"]
     return conversation
 
 
@@ -79,7 +79,7 @@ def test_create_workspace_and_conversation(client: TestClient, auth_headers: Dic
         headers=auth_headers,
     )
     assert workspace_response.status_code == 201
-    workspace = workspace_response.json()["workspace"]
+    workspace = workspace_response.json()["data"]["workspace"]
     assert workspace["name"].startswith("Flow Test Workspace")
 
     # Create conversation
@@ -93,14 +93,14 @@ def test_create_workspace_and_conversation(client: TestClient, auth_headers: Dic
         headers=auth_headers,
     )
     assert conversation_response.status_code == 201
-    conversation = conversation_response.json()["conversation"]
+    conversation = conversation_response.json()["data"]["conversation"]
     assert conversation["topic"].startswith("Flow Test Conversation")
     assert conversation["workspace_id"] == workspace["id"]
 
     # Verify conversation in workspace
     conversations_response = client.get(f"/v1/conversation?workspace_id={workspace['id']}", headers=auth_headers)
     assert conversations_response.status_code == 200
-    conversations = conversations_response.json()["conversations"]
+    conversations = conversations_response.json()["data"]["conversations"]
     assert any(c["id"] == conversation["id"] for c in conversations)
 
 
@@ -130,7 +130,7 @@ def test_send_and_receive_message(
     # Get conversation detail to see the messages
     conversation_detail_response = client.get(f"/v1/conversation/{test_conversation['id']}", headers=auth_headers)
     assert conversation_detail_response.status_code == 200
-    conversation_detail = conversation_detail_response.json()["conversation"]
+    conversation_detail = conversation_detail_response.json()["data"]["conversation"]
 
     # Verify messages
     assert "messages" in conversation_detail
@@ -176,7 +176,7 @@ def test_complex_conversation_flow(
     # Get conversation detail
     conversation_detail_response = client.get(f"/v1/conversation/{test_conversation['id']}", headers=auth_headers)
     assert conversation_detail_response.status_code == 200
-    conversation_detail = conversation_detail_response.json()["conversation"]
+    conversation_detail = conversation_detail_response.json()["data"]["conversation"]
 
     # Verify all messages are there
     messages = conversation_detail["messages"]
@@ -202,14 +202,14 @@ def test_update_conversation(
         headers=auth_headers,
     )
     assert update_response.status_code == 200
-    updated_conversation = update_response.json()["conversation"]
+    updated_conversation = update_response.json()["data"]["conversation"]
     assert updated_conversation["topic"] == new_topic
     assert updated_conversation["metadata"]["updated"] is True
 
     # Verify the update
     get_response = client.get(f"/v1/conversation/{test_conversation['id']}", headers=auth_headers)
     assert get_response.status_code == 200
-    retrieved_conversation = get_response.json()["conversation"]
+    retrieved_conversation = get_response.json()["data"]["conversation"]
     assert retrieved_conversation["topic"] == new_topic
     assert retrieved_conversation["metadata"]["updated"] is True
 
