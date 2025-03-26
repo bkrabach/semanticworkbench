@@ -127,6 +127,7 @@ async def receive_input(
                     "timestamp": timestamp,
                     "metadata": request.metadata,
                 },
+                request_id=request.request_id
             )
 
     except (EntityNotFoundError, AccessDeniedError) as e:

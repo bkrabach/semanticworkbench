@@ -262,7 +262,13 @@ async def get_workspace(workspace_id: str, current_user: dict = Depends(get_curr
 
         logger.info(f"Retrieved workspace {workspace_id} for user {user_id}")
 
-        return WorkspaceResponse(status="workspace retrieved", workspace=workspace)
+        # Create the workspace data wrapper
+        workspace_data = WorkspaceData(workspace=workspace)
+        return WorkspaceResponse(
+            status="workspace retrieved", 
+            data=workspace_data, 
+            request_id=str(uuid.uuid4())  # Generate a new request ID since we don't have a request object
+        )
     except Exception as e:
         handle_repository_error(e)  # This never returns as it always raises an exception
 

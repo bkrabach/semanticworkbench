@@ -49,7 +49,7 @@ async def get_user_context(request: GetContextRequest, current_user: dict = Depe
         result = await get_context(user_id=user_id, query=request.query, limit=limit)
 
         # Return the result
-        return GetContextResponse(status="success", data=result)
+        return GetContextResponse(status="success", data=result, request_id=request.request_id)
     except Exception as e:
         logger.error(f"Error retrieving context: {str(e)}")
         raise HTTPException(
@@ -100,7 +100,7 @@ async def analyze_user_conversation(
         )
 
         # Return the result
-        return AnalyzeConversationResponse(status="success", data=result)
+        return AnalyzeConversationResponse(status="success", data=result, request_id=request.request_id)
     except AccessDeniedError as e:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -157,7 +157,7 @@ async def search_user_history(request: SearchHistoryRequest, current_user: dict 
         )
 
         # Return the result
-        return SearchHistoryResponse(status="success", data=result)
+        return SearchHistoryResponse(status="success", data=result, request_id=request.request_id)
     except Exception as e:
         logger.error(f"Error searching history: {str(e)}")
         raise HTTPException(
