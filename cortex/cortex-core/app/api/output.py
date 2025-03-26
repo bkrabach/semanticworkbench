@@ -27,7 +27,7 @@ async def event_generator(
 
     # Get the event bus from the app state
     event_bus = request.app.state.event_bus
-    
+
     client_queue: asyncio.Queue = event_bus.subscribe(
         event_type=None,  # Subscribe to all event types
         conversation_id=conversation_id,  # Filter by conversation if specified
@@ -78,6 +78,7 @@ async def event_generator(
 async def stream_output(
     request: Request,
     conversation_id: Optional[str] = Query(None),
+    token: Optional[str] = Query(None),
     current_user: Dict[str, Any] = Depends(get_current_user),
 ) -> StreamingResponse:
     """
@@ -86,6 +87,7 @@ async def stream_output(
     Args:
         request: The FastAPI request object
         conversation_id: Optional ID of the conversation to filter events
+        token: Optional token for authentication via query parameter (alternative to header)
         current_user: The authenticated user information
 
     Returns:

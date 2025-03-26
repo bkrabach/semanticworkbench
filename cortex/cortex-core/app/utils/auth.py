@@ -109,34 +109,49 @@ def verify_jwt(token: str) -> Dict[str, Any]:
         raise ValueError(f"Invalid token: {str(e)}")
 
 
-def get_current_user(authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
+def get_current_user(
+    authorization: Optional[str] = Header(None), 
+    token: Optional[str] = None
+) -> Dict[str, Any]:
     """
     FastAPI dependency function to extract and validate the user from JWT token.
+    Supports both header-based and query parameter-based authentication.
 
     Usage:
         @app.get("/protected")
         async def protected_route(current_user: dict = Depends(get_current_user)):
             return {"message": f"Hello, {current_user['name']}!"}
 
+    Args:
+        authorization: The Authorization header value (Bearer token)
+        token: Token from query parameter (alternative to Authorization header)
+
     Raises AuthenticationException if token is invalid or missing.
     """
-    # Check if Authorization header is present
-    if not authorization:
-        logger.warning("Authentication failed: Authorization header missing")
-        raise AuthenticationException("Authorization header missing")
-
-    # Check if it has the correct format (Bearer token)
-    parts = authorization.split()
-    if parts[0].lower() != "bearer" or len(parts) != 2:
-        logger.warning("Authentication failed: Invalid Authorization header format")
-        raise AuthenticationException("Invalid Authorization header format")
-
-    token = parts[1]
+    # Check for token from query parameter first, then header
+    jwt_token = None
+    
+    # If token is in query parameter, use it directly
+    if token:
+        jwt_token = token
+        logger.debug("Using token from query parameter")
+    # Otherwise try to extract from Authorization header
+    elif authorization:
+        # Check if it has the correct format (Bearer token)
+        parts = authorization.split()
+        if parts[0].lower() != "bearer" or len(parts) != 2:
+            logger.warning("Authentication failed: Invalid Authorization header format")
+            raise AuthenticationException("Invalid Authorization header format")
+        jwt_token = parts[1]
+        logger.debug("Using token from Authorization header")
+    else:
+        logger.warning("Authentication failed: No token provided (missing both Authorization header and token parameter)")
+        raise AuthenticationException("No authentication token provided")
     
     try:
         # Verify the token using our helper function
         logger.debug("Attempting to verify JWT token")
-        payload = verify_jwt(token)
+        payload = verify_jwt(jwt_token)
 
         # Extract user info from token claims
         user = {"id": payload.get("sub"), "email": payload.get("email"), "name": payload.get("name", "Anonymous User")}
